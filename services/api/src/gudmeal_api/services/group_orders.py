@@ -1,7 +1,7 @@
 """Group orders with split bill (ADR-0016).
 
-A group order is a shared cart at one Food or Supplements & Skin Care store. Friends join with a 6-character
-code and add their
+A group order is a shared cart at one restaurant or Beauty & Skin Care shop. Friends join with a 6-character code
+and add their
 own items; the host checks out ONE normal quote and order (host's address, voucher and Plus benefits). Then:
 
 - split_mode "host": the host pays the order as usual; shares only show who owes the host what.
@@ -318,7 +318,7 @@ class GroupOrderService:
         if restaurant is None or restaurant.status != RestaurantStatus.ACTIVE:
             raise NotFound("Store not found")
         if restaurant.vertical not in (Vertical.FOOD, Vertical.BEAUTY):
-            raise ValidationFailed("Group orders are for Food and Supplements & Skin Care stores")
+            raise ValidationFailed("Group orders are for restaurants and Beauty & Skin Care shops")
         if data.fulfillment == Fulfillment.DELIVERY and data.delivery_address is None:
             raise ValidationFailed("Add the delivery address for the group order")
         mine = await self.repos.group_orders.find(where=[("host_uid", "==", principal.uid)], limit=50)

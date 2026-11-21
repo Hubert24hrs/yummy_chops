@@ -32,20 +32,32 @@ class RestaurantStatus(StrEnum):
 
 
 class Vertical(StrEnum):
-    """Yummy Chops services. Food and supplements & skin care products are sold by merchants; parcels are
-    courier jobs."""
+    """Yummy Chops services. Food, pharmacy items, beauty & skin care products, groceries and market foodstuff
+    are sold by merchants; parcels are courier jobs."""
 
     FOOD = "food"
-    BEAUTY = "beauty"  # shown to customers as "Supplements & Skin Care"
+    BEAUTY = "beauty"
+    GROCERY = "grocery"  # supermarkets and convenience stores
+    PHARMACY = "pharmacy"  # over-the-counter medicines, health and personal care (no prescription medicines)
+    MARKET = "market"  # foodstuff from an open market, bought by a shopper
     PARCEL = "parcel"
     WAYBILL = "waybill"  # interstate: rider/hub first mile, partner line haul, rider/hub last mile
 
 
-MERCHANT_VERTICALS = (Vertical.FOOD, Vertical.BEAUTY)
+MERCHANT_VERTICALS = (
+    Vertical.FOOD,
+    Vertical.BEAUTY,
+    Vertical.GROCERY,
+    Vertical.PHARMACY,
+    Vertical.MARKET,
+)
+#: Shops that sell products by the aisle (ADR-0018): their pages show aisles, sizes and stock, not a menu.
+RETAIL_VERTICALS = (Vertical.GROCERY, Vertical.PHARMACY, Vertical.MARKET)
 
 
 class Restaurant(Model):
-    """A merchant: a restaurant (vertical=food) or a supplements & skin care shop (vertical=beauty)."""
+    """A merchant: a restaurant (food), a beauty shop, a supermarket (grocery), a pharmacy, or a market
+    shopper (market). The name is historical: every merchant is stored as a `Restaurant`."""
 
     id: str
     vertical: Vertical = Vertical.FOOD
@@ -94,7 +106,7 @@ class ItemKind(StrEnum):
     DRINK = "drink"
     DESSERT = "dessert"
     EXTRA = "extra"
-    PRODUCT = "product"  # non-food merchandise (supplements & skin care)
+    PRODUCT = "product"  # non-food merchandise (beauty & skin care)
 
 
 class OptionChoice(Model):
@@ -138,7 +150,12 @@ class MenuItem(Model):
     popularity: int = Field(default=0, ge=0)
     option_group_ids: list[str] = Field(default_factory=list, max_length=10)
     prep_minutes: int | None = Field(default=None, ge=1, le=180)
-    unit_label: str | None = Field(default=None, max_length=30)  # e.g. "250 ml", "50cl", "60 tablets"
+    unit_label: str | None = Field(default=None, max_length=30)  # e.g. "250 ml", "50cl", "half paint"
+    brand: str | None = Field(default=None, max_length=40)
+    emoji: str | None = Field(default=None, max_length=8)  # picture placeholder until the shop adds a photo
+    # Pharmacies sell over-the-counter products only: a prescription-only item is hidden from customers and
+    # can never be ordered (ADR-0018).
+    requires_prescription: bool = False
     search_keywords: list[str] = Field(default_factory=list)
     position: int = 0
 

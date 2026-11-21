@@ -31,7 +31,7 @@ const _suggestions = [
 String? routeForScreen(String screen, Map<String, dynamic> params) => switch (screen) {
       'home' => '/',
       'food' => params['category'] != null ? '/food?category=${params['category']}' : '/food',
-      'beauty' =>
+      'beauty' || 'grocery' || 'pharmacy' || 'market' =>
         '${serviceCopy(screen).route}${params['category'] != null ? '?category=${params['category']}' : ''}',
       'parcel' => '/send',
       'discover' => '/discover',
@@ -171,7 +171,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
         Expanded(
           child: ListView(controller: _scroll, padding: const EdgeInsets.all(16), children: [
             _GudyBubble(
-              text: 'Hi${name == null ? '' : ' $name'}! I’m Yummy. I can find food, supplements and skin care, plan a meal within your budget, '
+              text: 'Hi${name == null ? '' : ' $name'}! I’m Yummy. I can find food, groceries, foodstuff, pharmacy and beauty products, plan a meal within your budget, '
                   'send packages across Lagos and Enugu, track orders and tell you how much you’ve spent. '
                   'You can write in English, Pidgin, Igbo, Yoruba or Hausa.',
             ),

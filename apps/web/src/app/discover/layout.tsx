@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
   title: "Discover",
-  description: "Search restaurants, dishes, supplements and skin care products, and see what's most in demand near you in Lagos and Enugu.",
+  description: "Search restaurants, dishes, groceries, pharmacy and beauty products, and see what's most in demand near you in Lagos and Enugu.",
   alternates: { canonical: "/discover" },
 };
 

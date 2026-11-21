@@ -119,7 +119,7 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
           final parcel = o.vertical == 'parcel' ? o.parcel : null;
           final steps = switch (o.vertical) {
             'parcel' => const ['Booked', 'Rider found', 'Heading to pickup', 'On the way', 'Delivered'],
-            'beauty' => serviceCopy(o.vertical).steps,
+            'beauty' || 'grocery' || 'pharmacy' || 'market' => serviceCopy(o.vertical).steps,
             'waybill' => (o.progress?.steps.isNotEmpty ?? false)
                 ? o.progress!.steps
                 : const ['Booked', 'At the hub', 'On the way', 'Arrived', 'Delivered'],

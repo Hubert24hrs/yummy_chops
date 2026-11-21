@@ -259,9 +259,10 @@ class WhatsAppService:
             name = _first(payload.get("name"))
             return await self._say(
                 wa_id,
-                f"Hi{' ' + name if name else ''}! I'm Yummy from Yummy Chops. To order food, supplements, skin care or send "
-                f"packages here, connect your Yummy Chops account: in the app open Profile → Connect WhatsApp (or "
-                f"{self.web_url}/account), then send me the code it shows.\nNew to Yummy Chops? Sign up at "
+                f"Hi{' ' + name if name else ''}! I'm Yummy from Yummy Chops. To order food, groceries, foodstuff, "
+                f"pharmacy or beauty products, or send packages here, connect your Yummy Chops account: in the app "
+                f"open Profile → Connect WhatsApp (or {self.web_url}/account), then send me the code it shows.\n"
+                f"New to Yummy Chops? Sign up at "
                 f"{self.web_url}.\n{self._support_line()}",
             )
         if payload.get("kind") == "location":
@@ -275,7 +276,7 @@ class WhatsAppService:
     def _help(self, name: str | None) -> str:
         return (
             f"I'm Yummy{', ' + _first(name) if name else ''}. Ask me in English, Pidgin, Igbo, Yoruba or Hausa:\n"
-            "• food, supplements or skin care, e.g. 'jollof rice for 2 under ₦10,000'\n"
+            "• food, groceries, foodstuff, pharmacy or beauty products, e.g. 'jollof rice for 2 under ₦10,000'\n"
             "• 'send a package to Yaba' or 'send to Abuja'\n"
             "• 'where is my order', 'my points', 'Yummy Chops Plus'\n"
             "Share your location (📎 → Location) and I'll find stores that deliver to you; otherwise I use the "
@@ -430,8 +431,9 @@ class WhatsAppService:
         )
         await self._say(
             wa_id,
-            f"You're connected{', ' + _first(name) if name else ''}! I'm Yummy. Ask me for food, supplements or skin care, a "
-            "package delivery, your order status, your points or Yummy Chops Plus, for example: 'jollof rice for 2 "
+            f"You're connected{', ' + _first(name) if name else ''}! I'm Yummy. Ask me for food, groceries, "
+            "foodstuff, pharmacy or beauty products, a package delivery, your order status, your points or Yummy "
+            "Chops Plus, for example: 'jollof rice for 2 "
             "under ₦10,000'. Share your location (📎 → Location) so I can find stores that deliver to you. You approve every order with a Yes button. Send HELP for tips or STOP to disconnect.",
         )
 

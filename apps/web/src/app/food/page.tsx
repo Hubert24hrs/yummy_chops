@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { VerticalPage } from "@/components/vertical-page";
 
 export const metadata: Metadata = {
-  title: "Food delivery in Lagos and Enugu",
+  title: "Order Food: food delivery in Lagos and Enugu",
   description: "Order jollof, suya, swallow, pizza, small chops and more from top-rated restaurants in Lagos and Enugu.",
   alternates: { canonical: "/food" },
 };

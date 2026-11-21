@@ -143,11 +143,11 @@ Future<void> pumpRouted(WidgetTester tester, Widget home, {List overrides = cons
 }
 
 void main() {
-  testWidgets('home shows the three service bubbles and personal picks; tapping a bubble opens the service', (tester) async {
+  testWidgets('home shows the six service bubbles and personal picks; tapping a bubble opens the service', (tester) async {
     await pumpRouted(tester, const HomeScreen(), overrides: [forYouProvider.overrideWith((ref) async => [jollof, shea])]);
-    expect(find.text('Food'), findsOneWidget);
-    expect(find.text('Supplements & Skin Care'), findsOneWidget);
-    expect(find.text('Package Delivery'), findsOneWidget);
+    for (final name in ['Order Food', 'Pharmacy', 'Beauty & Skin Care', 'Shop & Groceries', 'Buy Foodstuff', 'Package Delivery']) {
+      expect(find.text(name), findsOneWidget, reason: name);
+    }
     expect(find.text('Ada, these are for you'), findsOneWidget);
     expect(find.text('Jollof Junction'), findsWidgets);
     expect(find.text('Promo'), findsOneWidget); // the deal shows as a tag on the shop's tile

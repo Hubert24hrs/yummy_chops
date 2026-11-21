@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { cn } from "@gudmeal/ui";
 import { useEffect, useRef, type ReactNode } from "react";
 
 export interface BubbleSpec {
@@ -25,11 +26,19 @@ interface Body {
   last: { x: number; y: number; t: number };
 }
 
-/** Two bubbles on top, one below (as in the app): a two-line label under a top bubble clears the one underneath. */
 const LAYOUT = [
-  { x: 0.28, y: 0.29 },
-  { x: 0.73, y: 0.32 },
-  { x: 0.5, y: 0.8 },
+  { x: 0.29, y: 0.33 },
+  { x: 0.72, y: 0.36 },
+  { x: 0.49, y: 0.75 },
+];
+/** Five or more services share the field: two rows of three, as in the mobile app. */
+const LAYOUT_MANY = [
+  { x: 0.19, y: 0.19 },
+  { x: 0.5, y: 0.16 },
+  { x: 0.81, y: 0.19 },
+  { x: 0.19, y: 0.65 },
+  { x: 0.5, y: 0.62 },
+  { x: 0.81, y: 0.65 },
 ];
 
 /**
@@ -42,6 +51,7 @@ export function ServiceBubbles({ bubbles, height = 340 }: { bubbles: BubbleSpec[
   const field = useRef<HTMLDivElement>(null);
   const els = useRef<(HTMLAnchorElement | null)[]>([]);
   const bodies = useRef<Body[]>([]);
+  const many = bubbles.length > 4;
 
   useEffect(() => {
     const root = field.current;
@@ -59,10 +69,11 @@ export function ServiceBubbles({ bubbles, height = 340 }: { bubbles: BubbleSpec[
 
     const layout = () => {
       width = root.clientWidth;
-      const base = Math.min(width * 0.17, 76);
+      const spots = many ? LAYOUT_MANY : LAYOUT;
+      const base = many ? Math.min(width * 0.135, 62) : Math.min(width * 0.17, 76);
       bubbles.forEach((b, i) => {
         const r = base * (b.size ?? 1);
-        const rel = LAYOUT[i % LAYOUT.length];
+        const rel = spots[i % spots.length]!;
         const home = inBounds(rel.x * width, rel.y * height, r);
         const body = bodies.current[i];
         if (body) {
@@ -141,7 +152,7 @@ export function ServiceBubbles({ bubbles, height = 340 }: { bubbles: BubbleSpec[
       cancelAnimationFrame(raf);
       ro?.disconnect();
     };
-  }, [bubbles, height]);
+  }, [bubbles, height, many]);
 
   const down = (i: number) => (e: React.PointerEvent<HTMLAnchorElement>) => {
     const b = bodies.current[i];
@@ -194,9 +205,12 @@ export function ServiceBubbles({ bubbles, height = 340 }: { bubbles: BubbleSpec[
         >
           <span className="absolute inset-0 rounded-full bg-white/25 shadow-[0_10px_24px_rgba(0,0,0,.14)] transition-shadow group-data-[dragging=true]:shadow-[0_18px_34px_rgba(0,0,0,.24)]" />
           <span className="absolute inset-[6%] grid place-items-center rounded-full bg-white p-[14%]">{bubble.art}</span>
-          {/* A long name wraps to two even lines ("Supplements &" / "Skin Care") instead of running past the bubble;
-              the link's aria-label keeps the plain name. */}
-          <span aria-hidden="true" className="absolute left-1/2 top-[80%] w-max max-w-[118%] -translate-x-1/2 text-balance rounded-2xl border border-[#F1DCD3] bg-white px-3 py-1 text-center text-[13px] font-bold leading-tight text-[#2A0D06] shadow-sm">
+          {/* A long name wraps to two even lines ("Beauty &" / "Skin Care") instead of running past the bubble or
+              covering a neighbour; the link's aria-label keeps the plain name. */}
+          <span aria-hidden="true" className={cn(
+            "absolute left-1/2 top-[80%] w-max -translate-x-1/2 text-balance rounded-2xl border border-[#F1DCD3] bg-white py-1 text-center font-bold leading-tight text-[#2A0D06] shadow-sm",
+            many ? "max-w-[108%] px-2.5 text-xs" : "max-w-[118%] px-3 text-[13px]",
+          )}>
             {bubble.label.replace(/ &/g, "\u00a0&")}
           </span>
         </a>

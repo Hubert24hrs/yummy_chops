@@ -150,7 +150,7 @@ offline again at the end.
 | Local setting | What it does | Normal value |
 |---|---|---|
 | `DEMO_SHOPS_ALWAYS_OPEN=true` | Every demo shop takes orders around the clock | shops keep their hours (most 10:00-23:00 Lagos time) |
-| `DEMO_SHOP_AUTOPILOT=true` (only with `--lan`) | Nobody is at the shop's dashboard during a phone test, so a demo shop (restaurant or supplements & skin care shop) accepts an order left unanswered for about 12 seconds and marks it ready about 30 seconds later. Set it to `false` to play the shop yourself in the partner dashboard. Pickup orders are accepted but still handed over by a person, with the customer's code | off: the shop's staff accept |
+| `DEMO_SHOP_AUTOPILOT=true` (only with `--lan`) | Nobody is at the shop's dashboard during a phone test, so a demo shop (restaurant, pharmacy, beauty shop, supermarket or market shopper) accepts an order left unanswered for about 12 seconds and marks it ready about 30 seconds later. Set it to `false` to play the shop yourself in the partner dashboard. Pickup orders are accepted but still handed over by a person, with the customer's code | off: the shop's staff accept |
 | `DISPATCH_PICKUP_RADIUS_KM=40` | Riders up to 40 km from the pickup get the offer at once | 6 km first, then 3 km further each round with nobody to ask, up to 30 km |
 | `DISPATCH_REOFFER_SECONDS=20` | A rider who missed an offer (it ran out) is asked again 20 seconds later | 300 (5 minutes); riders who declined are never asked again |
 | `RIDER_CASH_LIMIT_KOBO=100000000` | Riders keep getting cash jobs until they hold N1,000,000 | N50,000; cash is handed in on the Command Centre's Cash page |

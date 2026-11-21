@@ -47,7 +47,7 @@ services, two launch cities and a set of stand-out features. Answers to the prod
 | Topic | Decision |
 |---|---|
 | Design | Animated, finger-draggable service bubbles; Food page with category bubbles, filters, popular brands; bottom bar Home · Discover · Orders · Support · Profile; Yummy robot button everywhere |
-| Services | Food; **Supplements & Skin Care** (partner shops' products; named Beauty & Skin care until 2026-11-18); **Package Delivery** (instant bike, scheduled pickups, cash-on-delivery for vendors, interstate waybill) |
+| Services | Six, in this order since 2026-11-21 ([ADR-0025](adr/0025-six-services.md)): **Order Food**; **Pharmacy** (over-the-counter only); **Beauty & Skin Care** (partner shops' products; named Supplements & Skin Care on 18-21 Nov); **Shop & Groceries** (supermarkets and stores); **Buy Foodstuff** (a shopper buys it at the market); **Package Delivery** (instant bike, scheduled pickups, cash-on-delivery for vendors, interstate waybill) |
 | Cities | **Lagos and Enugu** first |
 | Payments | Paystack (card/transfer/USSD), **Yummy Chops wallet**, **pay on delivery**, Flutterwave backup |
 | AI assistant | **Yummy**; English, Nigerian Pidgin, Igbo, Yoruba, Hausa |
@@ -57,8 +57,10 @@ services, two launch cities and a set of stand-out features. Answers to the prod
 
 Added on 2026-11-17 at the owner's request, outside the numbered phases:
 
-- **Groceries, Pharmacy and Market Shopping** ([ADR-0018](adr/0018-groceries-pharmacy-market.md)): built on 17 Nov
-  and removed on 18 Nov at the owner's request ([ADR-0021](adr/0021-supplements-and-skin-care-minimal-home.md)).
+- **Groceries, Pharmacy and Market Shopping** ([ADR-0018](adr/0018-groceries-pharmacy-market.md)): built on 17 Nov,
+  removed on 18 Nov ([ADR-0021](adr/0021-supplements-and-skin-care-minimal-home.md)) and back on 21 Nov as
+  Shop & Groceries, Pharmacy and Buy Foodstuff ([ADR-0025](adr/0025-six-services.md)). To confirm: the Plus minimum
+  basket for these services, their commission, and a legal review of selling over-the-counter medicines online.
 - **Receipts and the receipt printer** ([ADR-0019](adr/0019-receipt-printer.md)): done and tested.
 
 Delivery phases (each tested, documented and pushed before the next):

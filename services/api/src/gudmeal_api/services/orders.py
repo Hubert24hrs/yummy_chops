@@ -52,6 +52,18 @@ NOTIFY_BY_VERTICAL: dict[Vertical, dict[OrderStatus, tuple[str, str]]] = {
         S.RESTAURANT_ACCEPTED: ("Order accepted", "{restaurant} is packing your order"),
         S.DELIVERED: ("Delivered", "Your order from {restaurant} has arrived"),
     },
+    Vertical.GROCERY: {
+        S.RESTAURANT_ACCEPTED: ("Order accepted", "{restaurant} is packing your order"),
+        S.DELIVERED: ("Delivered", "Your order from {restaurant} has arrived"),
+    },
+    Vertical.PHARMACY: {
+        S.RESTAURANT_ACCEPTED: ("Order accepted", "{restaurant} is packing your order"),
+        S.DELIVERED: ("Delivered", "Your order from {restaurant} has arrived"),
+    },
+    Vertical.MARKET: {
+        S.RESTAURANT_ACCEPTED: ("Shopper on it", "{restaurant} is buying your items"),
+        S.DELIVERED: ("Delivered", "Your foodstuff has arrived"),
+    },
     Vertical.WAYBILL: {
         S.DELIVERED: ("Delivered", "Your interstate package has been delivered"),
         S.REFUND_PENDING: ("Refund started", "We're refunding your waybill booking"),

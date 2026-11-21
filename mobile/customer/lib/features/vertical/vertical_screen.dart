@@ -11,8 +11,8 @@ import '../../widgets.dart';
 
 const _sorts = {'recommended': 'Recommended', 'rating': 'Top rated', 'distance': 'Nearest', 'delivery_fee': 'Lowest delivery fee'};
 
-/// A service page (Food, or Supplements & Skin Care): search, category bubbles, filters, popular shops, all
-/// shops.
+/// A service page (Order Food, Pharmacy, Beauty & Skin Care, Shop & Groceries, Buy Foodstuff): search, category bubbles,
+/// filters, popular shops, all shops.
 class VerticalScreen extends ConsumerStatefulWidget {
   const VerticalScreen({super.key, required this.vertical, this.category});
   final String vertical;
@@ -124,6 +124,13 @@ class _VerticalScreenState extends ConsumerState<VerticalScreen> {
               child: Text(_title, style: theme.textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w900)),
             ),
           ),
+          if (_service.note != null)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: ServiceNote(_service.note!),
+              ),
+            ),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -132,7 +139,7 @@ class _VerticalScreenState extends ConsumerState<VerticalScreen> {
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search_rounded),
-                  hintText: 'Search in ${_service.title}',
+                  hintText: 'Search in ${_service.searchIn}',
                   filled: true,
                   fillColor: theme.colorScheme.surfaceContainerHighest,
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(999), borderSide: BorderSide.none),

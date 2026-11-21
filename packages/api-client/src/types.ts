@@ -9,9 +9,10 @@ export type OrderStatus =
 
 export type Fulfillment = "delivery" | "pickup";
 export type ItemKind = "main" | "combo" | "side" | "snack" | "drink" | "dessert" | "extra" | "product";
-/** Yummy Chops services: food and beauty are sold by merchants; parcels are courier jobs. */
-/** A service that shops sell through: restaurants (food) and supplements & skin care shops (beauty). */
-export type MerchantVertical = "food" | "beauty";
+/** Yummy Chops services: food, pharmacy, beauty, grocery and market are sold by merchants; parcels are courier jobs. */
+/** A service that shops sell through: restaurants (Order Food), pharmacies, beauty & skin care shops, supermarkets
+ * (Shop & Groceries) and market shoppers (Buy Foodstuff). */
+export type MerchantVertical = "food" | "beauty" | "grocery" | "pharmacy" | "market";
 export type Vertical = MerchantVertical | "parcel" | "waybill";
 
 export interface GeoPoint { lat: number; lng: number }
@@ -33,6 +34,8 @@ export interface RestaurantCard {
   delivers_to_location: boolean | null;
   /** The shop's public pin (for maps). */
   location?: GeoPoint | null;
+  /** A short label for the kind of shop, e.g. "Shopper" for market shopping. */
+  badge?: string | null;
 }
 
 /** One hero dish on the Discover carousel (GET /v1/discover/dishes). Prices and fees come from the API as set. */
@@ -65,8 +68,13 @@ export interface MenuItem {
   image_url: string | null; kind: ItemKind; tags: string[]; dietary: string[]; allergens: string[]; serves: number;
   spice_level: number; is_available: boolean; is_active: boolean; popularity: number; option_group_ids: string[];
   prep_minutes: number | null; position: number;
-  /** Size or measure: "50 cl", "60 tablets". */
+  /** Size or measure: "75 cl x 12", "derica", "12 tablets". */
   unit_label?: string | null;
+  brand?: string | null;
+  /** A picture until the shop uploads a photo. */
+  emoji?: string | null;
+  /** Prescription-only: customers never see these and cannot order them online. */
+  requires_prescription?: boolean;
 }
 export interface MenuSection { category: MenuCategory; items: MenuItem[] }
 export interface RestaurantDetail {
@@ -460,7 +468,7 @@ export interface PlusPlanConfig {
 export interface PlusPlan {
   enabled: boolean; price_kobo: Kobo; vat_kobo: Kobo; period_days: number; free_delivery_min_subtotal_kobo: Kobo;
   service_fee_discount_bps: number; points_multiplier: number; verticals: string[];
-  /** Ready-to-show benefit lines, e.g. "Free delivery on restaurant and shop orders of ₦3,000 or more". */
+  /** Ready-to-show benefit lines, e.g. "Free delivery on Food and Beauty orders of ₦3,000 or more". */
   benefits: string[];
 }
 export interface PlusMembership {

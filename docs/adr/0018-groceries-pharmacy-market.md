@@ -1,8 +1,9 @@
 # ADR-0018: Groceries, Pharmacy and Market Shopping
 
-- **Status:** Withdrawn on 2026-11-18: the owner removed the three services and everything tied to them
-  ([ADR-0021](0021-supplements-and-skin-care-minimal-home.md)). The code was added in commit 1f45da5; start
-  there to bring a service back.
+- **Status:** Accepted again on 2026-11-21 under the owner's names Shop & Groceries, Pharmacy and Buy Foodstuff
+  ([ADR-0025](0025-six-services.md)). It was withdrawn on 2026-11-18
+  ([ADR-0021](0021-supplements-and-skin-care-minimal-home.md)); the code removed then (commit 9cbede1) was merged
+  back. The service names below are the 2026-11-17 ones.
 - **Date:** 2026-11-17
 - **Context owner:** owner's request of 2026-11-17: "add Groceries, Pharmacy and Market Shopping", with Chowdeck
   as the reference for how products and product types are organised

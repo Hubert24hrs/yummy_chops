@@ -59,8 +59,9 @@ async def paid_parcel(client, who: str = "customer", **body) -> dict:
 # ---------------------------------------------------------------------------------- catalogue
 async def test_services_categories_and_cities(client):
     services = {s["id"]: s for s in (await client.get("/v1/services")).json()}
-    assert list(services) == ["food", "beauty", "parcel"]
-    assert services["beauty"]["name"] == "Supplements & Skin Care"
+    # The owner's order (ADR-0025): Order Food, Pharmacy, Beauty & Skin Care, Shop & Groceries, Buy Foodstuff,
+    # Package Delivery.
+    assert list(services) == ["food", "pharmacy", "beauty", "grocery", "market", "parcel"]
     assert services["food"]["merchants"] == 14 and services["beauty"]["merchants"] == 5
     assert services["parcel"]["cities"] == ["enugu", "lagos"] and services["parcel"]["available"]
     assert "interstate" in services["parcel"]["options"] and services["parcel"]["coming_soon"] == []
@@ -71,7 +72,7 @@ async def test_services_categories_and_cities(client):
     assert {"promotions", "local", "international", "snacks", "grills", "healthy", "drinks"} <= set(food_cats)
     assert food_cats["promotions"]["merchants"] == 3  # JOLLOF20, COALCITY10, PIZZANIGHT
     beauty_cats = {c["id"] for c in (await client.get("/v1/services/beauty/categories")).json()}
-    assert beauty_cats == {"promotions", "supplements", "skincare", "bodycare", "men"}
+    assert beauty_cats == {"promotions", "skincare", "bodycare", "haircare", "makeup", "fragrance", "men"}
 
     shops = (await client.get("/v1/restaurants", params={"vertical": "beauty"})).json()
     assert len(shops) == 5 and {s["vertical"] for s in shops} == {"beauty"}
@@ -90,7 +91,7 @@ async def test_services_categories_and_cities(client):
     ).json()
     assert local and all(c["supports_pickup"] for c in local)
     everything = (await client.get("/v1/restaurants", params={"vertical": "all"})).json()
-    assert len(everything) == 19  # 14 restaurants and 5 supplements & skin care shops
+    assert len(everything) == 29  # 14 restaurants, 5 beauty shops, 4 supermarkets, 3 pharmacies, 3 markets
 
     assert (await client.get("/v1/restaurants", params={"category": "nope"})).status_code == 422
     assert (await client.get("/v1/restaurants", params={"city": "abuja"})).status_code == 422

@@ -19,9 +19,10 @@
 | [0015](0015-interstate-waybill.md) | Interstate waybill: hubs, rider legs, partner line haul, public tracking | Accepted (sample network) |
 | [0016](0016-plus-rewards-group-orders.md) | Yummy Chops Plus, Yummy points and referrals, group orders with split bill | Accepted (defaults to confirm) |
 | [0017](0017-assistant-on-whatsapp.md) | Yummy on WhatsApp: number linking, customer-only channel tokens, signed webhooks | Accepted (Meta account pending) |
-| [0018](0018-groceries-pharmacy-market.md) | Groceries, Pharmacy and Market Shopping: three more shop services, products by the aisle, over-the-counter only | Withdrawn 2026-11-18 (see 0021) |
+| [0018](0018-groceries-pharmacy-market.md) | Groceries, Pharmacy and Market Shopping: three more shop services, products by the aisle, over-the-counter only | Accepted again 2026-11-21 under new names (see 0025) |
 | [0019](0019-receipt-printer.md) | Receipts: the receipt printer after payment, receipts kept under the customer's profile | Accepted |
 | [0020](0020-test-apps-find-the-test-server.md) | Phone test apps find the test server on the Wi-Fi by themselves; the payment sandbox page follows the computer's address | Accepted (not yet run on a phone) |
-| [0021](0021-supplements-and-skin-care-minimal-home.md) | Three services: Food, Supplements & Skin Care (was Beauty & Skin care), Package Delivery; a minimal home page in the app and on the website | Accepted |
+| [0021](0021-supplements-and-skin-care-minimal-home.md) | Three services: Food, Supplements & Skin Care (was Beauty & Skin care), Package Delivery; a minimal home page in the app and on the website | Accepted; services superseded by 0025 |
 | [0022](0022-brand.md) | The brand: logo, icons and colours from the owner's logo (named GudMeals at first) | Accepted; name superseded by 0023 |
 | [0023](0023-yummy-chops.md) | The name Yummy Chops (logo lettering, every name people read, YC numbers, Yummy points), the assistant renamed Yummy (was Gudy), and the yummy247.com domain | Accepted |
+| [0025](0025-six-services.md) | Six services in the owner's order: Order Food, Pharmacy, Beauty & Skin Care, Shop & Groceries, Buy Foodstuff, Package Delivery; every kind of shop can sign up | Accepted (owner decisions open) |

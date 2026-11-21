@@ -107,9 +107,13 @@ def order_summary(order: dict[str, Any]) -> dict[str, Any]:
 # ------------------------------------------------------------------------------------------------
 
 
-# The merchant services: restaurants ('food') and supplements & skin care shops ('beauty').
-Service = Literal["food", "beauty"]
-SERVICES_HELP = "'food' restaurants, 'beauty' supplements & skin care shops"
+# The merchant services (ADR-0018): restaurants, supermarkets, pharmacies, market shoppers, beauty shops.
+Service = Literal["food", "grocery", "pharmacy", "market", "beauty"]
+SERVICES_HELP = (
+    "'food' restaurants, 'grocery' supermarkets and convenience stores, 'pharmacy' over-the-counter "
+    "pharmacy products, 'market' fresh foodstuff bought by a shopper at the market, 'beauty' beauty & "
+    "skin care shops"
+)
 
 
 class SearchRestaurantsArgs(ToolArgs):
@@ -121,7 +125,10 @@ class SearchRestaurantsArgs(ToolArgs):
         default=None,
         max_length=30,
         description="Browse category id: food: promotions, local, international, snacks, grills, healthy, "
-        "drinks; beauty: promotions, supplements, skincare, bodycare, men",
+        "drinks; grocery: promotions, supermarkets, convenience, drinks, fresh, baby, household; pharmacy: "
+        "promotions, pain, cold, vitamins, firstaid, baby, personal; market: promotions, foodstuff, "
+        "vegetables, protein, tubers, fruits, combos; beauty: promotions, skincare, bodycare, haircare, "
+        "makeup, fragrance, men",
     )
     cuisine: str | None = Field(default=None, max_length=40)
     open_now: bool = True
@@ -755,9 +762,9 @@ def register(reg: ToolRegistry) -> None:
     add(
         ToolSpec(
             "search_restaurants",
-            "Find restaurants (service='food') or supplements & skin care shops ('beauty'), open now by "
-            "default, near the customer's delivery address. Optional browse category such as 'local', "
-            "'drinks', 'supplements' or 'skincare'.",
+            "Find restaurants (service='food'), supermarkets ('grocery'), pharmacies ('pharmacy'), market "
+            "shoppers ('market') or beauty & skin care shops ('beauty'), open now by default, near the "
+            "customer's delivery address. Optional browse category such as 'local', 'drinks' or 'skincare'.",
             SearchRestaurantsArgs,
             search_restaurants,
             EVERYONE,
@@ -766,8 +773,8 @@ def register(reg: ToolRegistry) -> None:
     add(
         ToolSpec(
             "search_food_items",
-            "Search dishes and supplements & skin care products by name or keyword across all partner "
-            "restaurants and shops.",
+            "Search dishes, groceries, over-the-counter pharmacy products, market foodstuff and beauty "
+            "products by name or keyword across all partner restaurants and shops.",
             SearchFoodArgs,
             search_food_items,
             EVERYONE,
@@ -776,8 +783,8 @@ def register(reg: ToolRegistry) -> None:
     add(
         ToolSpec(
             "get_restaurant_menu",
-            "Get a restaurant's menu or a supplements & skin care shop's product list, with item ids, prices, "
-            "sizes and required choices (e.g. protein or pack size).",
+            "Get a restaurant's menu or a shop's product list (supermarket, pharmacy, market, beauty), with "
+            "item ids, prices, sizes and required choices (e.g. protein, shade, weight or pack size).",
             MenuArgs,
             get_restaurant_menu,
             EVERYONE,

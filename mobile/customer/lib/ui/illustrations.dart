@@ -108,7 +108,7 @@ class FoodIllustration extends _Illustration {
   }
 }
 
-/// Supplements & Skin Care: a cream jar, a serum dropper and a tub of supplements with a capsule, with sparkles.
+/// A cream jar, a serum dropper and a lipstick with sparkles.
 class BeautyIllustration extends _Illustration {
   const BeautyIllustration();
 
@@ -143,31 +143,18 @@ class BeautyIllustration extends _Illustration {
         Paint()..shader = const LinearGradient(colors: [Color(0xFFF59AA8), Color(0xFFE06A7E)]).createShader(const Rect.fromLTWH(8, 47, 40, 12)));
     c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(14, 66, 28, 10), const Radius.circular(3)), _fill(const Color(0xFFFDE7E6)));
     c.drawCircle(const Offset(28, 71), 3, _fill(const Color(0xFFE0040B)));
-    // tub of supplements (front right)
-    const tub = Rect.fromLTWH(66, 50, 24, 36);
-    c.drawRRect(RRect.fromRectAndRadius(tub, const Radius.circular(6)),
-        Paint()..shader = const LinearGradient(colors: [Color(0xFFFFFFFF), Color(0xFFE6EEF2)]).createShader(tub));
-    c.drawRRect(RRect.fromRectAndRadius(tub, const Radius.circular(6)), _stroke(const Color(0xFFD3DEE4), 1.4));
-    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(68, 43, 20, 9), const Radius.circular(2.5)), _fill(const Color(0xFF1F9D63)));
-    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(69, 59, 18, 17), const Radius.circular(3)), _fill(const Color(0xFFE6F6EE)));
-    final leaf = Path()
-      ..moveTo(78, 72)
-      ..quadraticBezierTo(71, 67, 78, 62)
-      ..quadraticBezierTo(85, 67, 78, 72)
+    // lipstick (front right)
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(68, 58, 18, 28), const Radius.circular(3)),
+        Paint()..shader = const LinearGradient(colors: [Color(0xFFE9C25A), Color(0xFFB98A22)]).createShader(const Rect.fromLTWH(68, 58, 18, 28)));
+    c.drawRect(const Rect.fromLTWH(70, 46, 14, 13), _fill(const Color(0xFFC9A03A)));
+    final bullet = Path()
+      ..moveTo(71, 46)
+      ..lineTo(71, 34)
+      ..quadraticBezierTo(76, 26, 83, 28)
+      ..lineTo(83, 46)
       ..close();
-    c.drawPath(leaf, _fill(const Color(0xFF1F9D63)));
-    // a capsule
-    c.save();
-    c.translate(89, 33);
-    c.rotate(-.56);
-    const capsule = Rect.fromLTWH(-8, -3.5, 16, 7);
-    c.drawRRect(RRect.fromRectAndRadius(capsule, const Radius.circular(3.5)), _fill(const Color(0xFFFFF7F0)));
-    c.save();
-    c.clipRect(const Rect.fromLTWH(-8, -3.5, 8, 7));
-    c.drawRRect(RRect.fromRectAndRadius(capsule, const Radius.circular(3.5)), _fill(const Color(0xFFE0040B)));
-    c.restore();
-    c.drawRRect(RRect.fromRectAndRadius(capsule, const Radius.circular(3.5)), _stroke(const Color(0x33000000), .8));
-    c.restore();
+    c.drawPath(bullet, _fill(const Color(0xFFD23B4E)));
+    c.drawLine(const Offset(73, 44), const Offset(73, 34), _stroke(const Color(0x55FFFFFF), 2));
   }
 }
 
@@ -264,4 +251,165 @@ class RobotPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant RobotPainter oldDelegate) => oldDelegate.eyeOpen != eyeOpen || oldDelegate.ring != ring;
+}
+
+/// A shopping basket with bread, a milk carton, greens and an orange.
+class GroceryIllustration extends _Illustration {
+  const GroceryIllustration();
+
+  @override
+  void draw(Canvas c) {
+    _shadow(c, const Offset(50, 88), 70, 8);
+    // bread, leaning out of the basket
+    c.save();
+    c.translate(30, 34);
+    c.rotate(-0.35);
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-7, -22, 14, 46), const Radius.circular(7)),
+        Paint()..shader = const LinearGradient(colors: [Color(0xFFE9B565), Color(0xFFC98632)]).createShader(const Rect.fromLTWH(-7, -22, 14, 46)));
+    final score = _stroke(const Color(0xFFA9661F), 1.6);
+    for (final y in [-12.0, -3.0, 6.0]) {
+      c.drawLine(Offset(-4, y), Offset(4, y + 3), score);
+    }
+    c.restore();
+    // milk carton
+    c.drawPath(
+      Path()
+        ..moveTo(44, 26)
+        ..lineTo(53, 16)
+        ..lineTo(62, 26)
+        ..close(),
+      _fill(const Color(0xFFDCEBFA)),
+    );
+    c.drawRect(const Rect.fromLTWH(44, 26, 18, 34), _fill(const Color(0xFFF7FBFF)));
+    c.drawRect(const Rect.fromLTWH(44, 36, 18, 10), _fill(const Color(0xFF4C8FDB)));
+    // leafy greens
+    for (final (dx, a) in [(70.0, -0.35), (76.0, 0.1), (82.0, 0.5)]) {
+      c.save();
+      c.translate(dx, 40);
+      c.rotate(a);
+      c.drawOval(const Rect.fromLTWH(-5, -18, 10, 30), _fill(const Color(0xFF2E8B57)));
+      c.drawLine(const Offset(0, -12), const Offset(0, 10), _stroke(const Color(0xFF1F6B41), 1.2));
+      c.restore();
+    }
+    // orange
+    c.drawCircle(const Offset(63, 50), 8, _fill(const Color(0xFFF5A623)));
+    c.drawCircle(const Offset(60.5, 47.5), 2.2, _fill(const Color(0x55FFFFFF)));
+    // basket
+    final body = Path()
+      ..moveTo(14, 52)
+      ..lineTo(86, 52)
+      ..lineTo(78, 84)
+      ..quadraticBezierTo(77, 88, 73, 88)
+      ..lineTo(27, 88)
+      ..quadraticBezierTo(23, 88, 22, 84)
+      ..close();
+    c.drawPath(body, Paint()..shader = const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF3FA66B), Color(0xFF237247)]).createShader(const Rect.fromLTWH(14, 52, 72, 36)));
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(10, 48, 80, 8), const Radius.circular(4)), _fill(const Color(0xFF2F8A57)));
+    final slot = _stroke(const Color(0x55FFFFFF), 2.4);
+    for (final x in [32.0, 44.0, 56.0, 68.0]) {
+      c.drawLine(Offset(x, 62), Offset(x + (x - 50) * -.06, 80), slot);
+    }
+  }
+}
+
+/// A medicine bottle with a green cross, a capsule and a plaster.
+class PharmacyIllustration extends _Illustration {
+  const PharmacyIllustration();
+
+  @override
+  void draw(Canvas c) {
+    _shadow(c, const Offset(50, 88), 68, 8);
+    // bottle
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(30, 12, 28, 12), const Radius.circular(3)), _fill(const Color(0xFF1F9D63)));
+    for (final x in [35.0, 41.0, 47.0, 53.0]) {
+      c.drawLine(Offset(x, 14), Offset(x, 22), _stroke(const Color(0x55FFFFFF), 1.4));
+    }
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(24, 24, 40, 62), const Radius.circular(9)),
+        Paint()..shader = const LinearGradient(colors: [Color(0xFFFFFFFF), Color(0xFFE6EEF2)]).createShader(const Rect.fromLTWH(24, 24, 40, 62)));
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(24, 24, 40, 62), const Radius.circular(9)), _stroke(const Color(0xFFD3DEE4), 1.6));
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(29, 40, 30, 30), const Radius.circular(5)), _fill(const Color(0xFFE6F6EE)));
+    const green = Color(0xFF1F9D63);
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(40.5, 45, 7, 20), const Radius.circular(2)), _fill(green));
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(34, 51.5, 20, 7), const Radius.circular(2)), _fill(green));
+    // capsule
+    c.save();
+    c.translate(77, 66);
+    c.rotate(-0.6);
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-15, -7, 30, 14), const Radius.circular(7)), _fill(const Color(0xFFFFF7F0)));
+    c.save();
+    c.clipRect(const Rect.fromLTWH(-15, -7, 15, 14));
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-15, -7, 30, 14), const Radius.circular(7)), _fill(const Color(0xFFE85D32)));
+    c.restore();
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-15, -7, 30, 14), const Radius.circular(7)), _stroke(const Color(0x33000000), 1));
+    c.restore();
+    // plaster
+    c.save();
+    c.translate(76, 34);
+    c.rotate(0.5);
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-14, -5, 28, 10), const Radius.circular(5)), _fill(const Color(0xFFF0C9A0)));
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-5, -5, 10, 10), const Radius.circular(1.5)), _fill(const Color(0xFFFBE3C8)));
+    for (final x in [-10.0, 10.0]) {
+      c.drawCircle(Offset(x, -2), .9, _fill(const Color(0xFFC79B6B)));
+      c.drawCircle(Offset(x, 2), .9, _fill(const Color(0xFFC79B6B)));
+    }
+    c.restore();
+  }
+}
+
+/// A woven market basket of tomatoes, pepper, leaves and a tuber of yam.
+class MarketIllustration extends _Illustration {
+  const MarketIllustration();
+
+  @override
+  void draw(Canvas c) {
+    _shadow(c, const Offset(50, 88), 72, 8);
+    // yam, at the back
+    c.save();
+    c.translate(70, 36);
+    c.rotate(0.45);
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-8, -22, 16, 44), const Radius.circular(8)),
+        Paint()..shader = const LinearGradient(colors: [Color(0xFF8A5A33), Color(0xFF5F3B1E)]).createShader(const Rect.fromLTWH(-8, -22, 16, 44)));
+    c.drawOval(const Rect.fromLTWH(-6, -22, 12, 7), _fill(const Color(0xFFF3E3C4)));
+    c.restore();
+    // leaves
+    for (final (dx, a) in [(22.0, -0.5), (29.0, -0.1), (36.0, 0.3)]) {
+      c.save();
+      c.translate(dx, 38);
+      c.rotate(a);
+      c.drawOval(const Rect.fromLTWH(-5.5, -20, 11, 32), _fill(const Color(0xFF2E8B57)));
+      c.drawLine(const Offset(0, -14), const Offset(0, 10), _stroke(const Color(0xFF1F6B41), 1.2));
+      c.restore();
+    }
+    // tomatoes
+    for (final (x, y, r) in [(44.0, 44.0, 9.0), (58.0, 47.0, 8.0), (50.0, 36.0, 7.5)]) {
+      c.drawCircle(Offset(x, y), r, _fill(const Color(0xFFE2412B)));
+      c.drawCircle(Offset(x - r * .3, y - r * .35), r * .25, _fill(const Color(0x66FFFFFF)));
+      c.drawCircle(Offset(x, y - r + 1), 1.8, _fill(const Color(0xFF2E8B57)));
+    }
+    // a pepper
+    c.save();
+    c.translate(33, 49);
+    c.rotate(-0.9);
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(-3.5, -9, 7, 18), const Radius.circular(3.5)), _fill(const Color(0xFFF5B942)));
+    c.restore();
+    // basket: a woven bowl
+    final body = Path()
+      ..moveTo(12, 54)
+      ..lineTo(88, 54)
+      ..cubicTo(86, 74, 72, 88, 50, 88)
+      ..cubicTo(28, 88, 14, 74, 12, 54)
+      ..close();
+    c.drawPath(body, Paint()..shader = const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFFDDA85B), Color(0xFFB07A2E)]).createShader(const Rect.fromLTWH(12, 54, 76, 34)));
+    c.save();
+    c.clipPath(body);
+    final weave = _stroke(const Color(0x66704514), 1.6);
+    for (var y = 60.0; y < 88; y += 7) {
+      c.drawLine(Offset(10, y), Offset(90, y), weave);
+    }
+    for (var x = 18.0; x < 88; x += 9) {
+      c.drawLine(Offset(x, 54), Offset(x + (50 - x) * .18, 90), weave);
+    }
+    c.restore();
+    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(9, 50, 82, 8), const Radius.circular(4)), _fill(const Color(0xFFC98C3C)));
+  }
 }

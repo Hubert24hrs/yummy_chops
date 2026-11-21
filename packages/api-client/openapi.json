@@ -1370,6 +1370,18 @@
             "title": "Allergens",
             "type": "array"
           },
+          "brand": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
           "category_id": {
             "title": "Category Id",
             "type": "string"
@@ -1387,6 +1399,18 @@
             "maxItems": 10,
             "title": "Dietary",
             "type": "array"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
           },
           "image_url": {
             "anyOf": [
@@ -1446,6 +1470,11 @@
             "maximum": 100000000.0,
             "title": "Price Kobo",
             "type": "integer"
+          },
+          "requires_prescription": {
+            "default": false,
+            "title": "Requires Prescription",
+            "type": "boolean"
           },
           "serves": {
             "default": 1,
@@ -1613,6 +1642,18 @@
             "title": "Allergens",
             "type": "array"
           },
+          "brand": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand"
+          },
           "category_id": {
             "title": "Category Id",
             "type": "string"
@@ -1630,6 +1671,18 @@
             "maxItems": 10,
             "title": "Dietary",
             "type": "array"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "maxLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
           },
           "id": {
             "title": "Id",
@@ -1703,6 +1756,11 @@
             "maximum": 100000000.0,
             "title": "Price Kobo",
             "type": "integer"
+          },
+          "requires_prescription": {
+            "default": false,
+            "title": "Requires Prescription",
+            "type": "boolean"
           },
           "restaurant_id": {
             "title": "Restaurant Id",
@@ -2828,6 +2886,7 @@
         "type": "object"
       },
       "RestaurantApplicationInput": {
+        "description": "A business asks to sell on Yummy Chops: a restaurant or a shop of any kind (ADR-0025).",
         "properties": {
           "address": {
             "maxLength": 200,
@@ -2903,6 +2962,31 @@
           },
           "location": {
             "$ref": "#/components/schemas/GeoPoint"
+          },
+          "pcn_licence_number": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "minLength": 4,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pcn Licence Number"
+          },
+          "vertical": {
+            "default": "food",
+            "enum": [
+              "food",
+              "pharmacy",
+              "beauty",
+              "grocery",
+              "market"
+            ],
+            "title": "Vertical",
+            "type": "string"
           }
         },
         "required": [
@@ -2926,6 +3010,17 @@
           "area": {
             "title": "Area",
             "type": "string"
+          },
+          "badge": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Badge"
           },
           "city": {
             "default": "lagos",
@@ -8873,7 +8968,10 @@
                 {
                   "enum": [
                     "food",
-                    "beauty"
+                    "beauty",
+                    "grocery",
+                    "pharmacy",
+                    "market"
                   ],
                   "type": "string"
                 },
@@ -15612,7 +15710,7 @@
     },
     "/v1/restaurants": {
       "get": {
-        "description": "Merchants for a service: restaurants (`vertical=food`, default) or supplements & skin care shops\n(`vertical=beauty`).",
+        "description": "Merchants for a service: restaurants (`vertical=food`, default), beauty shops, supermarkets\n(`grocery`), pharmacies or market shoppers (`market`).",
         "operationId": "list_restaurants_v1_restaurants_get",
         "parameters": [
           {
@@ -15732,6 +15830,9 @@
               "enum": [
                 "food",
                 "beauty",
+                "grocery",
+                "pharmacy",
+                "market",
                 "all"
               ],
               "title": "Vertical",
@@ -17362,7 +17463,10 @@
                 {
                   "enum": [
                     "food",
-                    "beauty"
+                    "beauty",
+                    "grocery",
+                    "pharmacy",
+                    "market"
                   ],
                   "type": "string"
                 },
@@ -17668,7 +17772,7 @@
     },
     "/v1/services": {
       "get": {
-        "description": "Yummy Chops' services (Food, Supplements & Skin Care, Package Delivery) and their availability.",
+        "description": "Yummy Chops' services (Order Food, Pharmacy, Beauty & Skin Care, Shop & Groceries, Buy Foodstuff, Package\nDelivery) and their availability.",
         "operationId": "services_v1_services_get",
         "parameters": [
           {
@@ -17733,7 +17837,10 @@
             "schema": {
               "enum": [
                 "food",
-                "beauty"
+                "beauty",
+                "grocery",
+                "pharmacy",
+                "market"
               ],
               "title": "Vertical",
               "type": "string"

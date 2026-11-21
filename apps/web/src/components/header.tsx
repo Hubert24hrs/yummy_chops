@@ -10,12 +10,14 @@ import { AREAS, CITY_NAMES, useLocation } from "@/lib/location";
 import { CartDrawer } from "./cart-drawer";
 import { GudyArt } from "./illustrations";
 
-/** Wider screens show more services; phones use the home bubbles and the bottom bar. */
+/**
+ * The first services in the owner's order (ADR-0025), as many as fit beside the area and the cart; all six are the
+ * home page's bubbles and the footer's links, and phones use the bubbles and the bottom bar.
+ */
 const LINKS = [
-  { href: "/food", label: "Food", show: "md:block" },
-  { href: "/beauty", label: "Supplements & Skin Care", show: "md:block" },
-  { href: "/send", label: "Send a package", show: "xl:block" },
-  { href: "/discover", label: "Discover", show: "2xl:block" },
+  { href: "/food", label: "Order Food", show: "md:block" },
+  { href: "/pharmacy", label: "Pharmacy", show: "md:block" },
+  { href: "/beauty", label: "Beauty & Skin Care", show: "xl:block" },
 ];
 
 export function Header() {

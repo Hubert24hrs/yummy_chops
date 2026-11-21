@@ -16,6 +16,16 @@ class BubbleSpec {
   final double relSize;
 }
 
+/// Rest positions for six services: two rows of three.
+const sixBubbleLayout = [
+  Offset(.19, .19),
+  Offset(.5, .16),
+  Offset(.81, .19),
+  Offset(.19, .65),
+  Offset(.5, .62),
+  Offset(.81, .65),
+];
+
 class _Body {
   _Body(this.spec, this.home, this.radius, this.phase) : pos = home;
   final BubbleSpec spec;
@@ -39,7 +49,7 @@ class ServiceBubbleField extends StatefulWidget {
   final List<BubbleSpec> bubbles;
   final double height;
 
-  /// Rest positions as fractions of the field (defaults suit 3 bubbles).
+  /// Rest positions as fractions of the field (by default three big bubbles, or two rows of three for six).
   final List<Offset>? layout;
 
   @override
@@ -54,8 +64,7 @@ class _ServiceBubbleFieldState extends State<ServiceBubbleField> with SingleTick
   double _t = 0;
   bool _reduceMotion = false;
 
-  /// Two bubbles on top, one below: a two-line label under a top bubble clears the bubble underneath.
-  static const _defaultLayout = [Offset(.28, .29), Offset(.73, .32), Offset(.5, .8)];
+  static const _defaultLayout = [Offset(.29, .33), Offset(.72, .36), Offset(.49, .75)];
 
   @override
   void didChangeDependencies() {
@@ -72,9 +81,11 @@ class _ServiceBubbleFieldState extends State<ServiceBubbleField> with SingleTick
   void _layout(Size size) {
     if (size == _size && _bodies.isNotEmpty) return;
     _size = size;
-    final layout = widget.layout ?? _defaultLayout;
-    // Three services: big bubbles that fill the red header, as on Glovo's home screen.
-    final base = math.min(size.width * .19, 82.0);
+    // Three services: big bubbles that fill the red header, as on Glovo's home screen. Five or more share the
+    // field: smaller bubbles, three to a row.
+    final many = widget.bubbles.length > 4;
+    final layout = widget.layout ?? (many ? sixBubbleLayout : _defaultLayout);
+    final base = many ? math.min(size.width * .135, 58.0) : math.min(size.width * .19, 82.0);
     if (_bodies.isEmpty) {
       for (var i = 0; i < widget.bubbles.length; i++) {
         final spec = widget.bubbles[i];
@@ -248,10 +259,9 @@ class _BubbleFace extends StatelessWidget {
   final bool lifted;
 
   static const _labelStyle = TextStyle(color: Color(0xFF2A0D06), fontWeight: FontWeight.w700, fontSize: 13, height: 1.15);
-  static const _labelPadding = 26.0; // 12 on each side, and the border
 
   /// The width a label needs: one line when it fits under the bubble, otherwise the narrowest width that keeps
-  /// it to two lines of about the same length ("Supplements &" / "Skin Care"), never starting a line with "&".
+  /// it to two lines of about the same length ("Beauty &" / "Skin Care"), never starting a line with "&".
   /// [style] must be the style the label is drawn with (the app's font), or the widths will not match.
   static double labelWidth(String label, double maxWidth, TextStyle style, TextScaler scaler) {
     double widthOf(String text) =>
@@ -271,8 +281,12 @@ class _BubbleFace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textMax = diameter * 1.08 - _labelPadding;
-    final style = DefaultTextStyle.of(context).style.merge(_labelStyle);
+    // Six services share the header: the smaller bubbles sit close together, so their labels are a little smaller.
+    final small = diameter < 120;
+    final padX = small ? 9.0 : 12.0;
+    final labelPadding = padX * 2 + 2; // both sides, and the border
+    final textMax = diameter * (small ? 1.06 : 1.08) - labelPadding;
+    final style = DefaultTextStyle.of(context).style.merge(_labelStyle.copyWith(fontSize: small ? 12 : 13));
     final textWidth = labelWidth(label, textMax, style, MediaQuery.textScalerOf(context));
     return Stack(clipBehavior: Clip.none, alignment: Alignment.topCenter, children: [
       // halo rings
@@ -300,9 +314,10 @@ class _BubbleFace extends StatelessWidget {
       Positioned(
         top: diameter * .80,
         child: Container(
-          // A long name (Supplements & Skin Care) wraps to two even lines instead of running past the bubble.
-          constraints: BoxConstraints(maxWidth: textWidth + _labelPadding),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          // A long name ("Beauty & Skin Care") wraps to two even lines instead of running past the bubble or
+          // covering a neighbour.
+          constraints: BoxConstraints(maxWidth: textWidth + labelPadding),
+          padding: EdgeInsets.symmetric(horizontal: padX, vertical: 5),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),

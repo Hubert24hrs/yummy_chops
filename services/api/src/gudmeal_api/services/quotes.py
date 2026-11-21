@@ -129,6 +129,12 @@ class QuoteService:
                 raise ItemUnavailable(
                     "An item in your cart is no longer on the menu", details={"item_id": line.item_id}
                 )
+            if item.requires_prescription:
+                # Yummy Chops delivers over-the-counter products only (ADR-0018).
+                raise ItemUnavailable(
+                    f"{item.name} needs a prescription and cannot be ordered online",
+                    details={"item_id": line.item_id, "reason": "prescription_required"},
+                )
         group_ids = sorted({g for i in items.values() for g in i.option_group_ids})
         groups: dict[str, OptionGroup] = await self.repos.option_groups.get_many(group_ids)
         priced = [price_line(line, items[line.item_id], groups) for line in req.lines]

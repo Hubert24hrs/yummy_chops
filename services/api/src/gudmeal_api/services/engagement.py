@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ..domain.geo import GeoPoint, geohash_encode
 from ..domain.hours import OpeningHours
@@ -25,6 +25,7 @@ from ..domain.models import (
     SupportTicket,
     TicketCategory,
     VehicleType,
+    Vertical,
 )
 from ..domain.order_state import ActorType, OrderStatus
 from ..errors import Conflict, InvalidTransition, NotFound, ValidationFailed
@@ -131,8 +132,25 @@ class ProfileService:
 # ================================================================================================
 
 
+#: The first shelf a new shop gets, by kind of business; the owner renames or adds more in the partner dashboard.
+FIRST_CATEGORY: dict[str, tuple[str, str]] = {
+    "food": ("mains", "Mains"),
+    "pharmacy": ("products", "Products"),
+    "beauty": ("products", "Products"),
+    "grocery": ("products", "Products"),
+    "market": ("foodstuff", "Foodstuff"),
+}
+
+
 class RestaurantApplicationInput(BaseModel):
+    """A business asks to sell on Yummy Chops: a restaurant or a shop of any kind (ADR-0025)."""
+
     business_name: str = Field(min_length=2, max_length=80)
+    #: The kind of business, which decides the service the shop appears under: a restaurant (Order Food), a pharmacy,
+    #: a beauty & skin care shop, a supermarket or store (Shop & Groceries) or a market shopper (Buy Foodstuff).
+    vertical: Literal["food", "pharmacy", "beauty", "grocery", "market"] = "food"
+    #: Pharmacies only: the Pharmacists Council of Nigeria premises licence, checked before the shop goes live.
+    pcn_licence_number: str | None = Field(default=None, min_length=4, max_length=30)
     cac_number: str = Field(min_length=4, max_length=20, description="Corporate Affairs Commission number")
     contact_name: str = Field(min_length=2, max_length=80)
     contact_phone: str = Field(min_length=7, max_length=20)
@@ -146,6 +164,12 @@ class RestaurantApplicationInput(BaseModel):
         pattern=r"^\d{4}$", description="Full account details are collected by the payment provider"
     )
     document_paths: list[str] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="after")
+    def _pharmacies_give_their_licence(self) -> RestaurantApplicationInput:
+        if self.vertical == "pharmacy" and not self.pcn_licence_number:
+            raise ValueError("A pharmacy needs its PCN premises licence number")
+        return self
 
 
 class RiderApplicationInput(BaseModel):
@@ -246,8 +270,10 @@ class ApplicationService:
         d = app.data
         rid = uuid.uuid4().hex[:20]
         location = GeoPoint.model_validate(d["location"])
+        vertical = Vertical(d.get("vertical", "food"))
         restaurant = Restaurant(
             id=rid,
+            vertical=vertical,
             name=d["business_name"],
             slug=f"{slugify(d['business_name'])}-{rid[:4]}",
             cuisines=d.get("cuisines", []),
@@ -263,7 +289,8 @@ class ApplicationService:
             created_at=utcnow(),
         )
         await self.repos.restaurants.create(restaurant)
-        await self.repos.set_menu_categories(rid, [MenuCategory(id="mains", name="Mains", position=0)])
+        shelf_id, shelf_name = FIRST_CATEGORY.get(vertical.value, FIRST_CATEGORY["food"])
+        await self.repos.set_menu_categories(rid, [MenuCategory(id=shelf_id, name=shelf_name, position=0)])
         claims = await self.identity.get_claims(app.applicant_uid)
         roles = set(claims.get("roles", [])) | {Role.RESTAURANT_OWNER.value}
         restaurant_roles = {**claims.get("restaurant_roles", {}), rid: "owner"}

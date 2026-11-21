@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { VerticalPage } from "@/components/vertical-page";
 
 export const metadata: Metadata = {
-  title: "Supplements & skin care delivery",
-  description: "Vitamins, supplements and skin care from partner shops in Lagos and Enugu, delivered fast.",
+  title: "Beauty & Skin Care delivery in Lagos and Enugu",
+  description: "Skincare, hair care, make-up and fragrance from partner beauty shops in Lagos and Enugu, delivered fast.",
   alternates: { canonical: "/beauty" },
 };
 

@@ -160,7 +160,7 @@ class _GroupHubScreenState extends ConsumerState<GroupHubScreen> {
           data: (list) => list.isEmpty
               ? const Padding(
                   padding: EdgeInsets.only(top: 8),
-                  child: Text('No group orders yet. Open any restaurant or supplements & skin care shop and tap "Order with friends", then share the code.'),
+                  child: Text('No group orders yet. Open any restaurant or beauty shop and tap "Order with friends", then share the code.'),
                 )
               : Column(children: [
                   for (final g in list)

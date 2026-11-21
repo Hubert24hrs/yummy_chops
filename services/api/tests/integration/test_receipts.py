@@ -44,7 +44,7 @@ async def test_a_receipt_repeats_what_was_paid_and_is_kept_once_printed(flow, cl
     assert shown["saved"] is False and shown["print_count"] == 0
     assert await kept(client) == []
     assert shown["number"] == f"YC-{order['short_code']}" and shown["order_id"] == order["id"]
-    assert shown["seller"] == "Jollof Junction" and shown["service_name"] == "Food"
+    assert shown["seller"] == "Jollof Junction" and shown["service_name"] == "Order Food"
     assert shown["seller_address"] == order["restaurant_address"]
 
     # The lines and the charges are the order's own figures, and they add up.

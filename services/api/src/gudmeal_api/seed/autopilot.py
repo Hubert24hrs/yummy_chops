@@ -1,7 +1,7 @@
 """Demo shop autopilot: local testing only (DEMO_SHOP_AUTOPILOT, honoured only when ENVIRONMENT=local).
 
-An order from a restaurant or a supplements & skin care shop is only offered to a rider after the shop accepts
-it. Someone testing alone with the
+An order from a restaurant or shop (food, groceries, pharmacy, market, beauty) is only offered to a rider after the
+shop accepts it. Someone testing alone with the
 customer and rider apps on a phone has nobody at the shop's dashboard, so the order would sit at "Sent to
 restaurant" until it is cancelled. With the autopilot on, a demo shop accepts an order nobody has answered for a
 few seconds and marks it ready a little later, through the same service calls the partner dashboard makes.

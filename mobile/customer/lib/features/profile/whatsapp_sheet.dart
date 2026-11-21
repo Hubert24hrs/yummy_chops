@@ -101,7 +101,7 @@ class _WhatsAppSheetState extends ConsumerState<WhatsAppSheet> {
               const SizedBox(height: 6),
               Text('WhatsApp opens with the message ready: just tap send.', style: theme.textTheme.bodySmall),
             ] else ...[
-              const Text('Order food, supplements, skin care and packages, track orders and get help by chatting with Yummy on WhatsApp.'),
+              const Text('Order food, groceries, foodstuff, pharmacy items, beauty products and packages, track orders and get help by chatting with Yummy on WhatsApp.'),
               const SizedBox(height: 12),
               FilledButton(key: const ValueKey('whatsapp-connect'), onPressed: _busy ? null : _connect, child: const Text('Connect WhatsApp')),
             ],

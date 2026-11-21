@@ -8,6 +8,7 @@ import '../../ui/components.dart';
 import '../../widgets.dart';
 import '../cart/cart_controller.dart';
 import '../group/group_screens.dart' show StartGroupSheet;
+import 'shop_view.dart';
 
 class RestaurantScreen extends ConsumerStatefulWidget {
   /// [initialItemId] opens that dish straight away (e.g. "Order food" on a Discover dish).
@@ -64,6 +65,10 @@ class _RestaurantScreenState extends ConsumerState<RestaurantScreen> {
           final r = d.restaurant;
           final canOrder = r.isOpen && r.isAcceptingOrders;
           _maybeOpenInitialItem(d);
+          // Supermarkets, pharmacies and markets are browsed by the aisle, not as a menu.
+          if (serviceCopy(r.vertical).isRetail) {
+            return ShopView(detail: d, canOrder: canOrder, onOpen: (item) => _openItem(item, d));
+          }
           return CustomScrollView(slivers: [
             SliverAppBar(
               expandedHeight: 180,

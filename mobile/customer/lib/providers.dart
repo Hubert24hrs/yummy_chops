@@ -100,14 +100,20 @@ final merchantsProvider = FutureProvider.family<List<RestaurantCard>, MerchantQu
 /// Kept for screens that only need nearby restaurants.
 final restaurantsProvider = FutureProvider<List<RestaurantCard>>((ref) => ref.watch(merchantsProvider(recommended('food')).future));
 
-/// "These are for you": the best nearby restaurants and supplements & skin care shops, featured first.
+/// "These are for you": the best nearby restaurants and shops of every kind, featured first.
 MerchantQuery recommended(String vertical) =>
     (vertical: vertical, category: null, pickup: false, sort: 'recommended', query: null, cuisine: null);
 
 final forYouProvider = FutureProvider<List<RestaurantCard>>((ref) async {
   final food = await ref.watch(merchantsProvider(recommended('food')).future);
   final beauty = await ref.watch(merchantsProvider(recommended('beauty')).future);
-  final all = [...food.take(6), ...beauty.take(3)];
+  // One of each new kind of shop too, so people find Pharmacy, Shop & Groceries and Buy Foodstuff from the home screen.
+  final shops = <RestaurantCard>[];
+  for (final service in const [groceryService, pharmacyService, marketService]) {
+    final list = await ref.watch(merchantsProvider(recommended(service.id)).future).catchError((_) => <RestaurantCard>[]);
+    shops.addAll(list.take(1));
+  }
+  final all = [...food.take(6), ...shops, ...beauty.take(3)];
   final open = all.where((r) => r.isOpen && r.isAcceptingOrders).toList()
     ..sort((a, b) => (b.isFeatured ? 1 : 0).compareTo(a.isFeatured ? 1 : 0));
   return open.isEmpty ? all : open;

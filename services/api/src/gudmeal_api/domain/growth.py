@@ -28,7 +28,9 @@ class PlusConfig(BaseModel):
     period_days: int = Field(default=30, ge=1, le=366)
     free_delivery_min_subtotal_kobo: int = Field(default=300_000, ge=0)  # ₦3,000
     service_fee_discount_bps: int = Field(default=5_000, ge=0, le=10_000)  # 50% off the service fee
-    verticals: list[str] = Field(default_factory=lambda: ["food", "beauty"], max_length=10)
+    verticals: list[str] = Field(
+        default_factory=lambda: ["food", "beauty", "grocery", "pharmacy", "market"], max_length=10
+    )
     points_multiplier: int = Field(default=2, ge=1, le=10)  # Yummy points earned by members
     renew_window_hours: int = Field(default=24, ge=1, le=168)  # wallet auto-renewal starts this early
 
@@ -159,8 +161,7 @@ class GroupShare(Model):
 
 
 class GroupOrder(Model):
-    """`group_orders/{id}`: a shared cart at one Food or Supplements & Skin Care store, checked out as one
-    order."""
+    """`group_orders/{id}`: a shared cart at one Food or Beauty store, checked out as one order."""
 
     id: str
     code: str

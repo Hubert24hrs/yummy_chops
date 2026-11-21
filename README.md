@@ -1,7 +1,7 @@
 # Yummy Chops — Discover. Order. Eat.
 
-AI-native delivery for Nigeria (Lagos and Enugu): **Food**, **Supplements & Skin Care** from partner shops and **Package
-Delivery** by bike and by **interstate waybill** (Lagos, Enugu, Abuja, Port Harcourt), with **Yummy**, an AI
+AI-native delivery for Nigeria (Lagos and Enugu) with six services: **Order Food**, **Pharmacy**, **Beauty & Skin Care**,
+**Shop & Groceries**, **Buy Foodstuff** (a shopper buys it fresh at the market) and **Package Delivery** by bike and by **interstate waybill** (Lagos, Enugu, Abuja, Port Harcourt), with **Yummy**, an AI
 assistant that speaks English, Nigerian Pidgin, Igbo, Yoruba and Hausa, in the app and on WhatsApp. A customer app and website (Glovo-style, in
 the colours of the Yummy Chops logo, with animated draggable service bubbles), a partner dashboard, a rider app, a super-admin Command
 Centre, a FastAPI core API and a LangGraph multi-agent service — one ecosystem sharing identity (Firebase Auth),

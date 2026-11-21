@@ -31,7 +31,7 @@ SectionId = Literal["most_loved", "new_kitchens", "top_rated"]
 NEW_KITCHEN_DAYS = 120
 #: Kitchens need at least this many ratings before they can be called "top rated".
 TOP_RATED_MIN_RATINGS = 50
-#: Dish kinds that can headline the carousel (no drinks, add-ons or shop products).
+#: Dish kinds that can headline the carousel (no drinks, add-ons or retail products).
 HERO_KINDS = {ItemKind.MAIN, ItemKind.COMBO, ItemKind.SNACK, ItemKind.DESSERT, ItemKind.SIDE}
 
 # Ordered: the first family whose keyword appears in the dish name (or tags) wins.

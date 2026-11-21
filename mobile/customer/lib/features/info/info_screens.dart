@@ -141,7 +141,18 @@ class _Received extends StatelessWidget {
   }
 }
 
-/// "Add your business": a restaurant or shop applies to sell on Yummy Chops (the website's /partner-with-us).
+/// The kinds of business that can sell on Yummy Chops (ADR-0025): the API's service id, the name in the list, and an
+/// example of what such a shop lists under "What you sell".
+const businessKinds = [
+  (id: 'food', label: 'Restaurant (Order Food)', example: 'Nigerian, grills'),
+  (id: 'pharmacy', label: 'Pharmacy', example: 'Pain relief, vitamins, first aid'),
+  (id: 'beauty', label: 'Beauty & Skin Care shop', example: 'Skincare, hair care, make-up'),
+  (id: 'grocery', label: 'Supermarket or store (Shop & Groceries)', example: 'Drinks, household, baby'),
+  (id: 'market', label: 'Market shopper (Buy Foodstuff)', example: 'Foodstuff, pepper & vegetables, meat & fish'),
+];
+
+/// "Add your business": a restaurant or shop of any kind applies to sell on Yummy Chops (the website's
+/// /partner-with-us). A pharmacy also gives its PCN premises licence number.
 class BusinessApplyScreen extends ConsumerStatefulWidget {
   const BusinessApplyScreen({super.key});
 
@@ -160,6 +171,8 @@ class _BusinessApplyState extends ConsumerState<BusinessApplyScreen> {
   final _bank = TextEditingController();
   final _accountName = TextEditingController();
   final _last4 = TextEditingController();
+  final _licence = TextEditingController();
+  String _kind = 'food';
   Area? _area;
   bool _busy = false;
   bool _sent = false;
@@ -167,7 +180,7 @@ class _BusinessApplyState extends ConsumerState<BusinessApplyScreen> {
 
   @override
   void dispose() {
-    for (final c in [_name, _sells, _address, _contact, _phone, _cac, _bank, _accountName, _last4]) {
+    for (final c in [_name, _sells, _address, _contact, _phone, _cac, _bank, _accountName, _last4, _licence]) {
       c.dispose();
     }
     super.dispose();
@@ -181,6 +194,8 @@ class _BusinessApplyState extends ConsumerState<BusinessApplyScreen> {
     });
     try {
       await ref.read(apiProvider).applyAsBusiness({
+        'vertical': _kind,
+        if (_kind == 'pharmacy') 'pcn_licence_number': _licence.text.trim(),
         'business_name': _name.text.trim(),
         'cac_number': _cac.text.trim(),
         'contact_name': _contact.text.trim(),
@@ -206,6 +221,7 @@ class _BusinessApplyState extends ConsumerState<BusinessApplyScreen> {
     final theme = Theme.of(context);
     final areas = ref.watch(areasProvider).value ?? [ref.watch(areaProvider)];
     final Area area = _area ?? ref.watch(areaProvider);
+    final kind = businessKinds.firstWhere((k) => k.id == _kind);
     return Scaffold(
       appBar: AppBar(title: const Text('Add your business')),
       body: _sent
@@ -222,10 +238,27 @@ class _BusinessApplyState extends ConsumerState<BusinessApplyScreen> {
                 const Text('• Live order board, product tools, sales insights and demand forecasts.'),
                 const Text('• Transparent commission and weekly settlement statements.'),
                 const SizedBox(height: 8),
-                Text('We verify every partner (CAC registration and bank details) before going live.', style: theme.textTheme.bodySmall),
+                Text('We verify every partner (CAC registration, bank details and, for pharmacies, the PCN premises licence) before going live.',
+                    style: theme.textTheme.bodySmall),
                 const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: DropdownButtonFormField<String>(
+                    key: const ValueKey('business-kind'),
+                    isExpanded: true,
+                    initialValue: _kind,
+                    decoration: const InputDecoration(labelText: 'Kind of business'),
+                    items: [for (final k in businessKinds) DropdownMenuItem(value: k.id, child: Text(k.label))],
+                    onChanged: (v) => setState(() => _kind = v ?? 'food'),
+                  ),
+                ),
                 _Field(_name, 'Business name', validator: (v) => _atLeast(v, 2, 'Enter the name of your restaurant or shop'), maxLength: 80),
-                _Field(_sells, 'What you sell', hint: 'Comma separated, e.g. Nigerian, grills or skin care', validator: (v) => _atLeast(v, 2, 'List at least one')),
+                _Field(_sells, 'What you sell', hint: 'Comma separated, e.g. ${kind.example}', validator: (v) => _atLeast(v, 2, 'List at least one')),
+                if (_kind == 'pharmacy')
+                  _Field(_licence, 'PCN premises licence number',
+                      hint: 'From the Pharmacists Council of Nigeria',
+                      validator: (v) => _atLeast(v, 4, 'Enter your PCN premises licence number'),
+                      maxLength: 30),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: DropdownButtonFormField<Area>(

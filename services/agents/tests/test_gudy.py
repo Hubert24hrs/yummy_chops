@@ -64,11 +64,20 @@ async def test_offline_gudy_greets_in_the_customers_language_and_lists_services(
     assert igbo["reply"].startswith("Ndewo Ada! Abụ m Yummy.") and "English for now" in igbo["reply"]
 
     services = await chat(client, "What services do you offer?")
-    assert "Supplements & Skin Care" in services["reply"] and "Package Delivery" in services["reply"]
+    assert "Beauty & Skin Care" in services["reply"] and "Package Delivery" in services["reply"]
     assert "interstate" in services["reply"].lower()
     card = next(c for c in services["cards"] if c["type"] == "services")
-    assert [s["id"] for s in card["services"]] == ["food", "beauty", "parcel"]
-    assert "Groceries" not in services["reply"] and "Pharmacy" not in services["reply"]
+    # The owner's order (ADR-0025): Order Food, Pharmacy, Beauty & Skin Care, Shop & Groceries, Buy Foodstuff, Package
+    # Delivery.
+    assert [s["id"] for s in card["services"]] == [
+        "food",
+        "pharmacy",
+        "beauty",
+        "grocery",
+        "market",
+        "parcel",
+    ]
+    assert "Shop & Groceries" in services["reply"] and "Buy Foodstuff" in services["reply"]
 
 
 async def test_offline_gudy_totals_beauty_search_parcels_and_support(offline_stack):
@@ -108,7 +117,7 @@ async def test_offline_gudy_totals_beauty_search_parcels_and_support(offline_sta
     naira = f"₦{total // 100:,}" + (f".{total % 100:02d}" if total % 100 else "")
 
     totals = await chat(client, "abeg how much i don spend?")
-    assert f"total na {naira}" in totals["reply"] and "Supplements & Skin Care: 1 order(s)" in totals["reply"]
+    assert f"total na {naira}" in totals["reply"] and "Beauty & Skin Care: 1 order(s)" in totals["reply"]
     assert any(c["type"] == "order_totals" for c in totals["cards"])
 
     beauty = await chat(client, "I need a good sunscreen")
@@ -384,17 +393,23 @@ async def test_offline_gudy_explains_plus_points_referrals_and_group_orders(offl
     )
 
 
-async def test_offline_gudy_finds_supplements_and_opens_the_service(offline_stack):
-    """Supplements & Skin Care: products by name; the service's own name opens it."""
+async def test_offline_gudy_finds_shop_products_and_opens_the_new_services(offline_stack):
+    """Shop & Groceries, Pharmacy and Buy Foodstuff (ADR-0018, ADR-0025)."""
     client = offline_stack["client"]
-    vitc = await chat(client, "I need vitamin c")
-    assert "Vitamin C 1000 mg" in vitc["reply"] and "₦" in vitc["reply"]
-    collagen = await chat(client, "abeg I wan buy collagen")
-    assert "collagen" in collagen["reply"].lower()
-    for message in ("do you sell supplements?", "open skin care", "take me to supplements"):
+    para = await chat(client, "I need paracetamol")
+    assert "Paracetamol 500 mg tablets" in para["reply"] and "₦300" in para["reply"]
+    garri = await chat(client, "abeg I wan buy garri")
+    assert "Ijebu garri" in garri["reply"]
+    milk = await chat(client, "do you have milk?")
+    assert "milk" in milk["reply"].lower() and "₦" in milk["reply"]
+
+    # Words that name a whole service open it instead of searching for the word.
+    for message, screen in (
+        ("I want to buy groceries", "grocery"),
+        ("do you sell medicine?", "pharmacy"),
+        ("open market", "market"),
+        ("take me to the pharmacy", "pharmacy"),
+    ):
         reply = await chat(client, message)
         nav = next(c for c in reply["cards"] if c["type"] == "navigate")
-        assert nav["screen"] == "beauty", message
-    # The removed services are not offered any more.
-    gone = await chat(client, "take me to the pharmacy")
-    assert not any(c.get("screen") in ("pharmacy", "grocery", "market") for c in gone["cards"])
+        assert nav["screen"] == screen, message

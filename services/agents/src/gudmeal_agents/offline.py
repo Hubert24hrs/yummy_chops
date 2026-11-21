@@ -67,10 +67,10 @@ ENGLISH_NOTE = " (I'll reply in English for now.)"
 
 T: dict[str, dict[str, str]] = {
     "intro": {
-        "en": "I can find food, supplements and skin care, plan a meal within "
+        "en": "I can find food, groceries, pharmacy items, market foodstuff and beauty products, plan a meal within "
         "your budget, send packages across Lagos and "
         "Enugu, track your orders and tell you how much you've spent. What would you like?",
-        "pcm": "I fit find better food, supplements and skin care things for you, plan "
+        "pcm": "I fit find better food, groceries, pharmacy things, market foodstuff and beauty things for you, plan "
         "food wey go fit your budget, send package for "
         "Lagos and Enugu, track your order, and tell you how much you don spend. Wetin you wan do?",
     },
@@ -116,8 +116,10 @@ T: dict[str, dict[str, str]] = {
     "declined": {"en": "No problem, I haven't done it.", "pcm": "No wahala, I no do am."},
     "found": {"en": "Here's what I found:", "pcm": "See wetin I find:"},
     "found_none": {
-        "en": "I couldn't find that. Try another name, or browse Food or Supplements & Skin Care.",
-        "pcm": "I no see am o. Try another name, or check Food or Supplements & Skin Care.",
+        "en": "I couldn't find that. Try another name, or browse Order Food, Pharmacy, Beauty & Skin Care, Shop & "
+        "Groceries or Buy Foodstuff.",
+        "pcm": "I no see am o. Try another name, or check Order Food, Pharmacy, Beauty & Skin Care, Shop & Groceries "
+        "or Buy Foodstuff.",
     },
     "found_next": {
         "en": "Open the store to add items to your cart.",
@@ -243,20 +245,18 @@ T: dict[str, dict[str, str]] = {
     },
     "rewards_vouchers": {"en": "Your vouchers:", "pcm": "Your vouchers:"},
     "group_none": {
-        "en": "You're not in any group orders right now. Open a Food or Supplements & Skin Care store and "
-        "tap 'Order with "
+        "en": "You're not in any group orders right now. Open a Food or Beauty store and tap 'Order with "
         "friends', then share the code.",
-        "pcm": "You no dey any group order now. Open one Food or Supplements & Skin Care store, tap 'Order "
-        "with friends', then "
+        "pcm": "You no dey any group order now. Open one Food or Beauty store, tap 'Order with friends', then "
         "share the code.",
     },
     "group_list": {"en": "Your group orders:", "pcm": "Your group orders:"},
     "unknown": {
-        "en": "I didn't quite get that. You can ask me for food, supplements, skin care, "
-        "package delivery, your order status "
+        "en": "I didn't quite get that. You can ask me for food, groceries, pharmacy items, market foodstuff, beauty "
+        "products, package delivery, your order status "
         "or how much you've spent.",
-        "pcm": "I no too understand. You fit ask me for food, supplements, skin care things, "
-        "package delivery, your order status or "
+        "pcm": "I no too understand. You fit ask me for food, groceries, pharmacy things, market foodstuff, beauty "
+        "things, package delivery, your order status or "
         "how much you don spend.",
     },
     "error": {"en": "{message}", "pcm": "{message}"},
@@ -296,7 +296,7 @@ _SUPPORT = re.compile(
     r"person)|help me with my order)\b"
 )
 _OPEN = re.compile(
-    r"\b(open|go to|take me to|show me)\s+(the\s+|my\s+)?(food|supplements?|skin ?care|beauty|packages?|"
+    r"\b(open|go to|take me to|show me)\s+(the\s+|my\s+)?(food|groceries|grocery|pharmacy|market|beauty|packages?|"
     r"parcel|orders?|support|profile|"
     r"discover|home|wallet|rewards|plus)\b"
 )
@@ -383,18 +383,55 @@ def nearby_args(text: str) -> dict[str, Any] | None:
     return args
 
 
-# Supplements & Skin Care products. Only words that are clearly a product: "cream" alone still searches.
 _BEAUTY = re.compile(
-    r"\b(serum|sunscreen|spf|moisturi[sz]er|cream|lotion|shea|black soap|soap|toner|face wash|skincare|skin care|"
-    r"body butter|body oil|cocoa butter|beard|aftershave|razor bumps?|castor oil|supplements?|multivitamins?|"
-    r"vitamins?(?: [a-z]\d?)?|omega ?3|fish oil|zinc|collagen|biotin|gummies|moringa|hibiscus)\b"
+    r"\b(serum|sunscreen|spf|moisturi[sz]er|cream|lotion|shea|black soap|soap|lipstick|foundation|powder|perfume|"
+    r"fragrance|body mist|edge control|conditioner|shampoo|beard|toner|skincare|skin care|make ?up|cosmetics|"
+    r"body butter|body oil|hair oil|scalp|curl|bonnet|chebe|castor oil)\b"
 )
-# Words that name the whole service, not a product: open it instead of searching for the word.
-_GENERIC_BEAUTY = frozenset({"supplement", "supplements", "skincare", "skin care"})
+# Shop products (ADR-0018). Only words that are clearly a product: "rice" or "yam" alone still means a meal.
+_PHARMACY = re.compile(
+    r"\b(paracetamol|panadol|ibuprofen|vitamin c|multivitamins?|vitamins?|cough syrup|antacid|plasters?|bandages?|"
+    r"antiseptic|thermometer|condoms?|sanitary pads?|lozenges?|nasal spray|eye drops|rehydration salts?|"
+    r"first aid|mosquito repellent|pharmacy|chemist|medicines?)\b"
+)
+_GROCERY = re.compile(
+    r"\b(bottled water|pack of water|milk|bread|eggs?|sugar|indomie|corn ?flakes|cereal|toilet (paper|rolls?)|"
+    r"tissue|detergent|bleach|diapers?|baby wipes|toothpaste|soft drinks?|malt|juice|butter|margarine|mayonnaise|"
+    r"ketchup|vegetable oil|groundnut oil|semovita|seasoning cubes?|tin(ned)? tomato(es)?|sardines?|corned beef|"
+    r"biscuits?|groceries|grocery|supermarket)\b"
+)
+_MARKET = re.compile(
+    r"\b(derica|garri|tatashe|rodo|fresh tomato(es)?|fresh pepper|ugwu|ugu|waterleaf|bitter ?leaf|crayfish|"
+    r"stockfish|okporoko|iru|palm oil|raw (beef|chicken|goat meat|meat|fish)|tubers? of yam|soup combo|"
+    r"foodstuffs?|market shopping|market)\b"
+)
+# Words that name a whole service, not a product: open the service instead of searching for the word.
+_GENERIC_SHOP = {
+    "pharmacy": "pharmacy",
+    "chemist": "pharmacy",
+    "medicine": "pharmacy",
+    "medicines": "pharmacy",
+    "first aid": "pharmacy",
+    "groceries": "grocery",
+    "grocery": "grocery",
+    "supermarket": "grocery",
+    "foodstuff": "market",
+    "foodstuffs": "market",
+    "market shopping": "market",
+    "market": "market",
+}
+_SHOPS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("pharmacy", _PHARMACY),
+    ("grocery", _GROCERY),
+    ("market", _MARKET),
+)
 
 
 def _nearby_service(p: str) -> str:
     """Which kind of place a 'near me' question is about."""
+    for service, rx in _SHOPS:
+        if rx.search(p):
+            return service
     return "beauty" if _BEAUTY.search(p) else "food"
 
 
@@ -427,10 +464,10 @@ _PARTY = re.compile(
 _ORDINAL = {"first": 1, "second": 2, "third": 3}
 _SCREEN_WORDS = {
     "food": "food",
-    "supplement": "beauty",
-    "supplements": "beauty",
-    "skincare": "beauty",
-    "skin care": "beauty",
+    "groceries": "grocery",
+    "grocery": "grocery",
+    "pharmacy": "pharmacy",
+    "market": "market",
     "beauty": "beauty",
     "package": "parcel",
     "packages": "parcel",
@@ -635,10 +672,17 @@ class _OfflineAgent:
         if _SUPPORT.search(p) and self._can("get_support_contacts"):
             return _call("get_support_contacts", {})
         beauty = _keyword(text, _BEAUTY)
-        if beauty in _GENERIC_BEAUTY and self._can("open_screen"):
-            return _call("open_screen", {"screen": "beauty"})
         if beauty and self._can("search_food_items"):
             return _call("search_food_items", {"query": beauty, "service": "beauty"})
+        for service, rx in _SHOPS:
+            word = _keyword(text, rx)
+            if not word:
+                continue
+            if word in _GENERIC_SHOP:
+                if self._can("open_screen"):
+                    return _call("open_screen", {"screen": _GENERIC_SHOP[word]})
+            elif self._can("search_food_items"):
+                return _call("search_food_items", {"query": word, "service": service})
         food = _keyword(text, _FOOD)
         if food and food not in _GENERIC_FOOD and self._can("search_food_items"):
             return _call("search_food_items", {"query": food, "service": "food"})

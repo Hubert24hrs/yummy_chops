@@ -7,7 +7,7 @@ import { ChevronDown, Heart, Info, MapPin, ThumbsUp, Bike } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { AREAS, CITY_NAMES, useLocation } from "@/lib/location";
-import { BeautyArt, FoodArt } from "./illustrations";
+import { BeautyArt, FoodArt, GroceryArt, MarketArt, PharmacyArt } from "./illustrations";
 
 /** Delivery-area pill (Home and the service pages). A native select grouped by city keeps it accessible everywhere. */
 export function AddressPill({ onDark = false }: { onDark?: boolean }) {
@@ -56,10 +56,16 @@ export function SectionTitle({ children, info, action }: { children: ReactNode; 
 
 const FOOD = [["#E0040B", "#F5A21A"], ["#B4442A", "#F28C5B"], ["#7A2E12", "#E2762E"], ["#6B2410", "#E8C468"]];
 const BEAUTY = [["#C2557A", "#F6B9C6"], ["#6E4AA8", "#E2C7F4"], ["#2E8B1E", "#BFE5B0"]];
+const GROCERY = [["#1F7A4D", "#BFE8CF"], ["#2B6CB0", "#CFE3F7"], ["#8A6A1F", "#F3E2A9"]];
+const PHARMACY = [["#12746B", "#BDEBE4"], ["#2B5FA8", "#CADDF6"]];
+const MARKET = [["#9A4A1B", "#F4CF9C"], ["#3F7A2E", "#D6ECB8"]];
 /** Colours and artwork per kind of shop, the same as the mobile app's. */
 const ART: Record<string, { palette: string[][]; Art: typeof FoodArt }> = {
   food: { palette: FOOD, Art: FoodArt },
   beauty: { palette: BEAUTY, Art: BeautyArt },
+  grocery: { palette: GROCERY, Art: GroceryArt },
+  pharmacy: { palette: PHARMACY, Art: PharmacyArt },
+  market: { palette: MARKET, Art: MarketArt },
 };
 
 /** Store artwork until partners upload photos: warm gradient, initials and an original illustration. */
@@ -80,6 +86,21 @@ export function MerchantArt({ card, className, compact = false }: { card: Pick<R
 }
 
 export const ratingPercent = (rating: number) => `${Math.round(rating * 20)}%`;
+
+/** The kind of shop, when it is worth saying: "Shopper" on a market where someone buys for you. */
+export function ShopBadge({ children }: { children: ReactNode }) {
+  return <span className="shrink-0 rounded-full bg-secondary-soft px-2 py-0.5 text-xs font-bold text-secondary">{children}</span>;
+}
+
+/** Something customers should know before they shop (over-the-counter only, market measures). */
+export function ServiceNote({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <p role="note" className={cn("flex items-start gap-2 rounded-xl bg-secondary-soft p-3 text-sm text-secondary", className)}>
+      <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <span>{children}</span>
+    </p>
+  );
+}
 
 export function deliveryLabel(card: RestaurantCard): string {
   if (card.delivers_to_location === false) return "Pickup only";
@@ -153,6 +174,7 @@ export function MerchantCard({ card }: { card: RestaurantCard }) {
         </div>
         <h3 className="mt-2.5 flex items-center gap-2 text-lg font-extrabold">
           {card.name}
+          {card.badge && <ShopBadge>{card.badge}</ShopBadge>}
         </h3>
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
           <ThumbsUp className="size-4 text-secondary" aria-hidden="true" /> {ratingPercent(card.rating)}

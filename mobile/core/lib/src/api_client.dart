@@ -79,8 +79,7 @@ class GudMealApi {
   List<Map<String, dynamic>> _list(dynamic d) => (d as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
   // ------------------------------------------------------------------- catalog
-  /// Merchants for a service: restaurants (`vertical: 'food'`) or supplements & skin care shops
-  /// (`vertical: 'beauty'`).
+  /// Merchants for a service: restaurants (`vertical: 'food'`) or beauty shops (`vertical: 'beauty'`).
   Future<List<RestaurantCard>> restaurants({
     GeoPoint? near,
     String? query,

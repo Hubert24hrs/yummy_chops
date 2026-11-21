@@ -78,8 +78,9 @@ flowchart TD
 
 ## Yummy: persona, languages and offline mode (2026-11-15)
 
-- **Persona.** Yummy is Yummy Chops' assistant for Food, Supplements & Skin Care and Package Delivery in Lagos and
-  Enugu. It never gives health advice about supplements (no diagnosis, doses or health claims).
+- **Persona.** Yummy is Yummy Chops' assistant for Order Food, Pharmacy, Beauty & Skin Care, Shop & Groceries, Buy
+  Foodstuff and Package Delivery in Lagos and Enugu. It is not a pharmacist or a doctor: no diagnosis, no medicine or
+  dose for a symptom, no health claims; for a symptom it opens the matching Pharmacy aisle and lets the customer choose.
   It replies in the customer's language (English, Nigerian Pidgin, Igbo, Yoruba, Hausa), mirroring code-mixing,
   and keeps dish, product and store names exactly as tools return them.
 - **New tools** (`tools/services.py`): `list_services`, `get_order_totals` (exact totals from

@@ -64,7 +64,7 @@ export function FoodArt(props: ArtProps) {
   );
 }
 
-/** Supplements & Skin Care: a cream jar, a serum dropper and a tub of supplements with a capsule, with sparkles. */
+/** A cream jar, a serum dropper and a lipstick with sparkles. */
 export function BeautyArt(props: ArtProps) {
   const sparkle = (x: number, y: number, r: number) =>
     `M${x} ${y - r}Q${x} ${y} ${x + r} ${y}Q${x} ${y} ${x} ${y + r}Q${x} ${y} ${x - r} ${y}Q${x} ${y} ${x} ${y - r}Z`;
@@ -79,9 +79,9 @@ export function BeautyArt(props: ArtProps) {
           <stop offset="0" stopColor="#F59AA8" />
           <stop offset="1" stopColor="#E06A7E" />
         </linearGradient>
-        <linearGradient id="gm-tub" x1="0" x2="1">
-          <stop offset="0" stopColor="#FFFFFF" />
-          <stop offset="1" stopColor="#E6EEF2" />
+        <linearGradient id="gm-gold" x1="0" x2="1">
+          <stop offset="0" stopColor="#E9C25A" />
+          <stop offset="1" stopColor="#B98A22" />
         </linearGradient>
       </defs>
       <ellipse cx="52" cy="88" rx="35" ry="4" fill="#000" opacity=".12" />
@@ -97,15 +97,10 @@ export function BeautyArt(props: ArtProps) {
       <rect x="8" y="47" width="40" height="12" rx="5" fill="url(#gm-lid)" />
       <rect x="14" y="66" width="28" height="10" rx="3" fill="#FDE7E6" />
       <circle cx="28" cy="71" r="3" fill="#E0040B" />
-      <rect x="66" y="50" width="24" height="36" rx="6" fill="url(#gm-tub)" stroke="#D3DEE4" strokeWidth="1.4" />
-      <rect x="68" y="43" width="20" height="9" rx="2.5" fill="#1F9D63" />
-      <rect x="69" y="59" width="18" height="17" rx="3" fill="#E6F6EE" />
-      <path d="M78 72Q71 67 78 62Q85 67 78 72Z" fill="#1F9D63" />
-      <g transform="translate(89 33) rotate(-32)">
-        <rect x="-8" y="-3.5" width="16" height="7" rx="3.5" fill="#FFF7F0" />
-        <path d="M0-3.5H-4.5A3.5 3.5 0 0 0-4.5 3.5H0Z" fill="#E0040B" />
-        <rect x="-8" y="-3.5" width="16" height="7" rx="3.5" fill="none" stroke="#000" strokeOpacity=".2" strokeWidth=".8" />
-      </g>
+      <rect x="68" y="58" width="18" height="28" rx="3" fill="url(#gm-gold)" />
+      <rect x="70" y="46" width="14" height="13" fill="#C9A03A" />
+      <path d="M71 46V34Q76 26 83 28V46Z" fill="#D23B4E" />
+      <path d="M73 44V34" stroke="#fff" strokeOpacity=".33" strokeWidth="2" strokeLinecap="round" />
     </Svg>
   );
 }
@@ -136,6 +131,148 @@ export function ParcelArt(props: ArtProps) {
           <circle cx={x} cy="78" r="4" fill="#C8C8C8" />
         </g>
       ))}
+    </Svg>
+  );
+}
+
+/** A shopping basket with bread, a carton of milk, leafy greens and an orange. */
+export function GroceryArt(props: ArtProps) {
+  return (
+    <Svg {...props}>
+      <defs>
+        <linearGradient id="gm-bread" x1="0" x2="1">
+          <stop offset="0" stopColor="#E9B565" />
+          <stop offset="1" stopColor="#C98632" />
+        </linearGradient>
+        <linearGradient id="gm-basket" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stopColor="#3FA66B" />
+          <stop offset="1" stopColor="#237247" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="50" cy="88" rx="35" ry="4" fill="#000" opacity=".12" />
+      <g transform="translate(30 34) rotate(-20)">
+        <rect x="-7" y="-22" width="14" height="46" rx="7" fill="url(#gm-bread)" />
+        {[-12, -3, 6].map((y) => (
+          <line key={y} x1="-4" y1={y} x2="4" y2={y + 3} stroke="#A9661F" strokeWidth="1.6" strokeLinecap="round" />
+        ))}
+      </g>
+      <path d="M44 26L53 16L62 26Z" fill="#DCEBFA" />
+      <rect x="44" y="26" width="18" height="34" fill="#F7FBFF" />
+      <rect x="44" y="36" width="18" height="10" fill="#4C8FDB" />
+      {[
+        [70, -20],
+        [76, 6],
+        [82, 29],
+      ].map(([x, a]) => (
+        <g key={x} transform={`translate(${x} 40) rotate(${a})`}>
+          <ellipse cx="0" cy="-3" rx="5" ry="15" fill="#2E8B57" />
+          <line x1="0" y1="-12" x2="0" y2="10" stroke="#1F6B41" strokeWidth="1.2" strokeLinecap="round" />
+        </g>
+      ))}
+      <circle cx="63" cy="50" r="8" fill="#F5A623" />
+      <circle cx="60.5" cy="47.5" r="2.2" fill="#fff" opacity=".33" />
+      <path d="M14 52H86L78 84Q77 88 73 88H27Q23 88 22 84Z" fill="url(#gm-basket)" />
+      <rect x="10" y="48" width="80" height="8" rx="4" fill="#2F8A57" />
+      {[32, 44, 56, 68].map((x) => (
+        <line key={x} x1={x} y1="62" x2={x + (x - 50) * -0.06} y2="80" stroke="#fff" strokeOpacity=".33" strokeWidth="2.4" strokeLinecap="round" />
+      ))}
+    </Svg>
+  );
+}
+
+/** A medicine bottle with a green cross, a capsule and a plaster. */
+export function PharmacyArt(props: ArtProps) {
+  return (
+    <Svg {...props}>
+      <defs>
+        <linearGradient id="gm-bottle" x1="0" x2="1">
+          <stop offset="0" stopColor="#FFFFFF" />
+          <stop offset="1" stopColor="#E6EEF2" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="50" cy="88" rx="34" ry="4" fill="#000" opacity=".12" />
+      <rect x="30" y="12" width="28" height="12" rx="3" fill="#1F9D63" />
+      {[35, 41, 47, 53].map((x) => (
+        <line key={x} x1={x} y1="14" x2={x} y2="22" stroke="#fff" strokeOpacity=".33" strokeWidth="1.4" strokeLinecap="round" />
+      ))}
+      <rect x="24" y="24" width="40" height="62" rx="9" fill="url(#gm-bottle)" stroke="#D3DEE4" strokeWidth="1.6" />
+      <rect x="29" y="40" width="30" height="30" rx="5" fill="#E6F6EE" />
+      <rect x="40.5" y="45" width="7" height="20" rx="2" fill="#1F9D63" />
+      <rect x="34" y="51.5" width="20" height="7" rx="2" fill="#1F9D63" />
+      <g transform="translate(77 66) rotate(-34)">
+        <rect x="-15" y="-7" width="30" height="14" rx="7" fill="#FFF7F0" />
+        <path d="M0-7H-8A7 7 0 0 0-8 7H0Z" fill="#E0040B" />
+        <rect x="-15" y="-7" width="30" height="14" rx="7" fill="none" stroke="#000" strokeOpacity=".2" strokeWidth="1" />
+      </g>
+      <g transform="translate(76 34) rotate(29)">
+        <rect x="-14" y="-5" width="28" height="10" rx="5" fill="#F0C9A0" />
+        <rect x="-5" y="-5" width="10" height="10" rx="1.5" fill="#FBE3C8" />
+        {[-10, 10].map((x) => (
+          <g key={x} fill="#C79B6B">
+            <circle cx={x} cy="-2" r=".9" />
+            <circle cx={x} cy="2" r=".9" />
+          </g>
+        ))}
+      </g>
+    </Svg>
+  );
+}
+
+/** A woven market basket of tomatoes, pepper, leaves and a tuber of yam. */
+export function MarketArt(props: ArtProps) {
+  const basket = "M12 54H88C86 74 72 88 50 88C28 88 14 74 12 54Z";
+  return (
+    <Svg {...props}>
+      <defs>
+        <linearGradient id="gm-yam" x1="0" x2="1">
+          <stop offset="0" stopColor="#8A5A33" />
+          <stop offset="1" stopColor="#5F3B1E" />
+        </linearGradient>
+        <linearGradient id="gm-woven" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stopColor="#DDA85B" />
+          <stop offset="1" stopColor="#B07A2E" />
+        </linearGradient>
+        <clipPath id="gm-woven-clip">
+          <path d={basket} />
+        </clipPath>
+      </defs>
+      <ellipse cx="50" cy="88" rx="36" ry="4" fill="#000" opacity=".12" />
+      <g transform="translate(70 36) rotate(26)">
+        <rect x="-8" y="-22" width="16" height="44" rx="8" fill="url(#gm-yam)" />
+        <ellipse cx="0" cy="-18.5" rx="6" ry="3.5" fill="#F3E3C4" />
+      </g>
+      {[
+        [22, -29],
+        [29, -6],
+        [36, 17],
+      ].map(([x, a]) => (
+        <g key={x} transform={`translate(${x} 38) rotate(${a})`}>
+          <ellipse cx="0" cy="-4" rx="5.5" ry="16" fill="#2E8B57" />
+          <line x1="0" y1="-14" x2="0" y2="10" stroke="#1F6B41" strokeWidth="1.2" strokeLinecap="round" />
+        </g>
+      ))}
+      {[
+        [44, 44, 9],
+        [58, 47, 8],
+        [50, 36, 7.5],
+      ].map(([x, y, r]) => (
+        <g key={`${x}-${y}`}>
+          <circle cx={x} cy={y} r={r} fill="#E2412B" />
+          <circle cx={x - r * 0.3} cy={y - r * 0.35} r={r * 0.25} fill="#fff" opacity=".4" />
+          <circle cx={x} cy={y - r + 1} r="1.8" fill="#2E8B57" />
+        </g>
+      ))}
+      <rect x="-3.5" y="-9" width="7" height="18" rx="3.5" fill="#F5B942" transform="translate(33 49) rotate(-52)" />
+      <path d={basket} fill="url(#gm-woven)" />
+      <g clipPath="url(#gm-woven-clip)" stroke="#704514" strokeOpacity=".4" strokeWidth="1.6">
+        {[60, 67, 74, 81].map((y) => (
+          <line key={`h${y}`} x1="10" y1={y} x2="90" y2={y} />
+        ))}
+        {[18, 27, 36, 45, 54, 63, 72, 81].map((x) => (
+          <line key={`v${x}`} x1={x} y1="54" x2={x + (50 - x) * 0.18} y2="90" />
+        ))}
+      </g>
+      <rect x="9" y="50" width="82" height="8" rx="4" fill="#C98C3C" />
     </Svg>
   );
 }

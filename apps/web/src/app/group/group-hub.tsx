@@ -46,7 +46,7 @@ export function GroupHub() {
           <ErrorState message={errorText(groups.error)} onRetry={() => groups.refetch()} />
         ) : !groups.data?.length ? (
           <EmptyState icon={<Users className="size-8 text-primary" aria-hidden="true" />} title="No group orders yet"
-            body="Open any restaurant or supplements & skin care shop and tap “Order with friends” to start one, then share the code."
+            body="Open any restaurant or beauty shop and tap “Order with friends” to start one, then share the code."
             action={<Link href="/food"><Button variant="outline">Find a store</Button></Link>} />
         ) : (
           <ul className="space-y-2">

@@ -289,7 +289,8 @@ as double,
 /// @nodoc
 mixin _$RestaurantCard {
 
- String get id; String get vertical; String get city; String get name; String get description; List<String> get cuisines; String get area; double get rating; int get ratingCount; bool get isOpen; bool get isAcceptingOrders; bool get isFeatured; String? get coverUrl; double? get distanceKm; int? get etaMinutes; int? get deliveryFeeKobo; bool? get deliversToLocation; bool get supportsPickup; bool get supportsDelivery; List<PromoBadge> get promotions;
+ String get id; String get vertical; String get city; String get name; String get description; List<String> get cuisines; String get area; double get rating; int get ratingCount; bool get isOpen; bool get isAcceptingOrders; bool get isFeatured; String? get coverUrl; double? get distanceKm; int? get etaMinutes; int? get deliveryFeeKobo; bool? get deliversToLocation; bool get supportsPickup; bool get supportsDelivery; List<PromoBadge> get promotions;/// e.g. "Shopper" on a market: someone buys the items for the customer.
+ String? get badge;
 /// Create a copy of RestaurantCard
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -303,20 +304,20 @@ $RestaurantCardCopyWith<RestaurantCard> get copyWith => _$RestaurantCardCopyWith
 @override
 bool operator ==(Object other) {
   final _this = this as RestaurantCard;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is RestaurantCard&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.vertical, _this.vertical) || other.vertical == _this.vertical)&&(identical(other.city, _this.city) || other.city == _this.city)&&(identical(other.name, _this.name) || other.name == _this.name)&&(identical(other.description, _this.description) || other.description == _this.description)&&const DeepCollectionEquality().equals(other.cuisines, _this.cuisines)&&(identical(other.area, _this.area) || other.area == _this.area)&&(identical(other.rating, _this.rating) || other.rating == _this.rating)&&(identical(other.ratingCount, _this.ratingCount) || other.ratingCount == _this.ratingCount)&&(identical(other.isOpen, _this.isOpen) || other.isOpen == _this.isOpen)&&(identical(other.isAcceptingOrders, _this.isAcceptingOrders) || other.isAcceptingOrders == _this.isAcceptingOrders)&&(identical(other.isFeatured, _this.isFeatured) || other.isFeatured == _this.isFeatured)&&(identical(other.coverUrl, _this.coverUrl) || other.coverUrl == _this.coverUrl)&&(identical(other.distanceKm, _this.distanceKm) || other.distanceKm == _this.distanceKm)&&(identical(other.etaMinutes, _this.etaMinutes) || other.etaMinutes == _this.etaMinutes)&&(identical(other.deliveryFeeKobo, _this.deliveryFeeKobo) || other.deliveryFeeKobo == _this.deliveryFeeKobo)&&(identical(other.deliversToLocation, _this.deliversToLocation) || other.deliversToLocation == _this.deliversToLocation)&&(identical(other.supportsPickup, _this.supportsPickup) || other.supportsPickup == _this.supportsPickup)&&(identical(other.supportsDelivery, _this.supportsDelivery) || other.supportsDelivery == _this.supportsDelivery)&&const DeepCollectionEquality().equals(other.promotions, _this.promotions));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RestaurantCard&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.vertical, _this.vertical) || other.vertical == _this.vertical)&&(identical(other.city, _this.city) || other.city == _this.city)&&(identical(other.name, _this.name) || other.name == _this.name)&&(identical(other.description, _this.description) || other.description == _this.description)&&const DeepCollectionEquality().equals(other.cuisines, _this.cuisines)&&(identical(other.area, _this.area) || other.area == _this.area)&&(identical(other.rating, _this.rating) || other.rating == _this.rating)&&(identical(other.ratingCount, _this.ratingCount) || other.ratingCount == _this.ratingCount)&&(identical(other.isOpen, _this.isOpen) || other.isOpen == _this.isOpen)&&(identical(other.isAcceptingOrders, _this.isAcceptingOrders) || other.isAcceptingOrders == _this.isAcceptingOrders)&&(identical(other.isFeatured, _this.isFeatured) || other.isFeatured == _this.isFeatured)&&(identical(other.coverUrl, _this.coverUrl) || other.coverUrl == _this.coverUrl)&&(identical(other.distanceKm, _this.distanceKm) || other.distanceKm == _this.distanceKm)&&(identical(other.etaMinutes, _this.etaMinutes) || other.etaMinutes == _this.etaMinutes)&&(identical(other.deliveryFeeKobo, _this.deliveryFeeKobo) || other.deliveryFeeKobo == _this.deliveryFeeKobo)&&(identical(other.deliversToLocation, _this.deliversToLocation) || other.deliversToLocation == _this.deliversToLocation)&&(identical(other.supportsPickup, _this.supportsPickup) || other.supportsPickup == _this.supportsPickup)&&(identical(other.supportsDelivery, _this.supportsDelivery) || other.supportsDelivery == _this.supportsDelivery)&&const DeepCollectionEquality().equals(other.promotions, _this.promotions)&&(identical(other.badge, _this.badge) || other.badge == _this.badge));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as RestaurantCard;
-  return Object.hashAll([runtimeType,_this.id,_this.vertical,_this.city,_this.name,_this.description,const DeepCollectionEquality().hash(_this.cuisines),_this.area,_this.rating,_this.ratingCount,_this.isOpen,_this.isAcceptingOrders,_this.isFeatured,_this.coverUrl,_this.distanceKm,_this.etaMinutes,_this.deliveryFeeKobo,_this.deliversToLocation,_this.supportsPickup,_this.supportsDelivery,const DeepCollectionEquality().hash(_this.promotions)]);
+  return Object.hashAll([runtimeType,_this.id,_this.vertical,_this.city,_this.name,_this.description,const DeepCollectionEquality().hash(_this.cuisines),_this.area,_this.rating,_this.ratingCount,_this.isOpen,_this.isAcceptingOrders,_this.isFeatured,_this.coverUrl,_this.distanceKm,_this.etaMinutes,_this.deliveryFeeKobo,_this.deliversToLocation,_this.supportsPickup,_this.supportsDelivery,const DeepCollectionEquality().hash(_this.promotions),_this.badge]);
 }
 
 @override
 String toString() {
   final _this = this as RestaurantCard;
-  return 'RestaurantCard(id: ${_this.id}, vertical: ${_this.vertical}, city: ${_this.city}, name: ${_this.name}, description: ${_this.description}, cuisines: ${_this.cuisines}, area: ${_this.area}, rating: ${_this.rating}, ratingCount: ${_this.ratingCount}, isOpen: ${_this.isOpen}, isAcceptingOrders: ${_this.isAcceptingOrders}, isFeatured: ${_this.isFeatured}, coverUrl: ${_this.coverUrl}, distanceKm: ${_this.distanceKm}, etaMinutes: ${_this.etaMinutes}, deliveryFeeKobo: ${_this.deliveryFeeKobo}, deliversToLocation: ${_this.deliversToLocation}, supportsPickup: ${_this.supportsPickup}, supportsDelivery: ${_this.supportsDelivery}, promotions: ${_this.promotions})';
+  return 'RestaurantCard(id: ${_this.id}, vertical: ${_this.vertical}, city: ${_this.city}, name: ${_this.name}, description: ${_this.description}, cuisines: ${_this.cuisines}, area: ${_this.area}, rating: ${_this.rating}, ratingCount: ${_this.ratingCount}, isOpen: ${_this.isOpen}, isAcceptingOrders: ${_this.isAcceptingOrders}, isFeatured: ${_this.isFeatured}, coverUrl: ${_this.coverUrl}, distanceKm: ${_this.distanceKm}, etaMinutes: ${_this.etaMinutes}, deliveryFeeKobo: ${_this.deliveryFeeKobo}, deliversToLocation: ${_this.deliversToLocation}, supportsPickup: ${_this.supportsPickup}, supportsDelivery: ${_this.supportsDelivery}, promotions: ${_this.promotions}, badge: ${_this.badge})';
 }
 
 
@@ -327,7 +328,7 @@ abstract mixin class $RestaurantCardCopyWith<$Res>  {
   factory $RestaurantCardCopyWith(RestaurantCard value, $Res Function(RestaurantCard) _then) = _$RestaurantCardCopyWithImpl;
 @useResult
 $Res call({
- String id, String vertical, String city, String name, String description, List<String> cuisines, String area, double rating, int ratingCount, bool isOpen, bool isAcceptingOrders, bool isFeatured, String? coverUrl, double? distanceKm, int? etaMinutes, int? deliveryFeeKobo, bool? deliversToLocation, bool supportsPickup, bool supportsDelivery, List<PromoBadge> promotions
+ String id, String vertical, String city, String name, String description, List<String> cuisines, String area, double rating, int ratingCount, bool isOpen, bool isAcceptingOrders, bool isFeatured, String? coverUrl, double? distanceKm, int? etaMinutes, int? deliveryFeeKobo, bool? deliversToLocation, bool supportsPickup, bool supportsDelivery, List<PromoBadge> promotions, String? badge
 });
 
 
@@ -344,7 +345,7 @@ class _$RestaurantCardCopyWithImpl<$Res>
 
 /// Create a copy of RestaurantCard
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? vertical = null,Object? city = null,Object? name = null,Object? description = null,Object? cuisines = null,Object? area = null,Object? rating = null,Object? ratingCount = null,Object? isOpen = null,Object? isAcceptingOrders = null,Object? isFeatured = null,Object? coverUrl = freezed,Object? distanceKm = freezed,Object? etaMinutes = freezed,Object? deliveryFeeKobo = freezed,Object? deliversToLocation = freezed,Object? supportsPickup = null,Object? supportsDelivery = null,Object? promotions = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? vertical = null,Object? city = null,Object? name = null,Object? description = null,Object? cuisines = null,Object? area = null,Object? rating = null,Object? ratingCount = null,Object? isOpen = null,Object? isAcceptingOrders = null,Object? isFeatured = null,Object? coverUrl = freezed,Object? distanceKm = freezed,Object? etaMinutes = freezed,Object? deliveryFeeKobo = freezed,Object? deliversToLocation = freezed,Object? supportsPickup = null,Object? supportsDelivery = null,Object? promotions = null,Object? badge = freezed,}) {
   return _then(RestaurantCard(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,vertical: null == vertical ? _self.vertical : vertical // ignore: cast_nullable_to_non_nullable
@@ -366,7 +367,8 @@ as int?,deliversToLocation: freezed == deliversToLocation ? _self.deliversToLoca
 as bool?,supportsPickup: null == supportsPickup ? _self.supportsPickup : supportsPickup // ignore: cast_nullable_to_non_nullable
 as bool,supportsDelivery: null == supportsDelivery ? _self.supportsDelivery : supportsDelivery // ignore: cast_nullable_to_non_nullable
 as bool,promotions: null == promotions ? _self.promotions : promotions // ignore: cast_nullable_to_non_nullable
-as List<PromoBadge>,
+as List<PromoBadge>,badge: freezed == badge ? _self.badge : badge // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 
@@ -451,10 +453,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String vertical,  String city,  String name,  String description,  List<String> cuisines,  String area,  double rating,  int ratingCount,  bool isOpen,  bool isAcceptingOrders,  bool isFeatured,  String? coverUrl,  double? distanceKm,  int? etaMinutes,  int? deliveryFeeKobo,  bool? deliversToLocation,  bool supportsPickup,  bool supportsDelivery,  List<PromoBadge> promotions)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String vertical,  String city,  String name,  String description,  List<String> cuisines,  String area,  double rating,  int ratingCount,  bool isOpen,  bool isAcceptingOrders,  bool isFeatured,  String? coverUrl,  double? distanceKm,  int? etaMinutes,  int? deliveryFeeKobo,  bool? deliversToLocation,  bool supportsPickup,  bool supportsDelivery,  List<PromoBadge> promotions,  String? badge)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _RestaurantCard() when $default != null:
-return $default(_that.id,_that.vertical,_that.city,_that.name,_that.description,_that.cuisines,_that.area,_that.rating,_that.ratingCount,_that.isOpen,_that.isAcceptingOrders,_that.isFeatured,_that.coverUrl,_that.distanceKm,_that.etaMinutes,_that.deliveryFeeKobo,_that.deliversToLocation,_that.supportsPickup,_that.supportsDelivery,_that.promotions);case _:
+return $default(_that.id,_that.vertical,_that.city,_that.name,_that.description,_that.cuisines,_that.area,_that.rating,_that.ratingCount,_that.isOpen,_that.isAcceptingOrders,_that.isFeatured,_that.coverUrl,_that.distanceKm,_that.etaMinutes,_that.deliveryFeeKobo,_that.deliversToLocation,_that.supportsPickup,_that.supportsDelivery,_that.promotions,_that.badge);case _:
   return orElse();
 
 }
@@ -472,10 +474,10 @@ return $default(_that.id,_that.vertical,_that.city,_that.name,_that.description,
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String vertical,  String city,  String name,  String description,  List<String> cuisines,  String area,  double rating,  int ratingCount,  bool isOpen,  bool isAcceptingOrders,  bool isFeatured,  String? coverUrl,  double? distanceKm,  int? etaMinutes,  int? deliveryFeeKobo,  bool? deliversToLocation,  bool supportsPickup,  bool supportsDelivery,  List<PromoBadge> promotions)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String vertical,  String city,  String name,  String description,  List<String> cuisines,  String area,  double rating,  int ratingCount,  bool isOpen,  bool isAcceptingOrders,  bool isFeatured,  String? coverUrl,  double? distanceKm,  int? etaMinutes,  int? deliveryFeeKobo,  bool? deliversToLocation,  bool supportsPickup,  bool supportsDelivery,  List<PromoBadge> promotions,  String? badge)  $default,) {final _that = this;
 switch (_that) {
 case _RestaurantCard():
-return $default(_that.id,_that.vertical,_that.city,_that.name,_that.description,_that.cuisines,_that.area,_that.rating,_that.ratingCount,_that.isOpen,_that.isAcceptingOrders,_that.isFeatured,_that.coverUrl,_that.distanceKm,_that.etaMinutes,_that.deliveryFeeKobo,_that.deliversToLocation,_that.supportsPickup,_that.supportsDelivery,_that.promotions);case _:
+return $default(_that.id,_that.vertical,_that.city,_that.name,_that.description,_that.cuisines,_that.area,_that.rating,_that.ratingCount,_that.isOpen,_that.isAcceptingOrders,_that.isFeatured,_that.coverUrl,_that.distanceKm,_that.etaMinutes,_that.deliveryFeeKobo,_that.deliversToLocation,_that.supportsPickup,_that.supportsDelivery,_that.promotions,_that.badge);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -492,10 +494,10 @@ return $default(_that.id,_that.vertical,_that.city,_that.name,_that.description,
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String vertical,  String city,  String name,  String description,  List<String> cuisines,  String area,  double rating,  int ratingCount,  bool isOpen,  bool isAcceptingOrders,  bool isFeatured,  String? coverUrl,  double? distanceKm,  int? etaMinutes,  int? deliveryFeeKobo,  bool? deliversToLocation,  bool supportsPickup,  bool supportsDelivery,  List<PromoBadge> promotions)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String vertical,  String city,  String name,  String description,  List<String> cuisines,  String area,  double rating,  int ratingCount,  bool isOpen,  bool isAcceptingOrders,  bool isFeatured,  String? coverUrl,  double? distanceKm,  int? etaMinutes,  int? deliveryFeeKobo,  bool? deliversToLocation,  bool supportsPickup,  bool supportsDelivery,  List<PromoBadge> promotions,  String? badge)?  $default,) {final _that = this;
 switch (_that) {
 case _RestaurantCard() when $default != null:
-return $default(_that.id,_that.vertical,_that.city,_that.name,_that.description,_that.cuisines,_that.area,_that.rating,_that.ratingCount,_that.isOpen,_that.isAcceptingOrders,_that.isFeatured,_that.coverUrl,_that.distanceKm,_that.etaMinutes,_that.deliveryFeeKobo,_that.deliversToLocation,_that.supportsPickup,_that.supportsDelivery,_that.promotions);case _:
+return $default(_that.id,_that.vertical,_that.city,_that.name,_that.description,_that.cuisines,_that.area,_that.rating,_that.ratingCount,_that.isOpen,_that.isAcceptingOrders,_that.isFeatured,_that.coverUrl,_that.distanceKm,_that.etaMinutes,_that.deliveryFeeKobo,_that.deliversToLocation,_that.supportsPickup,_that.supportsDelivery,_that.promotions,_that.badge);case _:
   return null;
 
 }
@@ -507,7 +509,7 @@ return $default(_that.id,_that.vertical,_that.city,_that.name,_that.description,
 @JsonSerializable()
 
 class _RestaurantCard implements RestaurantCard {
-  const _RestaurantCard({required this.id, this.vertical = 'food', this.city = 'lagos', required this.name, this.description = '',  List<String> cuisines = const <String>[], this.area = '', this.rating = 0, this.ratingCount = 0, this.isOpen = false, this.isAcceptingOrders = true, this.isFeatured = false, this.coverUrl, this.distanceKm, this.etaMinutes, this.deliveryFeeKobo, this.deliversToLocation, this.supportsPickup = true, this.supportsDelivery = true,  List<PromoBadge> promotions = const <PromoBadge>[]}): _cuisines = cuisines,_promotions = promotions;
+  const _RestaurantCard({required this.id, this.vertical = 'food', this.city = 'lagos', required this.name, this.description = '',  List<String> cuisines = const <String>[], this.area = '', this.rating = 0, this.ratingCount = 0, this.isOpen = false, this.isAcceptingOrders = true, this.isFeatured = false, this.coverUrl, this.distanceKm, this.etaMinutes, this.deliveryFeeKobo, this.deliversToLocation, this.supportsPickup = true, this.supportsDelivery = true,  List<PromoBadge> promotions = const <PromoBadge>[], this.badge}): _cuisines = cuisines,_promotions = promotions;
   factory _RestaurantCard.fromJson(Map<String, dynamic> json) => _$RestaurantCardFromJson(json);
 
 @override final  String id;
@@ -542,6 +544,8 @@ class _RestaurantCard implements RestaurantCard {
   return EqualUnmodifiableListView(_promotions);
 }
 
+/// e.g. "Shopper" on a market: someone buys the items for the customer.
+@override final  String? badge;
 
 /// Create a copy of RestaurantCard
 /// with the given fields replaced by the non-null parameter values.
@@ -556,18 +560,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _RestaurantCard&&(identical(other.id, id) || other.id == id)&&(identical(other.vertical, vertical) || other.vertical == vertical)&&(identical(other.city, city) || other.city == city)&&(identical(other.name, name) || other.name == name)&&(identical(other.description, description) || other.description == description)&&const DeepCollectionEquality().equals(other.cuisines, _cuisines)&&(identical(other.area, area) || other.area == area)&&(identical(other.rating, rating) || other.rating == rating)&&(identical(other.ratingCount, ratingCount) || other.ratingCount == ratingCount)&&(identical(other.isOpen, isOpen) || other.isOpen == isOpen)&&(identical(other.isAcceptingOrders, isAcceptingOrders) || other.isAcceptingOrders == isAcceptingOrders)&&(identical(other.isFeatured, isFeatured) || other.isFeatured == isFeatured)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&(identical(other.distanceKm, distanceKm) || other.distanceKm == distanceKm)&&(identical(other.etaMinutes, etaMinutes) || other.etaMinutes == etaMinutes)&&(identical(other.deliveryFeeKobo, deliveryFeeKobo) || other.deliveryFeeKobo == deliveryFeeKobo)&&(identical(other.deliversToLocation, deliversToLocation) || other.deliversToLocation == deliversToLocation)&&(identical(other.supportsPickup, supportsPickup) || other.supportsPickup == supportsPickup)&&(identical(other.supportsDelivery, supportsDelivery) || other.supportsDelivery == supportsDelivery)&&const DeepCollectionEquality().equals(other.promotions, _promotions));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _RestaurantCard&&(identical(other.id, id) || other.id == id)&&(identical(other.vertical, vertical) || other.vertical == vertical)&&(identical(other.city, city) || other.city == city)&&(identical(other.name, name) || other.name == name)&&(identical(other.description, description) || other.description == description)&&const DeepCollectionEquality().equals(other.cuisines, _cuisines)&&(identical(other.area, area) || other.area == area)&&(identical(other.rating, rating) || other.rating == rating)&&(identical(other.ratingCount, ratingCount) || other.ratingCount == ratingCount)&&(identical(other.isOpen, isOpen) || other.isOpen == isOpen)&&(identical(other.isAcceptingOrders, isAcceptingOrders) || other.isAcceptingOrders == isAcceptingOrders)&&(identical(other.isFeatured, isFeatured) || other.isFeatured == isFeatured)&&(identical(other.coverUrl, coverUrl) || other.coverUrl == coverUrl)&&(identical(other.distanceKm, distanceKm) || other.distanceKm == distanceKm)&&(identical(other.etaMinutes, etaMinutes) || other.etaMinutes == etaMinutes)&&(identical(other.deliveryFeeKobo, deliveryFeeKobo) || other.deliveryFeeKobo == deliveryFeeKobo)&&(identical(other.deliversToLocation, deliversToLocation) || other.deliversToLocation == deliversToLocation)&&(identical(other.supportsPickup, supportsPickup) || other.supportsPickup == supportsPickup)&&(identical(other.supportsDelivery, supportsDelivery) || other.supportsDelivery == supportsDelivery)&&const DeepCollectionEquality().equals(other.promotions, _promotions)&&(identical(other.badge, badge) || other.badge == badge));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hashAll([runtimeType,id,vertical,city,name,description,const DeepCollectionEquality().hash(_cuisines),area,rating,ratingCount,isOpen,isAcceptingOrders,isFeatured,coverUrl,distanceKm,etaMinutes,deliveryFeeKobo,deliversToLocation,supportsPickup,supportsDelivery,const DeepCollectionEquality().hash(_promotions)]);
+    return Object.hashAll([runtimeType,id,vertical,city,name,description,const DeepCollectionEquality().hash(_cuisines),area,rating,ratingCount,isOpen,isAcceptingOrders,isFeatured,coverUrl,distanceKm,etaMinutes,deliveryFeeKobo,deliversToLocation,supportsPickup,supportsDelivery,const DeepCollectionEquality().hash(_promotions),badge]);
 }
 
 @override
 String toString() {
-    return 'RestaurantCard(id: $id, vertical: $vertical, city: $city, name: $name, description: $description, cuisines: $cuisines, area: $area, rating: $rating, ratingCount: $ratingCount, isOpen: $isOpen, isAcceptingOrders: $isAcceptingOrders, isFeatured: $isFeatured, coverUrl: $coverUrl, distanceKm: $distanceKm, etaMinutes: $etaMinutes, deliveryFeeKobo: $deliveryFeeKobo, deliversToLocation: $deliversToLocation, supportsPickup: $supportsPickup, supportsDelivery: $supportsDelivery, promotions: $promotions)';
+    return 'RestaurantCard(id: $id, vertical: $vertical, city: $city, name: $name, description: $description, cuisines: $cuisines, area: $area, rating: $rating, ratingCount: $ratingCount, isOpen: $isOpen, isAcceptingOrders: $isAcceptingOrders, isFeatured: $isFeatured, coverUrl: $coverUrl, distanceKm: $distanceKm, etaMinutes: $etaMinutes, deliveryFeeKobo: $deliveryFeeKobo, deliversToLocation: $deliversToLocation, supportsPickup: $supportsPickup, supportsDelivery: $supportsDelivery, promotions: $promotions, badge: $badge)';
 }
 
 
@@ -578,7 +582,7 @@ abstract mixin class _$RestaurantCardCopyWith<$Res> implements $RestaurantCardCo
   factory _$RestaurantCardCopyWith(_RestaurantCard value, $Res Function(_RestaurantCard) _then) = __$RestaurantCardCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String vertical, String city, String name, String description, List<String> cuisines, String area, double rating, int ratingCount, bool isOpen, bool isAcceptingOrders, bool isFeatured, String? coverUrl, double? distanceKm, int? etaMinutes, int? deliveryFeeKobo, bool? deliversToLocation, bool supportsPickup, bool supportsDelivery, List<PromoBadge> promotions
+ String id, String vertical, String city, String name, String description, List<String> cuisines, String area, double rating, int ratingCount, bool isOpen, bool isAcceptingOrders, bool isFeatured, String? coverUrl, double? distanceKm, int? etaMinutes, int? deliveryFeeKobo, bool? deliversToLocation, bool supportsPickup, bool supportsDelivery, List<PromoBadge> promotions, String? badge
 });
 
 
@@ -595,7 +599,7 @@ class __$RestaurantCardCopyWithImpl<$Res>
 
 /// Create a copy of RestaurantCard
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? vertical = null,Object? city = null,Object? name = null,Object? description = null,Object? cuisines = null,Object? area = null,Object? rating = null,Object? ratingCount = null,Object? isOpen = null,Object? isAcceptingOrders = null,Object? isFeatured = null,Object? coverUrl = freezed,Object? distanceKm = freezed,Object? etaMinutes = freezed,Object? deliveryFeeKobo = freezed,Object? deliversToLocation = freezed,Object? supportsPickup = null,Object? supportsDelivery = null,Object? promotions = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? vertical = null,Object? city = null,Object? name = null,Object? description = null,Object? cuisines = null,Object? area = null,Object? rating = null,Object? ratingCount = null,Object? isOpen = null,Object? isAcceptingOrders = null,Object? isFeatured = null,Object? coverUrl = freezed,Object? distanceKm = freezed,Object? etaMinutes = freezed,Object? deliveryFeeKobo = freezed,Object? deliversToLocation = freezed,Object? supportsPickup = null,Object? supportsDelivery = null,Object? promotions = null,Object? badge = freezed,}) {
   return _then(_RestaurantCard(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,vertical: null == vertical ? _self.vertical : vertical // ignore: cast_nullable_to_non_nullable
@@ -617,7 +621,8 @@ as int?,deliversToLocation: freezed == deliversToLocation ? _self.deliversToLoca
 as bool?,supportsPickup: null == supportsPickup ? _self.supportsPickup : supportsPickup // ignore: cast_nullable_to_non_nullable
 as bool,supportsDelivery: null == supportsDelivery ? _self.supportsDelivery : supportsDelivery // ignore: cast_nullable_to_non_nullable
 as bool,promotions: null == promotions ? _self._promotions : promotions // ignore: cast_nullable_to_non_nullable
-as List<PromoBadge>,
+as List<PromoBadge>,badge: freezed == badge ? _self.badge : badge // ignore: cast_nullable_to_non_nullable
+as String?,
   ));
 }
 
@@ -1195,7 +1200,8 @@ as List<OptionChoice>,
 /// @nodoc
 mixin _$MenuItem {
 
- String get id; String get restaurantId; String get name; String get description; int get priceKobo; String get kind; List<String> get allergens; List<String> get dietary; int get serves; int get spiceLevel; bool get isAvailable; List<String> get optionGroupIds; String? get unitLabel;
+ String get id; String get restaurantId; String get name; String get description; int get priceKobo; String get kind; List<String> get allergens; List<String> get dietary; int get serves; int get spiceLevel; bool get isAvailable; List<String> get optionGroupIds; String? get unitLabel;/// Products (shops, pharmacies, markets): brand, a picture placeholder and how popular the product is.
+ String? get brand; String? get emoji; int get popularity;
 /// Create a copy of MenuItem
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -1209,20 +1215,20 @@ $MenuItemCopyWith<MenuItem> get copyWith => _$MenuItemCopyWithImpl<MenuItem>(thi
 @override
 bool operator ==(Object other) {
   final _this = this as MenuItem;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is MenuItem&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.restaurantId, _this.restaurantId) || other.restaurantId == _this.restaurantId)&&(identical(other.name, _this.name) || other.name == _this.name)&&(identical(other.description, _this.description) || other.description == _this.description)&&(identical(other.priceKobo, _this.priceKobo) || other.priceKobo == _this.priceKobo)&&(identical(other.kind, _this.kind) || other.kind == _this.kind)&&const DeepCollectionEquality().equals(other.allergens, _this.allergens)&&const DeepCollectionEquality().equals(other.dietary, _this.dietary)&&(identical(other.serves, _this.serves) || other.serves == _this.serves)&&(identical(other.spiceLevel, _this.spiceLevel) || other.spiceLevel == _this.spiceLevel)&&(identical(other.isAvailable, _this.isAvailable) || other.isAvailable == _this.isAvailable)&&const DeepCollectionEquality().equals(other.optionGroupIds, _this.optionGroupIds)&&(identical(other.unitLabel, _this.unitLabel) || other.unitLabel == _this.unitLabel));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is MenuItem&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.restaurantId, _this.restaurantId) || other.restaurantId == _this.restaurantId)&&(identical(other.name, _this.name) || other.name == _this.name)&&(identical(other.description, _this.description) || other.description == _this.description)&&(identical(other.priceKobo, _this.priceKobo) || other.priceKobo == _this.priceKobo)&&(identical(other.kind, _this.kind) || other.kind == _this.kind)&&const DeepCollectionEquality().equals(other.allergens, _this.allergens)&&const DeepCollectionEquality().equals(other.dietary, _this.dietary)&&(identical(other.serves, _this.serves) || other.serves == _this.serves)&&(identical(other.spiceLevel, _this.spiceLevel) || other.spiceLevel == _this.spiceLevel)&&(identical(other.isAvailable, _this.isAvailable) || other.isAvailable == _this.isAvailable)&&const DeepCollectionEquality().equals(other.optionGroupIds, _this.optionGroupIds)&&(identical(other.unitLabel, _this.unitLabel) || other.unitLabel == _this.unitLabel)&&(identical(other.brand, _this.brand) || other.brand == _this.brand)&&(identical(other.emoji, _this.emoji) || other.emoji == _this.emoji)&&(identical(other.popularity, _this.popularity) || other.popularity == _this.popularity));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as MenuItem;
-  return Object.hash(runtimeType,_this.id,_this.restaurantId,_this.name,_this.description,_this.priceKobo,_this.kind,const DeepCollectionEquality().hash(_this.allergens),const DeepCollectionEquality().hash(_this.dietary),_this.serves,_this.spiceLevel,_this.isAvailable,const DeepCollectionEquality().hash(_this.optionGroupIds),_this.unitLabel);
+  return Object.hash(runtimeType,_this.id,_this.restaurantId,_this.name,_this.description,_this.priceKobo,_this.kind,const DeepCollectionEquality().hash(_this.allergens),const DeepCollectionEquality().hash(_this.dietary),_this.serves,_this.spiceLevel,_this.isAvailable,const DeepCollectionEquality().hash(_this.optionGroupIds),_this.unitLabel,_this.brand,_this.emoji,_this.popularity);
 }
 
 @override
 String toString() {
   final _this = this as MenuItem;
-  return 'MenuItem(id: ${_this.id}, restaurantId: ${_this.restaurantId}, name: ${_this.name}, description: ${_this.description}, priceKobo: ${_this.priceKobo}, kind: ${_this.kind}, allergens: ${_this.allergens}, dietary: ${_this.dietary}, serves: ${_this.serves}, spiceLevel: ${_this.spiceLevel}, isAvailable: ${_this.isAvailable}, optionGroupIds: ${_this.optionGroupIds}, unitLabel: ${_this.unitLabel})';
+  return 'MenuItem(id: ${_this.id}, restaurantId: ${_this.restaurantId}, name: ${_this.name}, description: ${_this.description}, priceKobo: ${_this.priceKobo}, kind: ${_this.kind}, allergens: ${_this.allergens}, dietary: ${_this.dietary}, serves: ${_this.serves}, spiceLevel: ${_this.spiceLevel}, isAvailable: ${_this.isAvailable}, optionGroupIds: ${_this.optionGroupIds}, unitLabel: ${_this.unitLabel}, brand: ${_this.brand}, emoji: ${_this.emoji}, popularity: ${_this.popularity})';
 }
 
 
@@ -1233,7 +1239,7 @@ abstract mixin class $MenuItemCopyWith<$Res>  {
   factory $MenuItemCopyWith(MenuItem value, $Res Function(MenuItem) _then) = _$MenuItemCopyWithImpl;
 @useResult
 $Res call({
- String id, String restaurantId, String name, String description, int priceKobo, String kind, List<String> allergens, List<String> dietary, int serves, int spiceLevel, bool isAvailable, List<String> optionGroupIds, String? unitLabel
+ String id, String restaurantId, String name, String description, int priceKobo, String kind, List<String> allergens, List<String> dietary, int serves, int spiceLevel, bool isAvailable, List<String> optionGroupIds, String? unitLabel, String? brand, String? emoji, int popularity
 });
 
 
@@ -1250,7 +1256,7 @@ class _$MenuItemCopyWithImpl<$Res>
 
 /// Create a copy of MenuItem
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? restaurantId = null,Object? name = null,Object? description = null,Object? priceKobo = null,Object? kind = null,Object? allergens = null,Object? dietary = null,Object? serves = null,Object? spiceLevel = null,Object? isAvailable = null,Object? optionGroupIds = null,Object? unitLabel = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? restaurantId = null,Object? name = null,Object? description = null,Object? priceKobo = null,Object? kind = null,Object? allergens = null,Object? dietary = null,Object? serves = null,Object? spiceLevel = null,Object? isAvailable = null,Object? optionGroupIds = null,Object? unitLabel = freezed,Object? brand = freezed,Object? emoji = freezed,Object? popularity = null,}) {
   return _then(MenuItem(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,restaurantId: null == restaurantId ? _self.restaurantId : restaurantId // ignore: cast_nullable_to_non_nullable
@@ -1265,7 +1271,10 @@ as int,spiceLevel: null == spiceLevel ? _self.spiceLevel : spiceLevel // ignore:
 as int,isAvailable: null == isAvailable ? _self.isAvailable : isAvailable // ignore: cast_nullable_to_non_nullable
 as bool,optionGroupIds: null == optionGroupIds ? _self.optionGroupIds : optionGroupIds // ignore: cast_nullable_to_non_nullable
 as List<String>,unitLabel: freezed == unitLabel ? _self.unitLabel : unitLabel // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,brand: freezed == brand ? _self.brand : brand // ignore: cast_nullable_to_non_nullable
+as String?,emoji: freezed == emoji ? _self.emoji : emoji // ignore: cast_nullable_to_non_nullable
+as String?,popularity: null == popularity ? _self.popularity : popularity // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 
@@ -1350,10 +1359,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String restaurantId,  String name,  String description,  int priceKobo,  String kind,  List<String> allergens,  List<String> dietary,  int serves,  int spiceLevel,  bool isAvailable,  List<String> optionGroupIds,  String? unitLabel)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String restaurantId,  String name,  String description,  int priceKobo,  String kind,  List<String> allergens,  List<String> dietary,  int serves,  int spiceLevel,  bool isAvailable,  List<String> optionGroupIds,  String? unitLabel,  String? brand,  String? emoji,  int popularity)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _MenuItem() when $default != null:
-return $default(_that.id,_that.restaurantId,_that.name,_that.description,_that.priceKobo,_that.kind,_that.allergens,_that.dietary,_that.serves,_that.spiceLevel,_that.isAvailable,_that.optionGroupIds,_that.unitLabel);case _:
+return $default(_that.id,_that.restaurantId,_that.name,_that.description,_that.priceKobo,_that.kind,_that.allergens,_that.dietary,_that.serves,_that.spiceLevel,_that.isAvailable,_that.optionGroupIds,_that.unitLabel,_that.brand,_that.emoji,_that.popularity);case _:
   return orElse();
 
 }
@@ -1371,10 +1380,10 @@ return $default(_that.id,_that.restaurantId,_that.name,_that.description,_that.p
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String restaurantId,  String name,  String description,  int priceKobo,  String kind,  List<String> allergens,  List<String> dietary,  int serves,  int spiceLevel,  bool isAvailable,  List<String> optionGroupIds,  String? unitLabel)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String restaurantId,  String name,  String description,  int priceKobo,  String kind,  List<String> allergens,  List<String> dietary,  int serves,  int spiceLevel,  bool isAvailable,  List<String> optionGroupIds,  String? unitLabel,  String? brand,  String? emoji,  int popularity)  $default,) {final _that = this;
 switch (_that) {
 case _MenuItem():
-return $default(_that.id,_that.restaurantId,_that.name,_that.description,_that.priceKobo,_that.kind,_that.allergens,_that.dietary,_that.serves,_that.spiceLevel,_that.isAvailable,_that.optionGroupIds,_that.unitLabel);case _:
+return $default(_that.id,_that.restaurantId,_that.name,_that.description,_that.priceKobo,_that.kind,_that.allergens,_that.dietary,_that.serves,_that.spiceLevel,_that.isAvailable,_that.optionGroupIds,_that.unitLabel,_that.brand,_that.emoji,_that.popularity);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -1391,10 +1400,10 @@ return $default(_that.id,_that.restaurantId,_that.name,_that.description,_that.p
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String restaurantId,  String name,  String description,  int priceKobo,  String kind,  List<String> allergens,  List<String> dietary,  int serves,  int spiceLevel,  bool isAvailable,  List<String> optionGroupIds,  String? unitLabel)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String restaurantId,  String name,  String description,  int priceKobo,  String kind,  List<String> allergens,  List<String> dietary,  int serves,  int spiceLevel,  bool isAvailable,  List<String> optionGroupIds,  String? unitLabel,  String? brand,  String? emoji,  int popularity)?  $default,) {final _that = this;
 switch (_that) {
 case _MenuItem() when $default != null:
-return $default(_that.id,_that.restaurantId,_that.name,_that.description,_that.priceKobo,_that.kind,_that.allergens,_that.dietary,_that.serves,_that.spiceLevel,_that.isAvailable,_that.optionGroupIds,_that.unitLabel);case _:
+return $default(_that.id,_that.restaurantId,_that.name,_that.description,_that.priceKobo,_that.kind,_that.allergens,_that.dietary,_that.serves,_that.spiceLevel,_that.isAvailable,_that.optionGroupIds,_that.unitLabel,_that.brand,_that.emoji,_that.popularity);case _:
   return null;
 
 }
@@ -1406,7 +1415,7 @@ return $default(_that.id,_that.restaurantId,_that.name,_that.description,_that.p
 @JsonSerializable()
 
 class _MenuItem implements MenuItem {
-  const _MenuItem({required this.id, required this.restaurantId, required this.name, this.description = '', required this.priceKobo, this.kind = 'main',  List<String> allergens = const <String>[],  List<String> dietary = const <String>[], this.serves = 1, this.spiceLevel = 0, this.isAvailable = true,  List<String> optionGroupIds = const <String>[], this.unitLabel}): _allergens = allergens,_dietary = dietary,_optionGroupIds = optionGroupIds;
+  const _MenuItem({required this.id, required this.restaurantId, required this.name, this.description = '', required this.priceKobo, this.kind = 'main',  List<String> allergens = const <String>[],  List<String> dietary = const <String>[], this.serves = 1, this.spiceLevel = 0, this.isAvailable = true,  List<String> optionGroupIds = const <String>[], this.unitLabel, this.brand, this.emoji, this.popularity = 0}): _allergens = allergens,_dietary = dietary,_optionGroupIds = optionGroupIds;
   factory _MenuItem.fromJson(Map<String, dynamic> json) => _$MenuItemFromJson(json);
 
 @override final  String id;
@@ -1440,6 +1449,10 @@ class _MenuItem implements MenuItem {
 }
 
 @override final  String? unitLabel;
+/// Products (shops, pharmacies, markets): brand, a picture placeholder and how popular the product is.
+@override final  String? brand;
+@override final  String? emoji;
+@override@JsonKey() final  int popularity;
 
 /// Create a copy of MenuItem
 /// with the given fields replaced by the non-null parameter values.
@@ -1454,18 +1467,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _MenuItem&&(identical(other.id, id) || other.id == id)&&(identical(other.restaurantId, restaurantId) || other.restaurantId == restaurantId)&&(identical(other.name, name) || other.name == name)&&(identical(other.description, description) || other.description == description)&&(identical(other.priceKobo, priceKobo) || other.priceKobo == priceKobo)&&(identical(other.kind, kind) || other.kind == kind)&&const DeepCollectionEquality().equals(other.allergens, _allergens)&&const DeepCollectionEquality().equals(other.dietary, _dietary)&&(identical(other.serves, serves) || other.serves == serves)&&(identical(other.spiceLevel, spiceLevel) || other.spiceLevel == spiceLevel)&&(identical(other.isAvailable, isAvailable) || other.isAvailable == isAvailable)&&const DeepCollectionEquality().equals(other.optionGroupIds, _optionGroupIds)&&(identical(other.unitLabel, unitLabel) || other.unitLabel == unitLabel));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _MenuItem&&(identical(other.id, id) || other.id == id)&&(identical(other.restaurantId, restaurantId) || other.restaurantId == restaurantId)&&(identical(other.name, name) || other.name == name)&&(identical(other.description, description) || other.description == description)&&(identical(other.priceKobo, priceKobo) || other.priceKobo == priceKobo)&&(identical(other.kind, kind) || other.kind == kind)&&const DeepCollectionEquality().equals(other.allergens, _allergens)&&const DeepCollectionEquality().equals(other.dietary, _dietary)&&(identical(other.serves, serves) || other.serves == serves)&&(identical(other.spiceLevel, spiceLevel) || other.spiceLevel == spiceLevel)&&(identical(other.isAvailable, isAvailable) || other.isAvailable == isAvailable)&&const DeepCollectionEquality().equals(other.optionGroupIds, _optionGroupIds)&&(identical(other.unitLabel, unitLabel) || other.unitLabel == unitLabel)&&(identical(other.brand, brand) || other.brand == brand)&&(identical(other.emoji, emoji) || other.emoji == emoji)&&(identical(other.popularity, popularity) || other.popularity == popularity));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,id,restaurantId,name,description,priceKobo,kind,const DeepCollectionEquality().hash(_allergens),const DeepCollectionEquality().hash(_dietary),serves,spiceLevel,isAvailable,const DeepCollectionEquality().hash(_optionGroupIds),unitLabel);
+    return Object.hash(runtimeType,id,restaurantId,name,description,priceKobo,kind,const DeepCollectionEquality().hash(_allergens),const DeepCollectionEquality().hash(_dietary),serves,spiceLevel,isAvailable,const DeepCollectionEquality().hash(_optionGroupIds),unitLabel,brand,emoji,popularity);
 }
 
 @override
 String toString() {
-    return 'MenuItem(id: $id, restaurantId: $restaurantId, name: $name, description: $description, priceKobo: $priceKobo, kind: $kind, allergens: $allergens, dietary: $dietary, serves: $serves, spiceLevel: $spiceLevel, isAvailable: $isAvailable, optionGroupIds: $optionGroupIds, unitLabel: $unitLabel)';
+    return 'MenuItem(id: $id, restaurantId: $restaurantId, name: $name, description: $description, priceKobo: $priceKobo, kind: $kind, allergens: $allergens, dietary: $dietary, serves: $serves, spiceLevel: $spiceLevel, isAvailable: $isAvailable, optionGroupIds: $optionGroupIds, unitLabel: $unitLabel, brand: $brand, emoji: $emoji, popularity: $popularity)';
 }
 
 
@@ -1476,7 +1489,7 @@ abstract mixin class _$MenuItemCopyWith<$Res> implements $MenuItemCopyWith<$Res>
   factory _$MenuItemCopyWith(_MenuItem value, $Res Function(_MenuItem) _then) = __$MenuItemCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String restaurantId, String name, String description, int priceKobo, String kind, List<String> allergens, List<String> dietary, int serves, int spiceLevel, bool isAvailable, List<String> optionGroupIds, String? unitLabel
+ String id, String restaurantId, String name, String description, int priceKobo, String kind, List<String> allergens, List<String> dietary, int serves, int spiceLevel, bool isAvailable, List<String> optionGroupIds, String? unitLabel, String? brand, String? emoji, int popularity
 });
 
 
@@ -1493,7 +1506,7 @@ class __$MenuItemCopyWithImpl<$Res>
 
 /// Create a copy of MenuItem
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? restaurantId = null,Object? name = null,Object? description = null,Object? priceKobo = null,Object? kind = null,Object? allergens = null,Object? dietary = null,Object? serves = null,Object? spiceLevel = null,Object? isAvailable = null,Object? optionGroupIds = null,Object? unitLabel = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? restaurantId = null,Object? name = null,Object? description = null,Object? priceKobo = null,Object? kind = null,Object? allergens = null,Object? dietary = null,Object? serves = null,Object? spiceLevel = null,Object? isAvailable = null,Object? optionGroupIds = null,Object? unitLabel = freezed,Object? brand = freezed,Object? emoji = freezed,Object? popularity = null,}) {
   return _then(_MenuItem(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,restaurantId: null == restaurantId ? _self.restaurantId : restaurantId // ignore: cast_nullable_to_non_nullable
@@ -1508,7 +1521,10 @@ as int,spiceLevel: null == spiceLevel ? _self.spiceLevel : spiceLevel // ignore:
 as int,isAvailable: null == isAvailable ? _self.isAvailable : isAvailable // ignore: cast_nullable_to_non_nullable
 as bool,optionGroupIds: null == optionGroupIds ? _self._optionGroupIds : optionGroupIds // ignore: cast_nullable_to_non_nullable
 as List<String>,unitLabel: freezed == unitLabel ? _self.unitLabel : unitLabel // ignore: cast_nullable_to_non_nullable
-as String?,
+as String?,brand: freezed == brand ? _self.brand : brand // ignore: cast_nullable_to_non_nullable
+as String?,emoji: freezed == emoji ? _self.emoji : emoji // ignore: cast_nullable_to_non_nullable
+as String?,popularity: null == popularity ? _self.popularity : popularity // ignore: cast_nullable_to_non_nullable
+as int,
   ));
 }
 

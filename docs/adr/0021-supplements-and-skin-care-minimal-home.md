@@ -1,6 +1,7 @@
 # ADR-0021: Three services, Supplements & Skin Care, and a minimal home page
 
-- **Status:** Accepted
+- **Status:** Accepted; the three services and the name Supplements & Skin Care were superseded on 2026-11-21 by
+  [ADR-0025](0025-six-services.md) (six services, Beauty & Skin Care). The minimal home stays, with six bubbles.
 - **Date:** 2026-11-18
 - **Context owner:** owner's request of 2026-11-18, from the phone: remove Groceries, Pharmacy and Market Shopping
   "and any features associated with them", rename "Beauty & Skin care" to "Supplements & Skin Care", and make the

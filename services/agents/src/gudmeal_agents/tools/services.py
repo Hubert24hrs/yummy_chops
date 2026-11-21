@@ -16,8 +16,11 @@ from .customer import EVERYONE, LAGOS, chat_channel, delivery_address, lagos_tim
 from .registry import ToolArgs, ToolContext, ToolError, ToolOutput, ToolRegistry, ToolSpec
 
 SERVICE_NAMES = {
-    "food": "Food",
-    "beauty": "Supplements & Skin Care",
+    "food": "Order Food",
+    "pharmacy": "Pharmacy",
+    "beauty": "Beauty & Skin Care",
+    "grocery": "Shop & Groceries",
+    "market": "Buy Foodstuff",
     "parcel": "Package Delivery",
     "waybill": "Interstate waybill",
 }
@@ -35,6 +38,9 @@ TRACKING_CODE = re.compile(r"^GMW[2-9A-HJ-NP-Z]{8}$")
 Screen = Literal[
     "home",
     "food",
+    "grocery",
+    "pharmacy",
+    "market",
     "beauty",
     "parcel",
     "discover",
@@ -51,8 +57,11 @@ Screen = Literal[
 ]
 SCREEN_LABELS: dict[str, str] = {
     "home": "Go to Home",
-    "food": "Open Food",
-    "beauty": "Open Supplements & Skin Care",
+    "food": "Order Food",
+    "pharmacy": "Open Pharmacy",
+    "beauty": "Open Beauty & Skin Care",
+    "grocery": "Open Shop & Groceries",
+    "market": "Buy Foodstuff",
     "parcel": "Send a package",
     "discover": "Open Discover",
     "orders": "Open my orders",
@@ -617,8 +626,7 @@ async def get_group_orders(args: NoArgs, ctx: ToolContext) -> ToolOutput:
     data: dict[str, Any] = {"group_orders": rows}
     if not rows:
         data["how_to_start"] = (
-            "Open a Food or Supplements & Skin Care store and tap 'Order with friends', then share the "
-            "6-character code."
+            "Open a Food or Beauty store and tap 'Order with friends', then share the 6-character code."
         )
     data["note"] = "Yummy cannot join, change or pay a group order: open_screen('group')."
     return ToolOutput(data, card={"type": "group_orders", "groups": rows})
@@ -629,7 +637,8 @@ def register(reg: ToolRegistry) -> None:
     add(
         ToolSpec(
             "list_services",
-            "What Yummy Chops offers (Food, Supplements & Skin Care, Package Delivery), where, "
+            "What Yummy Chops offers (Order Food, Pharmacy, Beauty & Skin Care, Shop & Groceries, Buy Foodstuff, "
+            "Package Delivery), where, "
             "and what is coming soon.",
             NoArgs,
             list_services,
@@ -649,8 +658,8 @@ def register(reg: ToolRegistry) -> None:
     add(
         ToolSpec(
             "open_screen",
-            "Show the customer a button that opens a part of the app (Food, Supplements & Skin Care, "
-            "Package Delivery, Orders, Support, Profile, a store or an order).",
+            "Show the customer a button that opens a part of the app (Order Food, Pharmacy, Beauty & Skin Care, "
+            "Shop & Groceries, Buy Foodstuff, Package Delivery, Orders, Support, Profile, a store or an order).",
             OpenScreenArgs,
             open_screen,
             EVERYONE,

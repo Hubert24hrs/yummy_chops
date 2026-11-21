@@ -468,7 +468,7 @@ def public_browsing() -> None:
     check("Lagos and Enugu are live cities", "lagos" in cities and "enugu" in cities, cities[:200])
     services = {s["id"]: s for s in call("GET", "/v1/services")}
     check(
-        "Food, Supplements & Skin Care and Package Delivery are available",
+        "Order Food, Pharmacy, Beauty & Skin Care, Shop & Groceries, Buy Foodstuff and Package Delivery are available",
         all(services.get(v, {}).get("available") for v in (*SHOP_SERVICES, "parcel")),
         services.keys(),
     )
@@ -742,7 +742,7 @@ def rider_cash(uid: str) -> int:
 
 @flow
 def beauty_order() -> None:
-    """Supplements & Skin Care: order from a Lagos shop, the shop owner accepts, a rider delivers"""
+    """Beauty & Skin Care: order from a Lagos shop, the shop owner accepts, a rider delivers"""
     riders_online()
     shops = items_of(call("GET", "/v1/restaurants", params={"city": "lagos", "vertical": "beauty"}))
     shop = next((s for s in shops if s.get("is_open", True) and s.get("is_accepting_orders", True)), shops[0])
@@ -781,7 +781,136 @@ def first_orderable_line(detail: dict) -> dict:
     raise Fail(f"no orderable item in {detail.get('id')} (keys {list(detail)})")
 
 
-SHOP_SERVICES = ("food", "beauty")  # beauty: Supplements & Skin Care
+SHOP_SERVICES = ("food", "grocery", "pharmacy", "market", "beauty")
+
+
+def line_for(detail: dict, item_id: str, quantity: int = 1) -> dict:
+    """A cart line for one product, picking the first choice wherever one is required (weight, pack size)."""
+    item = next(i for sec in detail["sections"] for i in sec["items"] if i["id"] == item_id)
+    selections = []
+    for gid in item.get("option_group_ids", []):
+        group = detail["option_groups"][gid]
+        if group["min_select"]:
+            picks = [c["id"] for c in group["choices"] if c.get("is_available", True)][: group["min_select"]]
+            selections.append({"group_id": gid, "choice_ids": picks})
+    return {"item_id": item_id, "quantity": quantity} | ({"selections": selections} if selections else {})
+
+
+def shop_order(shop_id: str, basket: list[tuple[str, int]], sent: str, what: str) -> dict:
+    """Order from a shop that sells by the aisle: browse it, pay in one payment, the shop packs, a rider
+    delivers. Returns the shop page."""
+    riders_online()
+    detail = call("GET", f"/v1/restaurants/{shop_id}")
+    name = detail["restaurant"]["name"]
+    products = [i for sec in detail["sections"] for i in sec["items"]]
+    check(f"{name}: products are listed by the aisle", len(detail["sections"]) >= 3, len(detail["sections"]))
+    check(
+        f"{name}: every product shows its size or measure",
+        all(i.get("unit_label") or i.get("kind") == "combo" for i in products),
+        [i["name"] for i in products if not i.get("unit_label") and i.get("kind") != "combo"][:5],
+    )
+    ensure_accounts(beauty_shop=shop_id)  # the demo shop-owner account now owns this shop
+    open_all_day(shop_id, "beauty")
+    lines = [line_for(detail, item_id, qty) for item_id, qty in basket]
+    q = quote(restaurant_id=shop_id, lines=lines)
+    b = q["breakdown"]
+    order = call(
+        "POST", "/v1/orders", "customer", {"quote_id": q["id"], "channel": "app"}, expect=201, idem=True
+    )
+    co = call("POST", f"/v1/orders/{order['id']}/checkout", "customer", {}, idem=True)
+    check(
+        f"{what}: one payment of {naira(b['total_kobo'])} covers the products, delivery and service fee",
+        co["amount_kobo"] == b["total_kobo"]
+        and b["total_kobo"]
+        == b["subtotal_kobo"]
+        + b["delivery_fee_kobo"]
+        + b["service_fee_kobo"]
+        + b["small_order_fee_kobo"]
+        + b["vat_kobo"]
+        - b["discount_kobo"],
+        b,
+    )
+    complete_sandbox(co)
+    o = get_order(order["id"])
+    check(f"{what} order paid and sent to the shop", o["status"] == "submitted_to_restaurant", o["status"])
+    check(f'the customer reads "{sent}"', o["progress"]["label"] == sent, o["progress"])
+    deliver(o["id"], shop=shop_id, staff="beauty", owner="beauty")
+    ledger_balanced()
+    return detail
+
+
+@flow
+def grocery_order() -> None:
+    """Groceries: a supermarket basket (water, rice, eggs by the crate) paid once, packed and delivered"""
+    shops = items_of(call("GET", "/v1/restaurants", params={"city": "lagos", "vertical": "grocery"}))
+    check("supermarkets and convenience stores are listed", len(shops) >= 2, [s["name"] for s in shops])
+    detail = shop_order(
+        "g-freshbasket",
+        [("fb-water-75x12", 2), ("fb-rice-5kg", 1), ("fb-eggs", 1)],
+        "Sent to the store",
+        "groceries",
+    )
+    stock = [i["is_available"] for sec in detail["sections"] for i in sec["items"]]
+    check(
+        "the store shows what is out of stock as well as what is in",
+        True in stock and False in stock,
+        stock[:8],
+    )
+
+
+@flow
+def pharmacy_order() -> None:
+    """Pharmacy: over-the-counter products delivered; prescription-only medicines cannot be ordered"""
+    detail = shop_order(
+        "p-carefirst",
+        [("cf-paracetamol-12", 2), ("cf-multivitamin-30", 1)],
+        "Sent to the pharmacy",
+        "pharmacy",
+    )
+    listed = {i["id"] for sec in detail["sections"] for i in sec["items"]}
+    check(
+        "the pharmacy page hides prescription-only medicines",
+        "cf-amoxicillin-500" not in listed,
+        sorted(listed)[:6],
+    )
+    found = call("GET", "/v1/search", params={"q": "amoxicillin", "city": "lagos"})
+    check("search does not offer them either", "amoxicillin" not in str(found).lower(), str(found)[:200])
+    refused = call(
+        "POST",
+        "/v1/quotes",
+        "customer",
+        {
+            "restaurant_id": "p-carefirst",
+            "lines": [{"item_id": "cf-amoxicillin-500", "quantity": 1}],
+            "fulfillment": "delivery",
+            "delivery_address": ADDRESS,
+        },
+        expect=409,
+    )
+    check(
+        "ordering one by its id is refused: it needs a prescription",
+        refused["error"]["details"].get("reason") == "prescription_required",
+        refused,
+    )
+
+
+@flow
+def market_order() -> None:
+    """Buy Foodstuff: a shopper buys foodstuff by market measures (beef by weight, a soup combo, yam)"""
+    shops = items_of(call("GET", "/v1/restaurants", params={"city": "lagos", "vertical": "market"}))
+    check("market shoppers are listed and say so", all(s.get("badge") == "Shopper" for s in shops), shops[:2])
+    detail = shop_order(
+        "m-lekki-market",
+        [("lm-beef", 1), ("lm-combo-egusi", 1), ("lm-yam-tuber", 2)],
+        "Sent to your shopper",
+        "foodstuff",
+    )
+    measures = {i.get("unit_label") for sec in detail["sections"] for i in sec["items"]}
+    check(
+        "foodstuff is sold by market measures",
+        {"derica", "half paint"} <= measures,
+        sorted(m for m in measures if m)[:10],
+    )
 
 
 @flow

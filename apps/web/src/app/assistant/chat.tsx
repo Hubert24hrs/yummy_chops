@@ -117,7 +117,7 @@ function ChatInner() {
       <div className="flex-1 space-y-4" aria-live="polite">
         {turns.length === 0 && (
           <Card className="space-y-2 p-5 text-sm">
-            <p className="font-semibold">Hi! I’m Yummy. I can find food, supplements and skin care, plan a meal within your budget, send packages across Lagos and Enugu, track orders and tell you how much you’ve spent. Write in English, Pidgin, Igbo, Yoruba or Hausa.</p>
+            <p className="font-semibold">Hi! I’m Yummy. I can find food, groceries, foodstuff, pharmacy items and beauty products, plan a meal within your budget, send packages across Lagos and Enugu, track orders and tell you how much you’ve spent. Write in English, Pidgin, Igbo, Yoruba or Hausa.</p>
             <p className="pt-1 text-muted">Try asking:</p>
             {["I have ₦10,000. Find me the best meal for two people, order it, and deliver before 8pm.",
               "What do you offer?", "How much have I spent?", "Find me a good sunscreen", "Abeg, where my order dey?", "I want to talk to a person"].map((s) => (
@@ -156,7 +156,7 @@ function ChatInner() {
 }
 
 const SCREENS: Record<string, string> = {
-  home: "/", food: "/food", beauty: "/beauty", parcel: "/send",
+  home: "/", food: "/food", grocery: "/groceries", pharmacy: "/pharmacy", market: "/foodstuff", beauty: "/beauty", parcel: "/send",
   discover: "/discover", orders: "/orders",
   support: "/support", profile: "/account", wallet: "/wallet", waybill: "/send?mode=interstate",
   plus: "/plus", rewards: "/rewards", group: "/group",

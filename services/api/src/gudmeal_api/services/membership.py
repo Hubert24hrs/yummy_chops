@@ -38,13 +38,16 @@ def lagos_day(dt: datetime) -> str:
 
 SERVICE_WORDS = {
     "food": "Food",
-    "beauty": "Supplements & Skin Care",
+    "beauty": "Beauty",
+    "grocery": "Groceries",
+    "pharmacy": "Pharmacy",
+    "market": "Foodstuff",
 }
 
 
 def services_text(verticals: list[str]) -> str:
-    """How a benefit names the services it covers: "Food" or "Supplements & Skin Care"; every shop service
-    together reads "restaurant and shop"."""
+    """How a benefit names the services it covers: "Food and Beauty"; every shop service reads
+    "restaurant and shop"."""
     if {v.value for v in MERCHANT_VERTICALS} <= set(verticals):
         return "restaurant and shop"
     names = [SERVICE_WORDS.get(v, v.capitalize()) for v in verticals]

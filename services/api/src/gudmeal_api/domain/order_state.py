@@ -178,6 +178,27 @@ PROGRESS_LABELS: dict[str, dict[OrderStatus, str]] = {
         S.READY_FOR_PICKUP: "Packed and ready",
         S.RIDER_ASSIGNED: "Rider on the way to the shop",
     },
+    "grocery": {
+        S.SUBMITTED_TO_RESTAURANT: "Sent to the store",
+        S.RESTAURANT_ACCEPTED: "Store accepted",
+        S.PREPARING: "Packing your order",
+        S.READY_FOR_PICKUP: "Packed and ready",
+        S.RIDER_ASSIGNED: "Rider on the way to the store",
+    },
+    "pharmacy": {
+        S.SUBMITTED_TO_RESTAURANT: "Sent to the pharmacy",
+        S.RESTAURANT_ACCEPTED: "Pharmacy accepted",
+        S.PREPARING: "Packing your order",
+        S.READY_FOR_PICKUP: "Packed and ready",
+        S.RIDER_ASSIGNED: "Rider on the way to the pharmacy",
+    },
+    "market": {
+        S.SUBMITTED_TO_RESTAURANT: "Sent to your shopper",
+        S.RESTAURANT_ACCEPTED: "Shopper accepted",
+        S.PREPARING: "Buying your items",
+        S.READY_FOR_PICKUP: "Bought and packed",
+        S.RIDER_ASSIGNED: "Rider on the way to the market",
+    },
     "waybill": {
         S.PAID: "Booked",
         S.IN_TRANSIT: "On the way",

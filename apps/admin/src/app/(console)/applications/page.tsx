@@ -6,6 +6,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useApi } from "@/lib/api";
 
+/** What a business application is for: the service its shop will appear under (ADR-0025). */
+const BUSINESS_KINDS: Record<string, string> = {
+  food: "Restaurant", pharmacy: "Pharmacy", beauty: "Beauty & Skin Care shop", grocery: "Supermarket or store", market: "Market shopper",
+};
+
 export default function ApplicationsPage() {
   const api = useApi();
   const qc = useQueryClient();
@@ -26,14 +31,14 @@ export default function ApplicationsPage() {
       </div>
       {decide.error && <ErrorState message={(decide.error as Error).message} />}
       {apps.isLoading ? <Skeleton className="h-64" /> : apps.error ? <ErrorState message={(apps.error as Error).message} /> : !apps.data?.length ? (
-        <EmptyState title="Queue is clear" body="New restaurant and rider applications appear here." />
+        <EmptyState title="Queue is clear" body="New business and rider applications appear here." />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {apps.data.map((a) => (
             <Card key={a.id} className="space-y-3 p-5">
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold">{String(a.data.business_name ?? a.data.full_name ?? "Applicant")}</h2>
-                <Badge tone={a.type === "restaurant" ? "progress" : "info"}>{a.type}</Badge>
+                <Badge tone={a.type === "restaurant" ? "progress" : "info"}>{a.type === "restaurant" ? BUSINESS_KINDS[String(a.data.vertical ?? "food")] ?? "Business" : "Rider"}</Badge>
               </div>
               <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
                 {Object.entries(a.data).filter(([k]) => !["location", "document_paths"].includes(k)).map(([k, v]) => (

@@ -40,7 +40,7 @@ export function WhatsAppConnectView({ status, code, onConnect, onDisconnect, bus
         </div>
       ) : (
         <>
-          <p className="text-sm">Order food, supplements, skin care and packages, track orders and get help by chatting with Yummy on WhatsApp.</p>
+          <p className="text-sm">Order food, groceries, foodstuff, pharmacy items, beauty products and packages, track orders and get help by chatting with Yummy on WhatsApp.</p>
           <Button loading={busy} onClick={onConnect}>Connect WhatsApp</Button>
         </>
       )}

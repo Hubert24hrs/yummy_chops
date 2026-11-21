@@ -16,9 +16,9 @@ const site = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 export const metadata: Metadata = {
   metadataBase: new URL(site),
-  title: { default: "Yummy Chops: food, supplements & skin care and package delivery", template: "%s · Yummy Chops" },
+  title: { default: "Yummy Chops: order food, pharmacy, beauty, groceries, foodstuff and package delivery", template: "%s · Yummy Chops" },
   description:
-    "Order food from the best restaurants, supplements and skin care from partner shops, and send packages across Lagos and Enugu. Ask Yummy, our AI assistant, in English, Pidgin, Igbo, Yoruba or Hausa.",
+    "Order food from the best restaurants, pharmacy items, beauty and skin care products, groceries from supermarkets and fresh foodstuff bought for you at the market, and send packages across Lagos and Enugu. Ask Yummy, our AI assistant, in English, Pidgin, Igbo, Yoruba or Hausa.",
   openGraph: { type: "website", siteName: "Yummy Chops", locale: "en_NG" },
   alternates: { canonical: "/" },
 };

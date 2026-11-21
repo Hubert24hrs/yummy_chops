@@ -13,8 +13,11 @@ from pydantic import Field
 from .models import Model, Order, Vertical
 
 SERVICE_NAMES = {
-    Vertical.FOOD: "Food",
-    Vertical.BEAUTY: "Supplements & Skin Care",
+    Vertical.FOOD: "Order Food",
+    Vertical.PHARMACY: "Pharmacy",
+    Vertical.BEAUTY: "Beauty & Skin Care",
+    Vertical.GROCERY: "Shop & Groceries",
+    Vertical.MARKET: "Buy Foodstuff",
     Vertical.PARCEL: "Package Delivery",
     Vertical.WAYBILL: "Interstate waybill",
 }

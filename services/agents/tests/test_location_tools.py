@@ -50,8 +50,9 @@ def test_offline_parser_understands_location_questions():
     quick = nearby_args("cheap food near me I can get in 30 minutes")
     assert quick == {"service": "food", "sort_by": "closest", "max_minutes": 30, "max_price_level": 2}
     assert nearby_args("any sunscreen shop near me?")["service"] == "beauty"
-    assert nearby_args("where can I buy vitamins near me?")["service"] == "beauty"
-    assert nearby_args("which supermarket is close to me?")["service"] == "food"  # not a service any more
+    assert nearby_args("any pharmacy near me?")["service"] == "pharmacy"
+    assert nearby_args("which supermarket is close to me?")["service"] == "grocery"
+    assert nearby_args("is there a market near me?")["service"] == "market"
     # Not location questions (or better served by another flow).
     assert nearby_args("where is my rider? is he near?") is None
     assert nearby_args("what's the fastest way to send a package?") is None

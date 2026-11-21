@@ -55,20 +55,62 @@ FOOD_CATEGORIES: tuple[BrowseCategory, ...] = (
     BrowseCategory("drinks", "Drinks", "🥤", frozenset({"drinks", "smoothies", "juice", "zobo"})),
 )
 
-# Supplements & Skin Care (the `beauty` service).
 BEAUTY_CATEGORIES: tuple[BrowseCategory, ...] = (
     BrowseCategory(PROMOTIONS, "Promotions", "🏷️"),
-    BrowseCategory(
-        "supplements", "Supplements", "💊", frozenset({"supplements", "vitamins", "wellness", "herbal"})
-    ),
     BrowseCategory("skincare", "Skincare", "🧴", frozenset({"skincare", "face care", "sun care"})),
     BrowseCategory("bodycare", "Body care", "🧼", frozenset({"body care", "bath", "natural oils"})),
+    BrowseCategory("haircare", "Hair care", "💇🏾‍♀️", frozenset({"hair care", "natural hair", "wigs"})),
+    BrowseCategory("makeup", "Make-up", "💄", frozenset({"make-up", "makeup", "cosmetics"})),
+    BrowseCategory("fragrance", "Fragrance", "🌸", frozenset({"fragrance", "perfume", "perfume oils"})),
     BrowseCategory("men", "Men's grooming", "🧔🏾", frozenset({"men's grooming", "beard care"})),
+)
+
+# Shop & Groceries, Pharmacy and Buy Foodstuff (ADR-0018, names from ADR-0025). A shop matches by the departments
+# it lists in `cuisines`.
+GROCERY_CATEGORIES: tuple[BrowseCategory, ...] = (
+    BrowseCategory(PROMOTIONS, "Promotions", "🏷️"),
+    BrowseCategory("supermarkets", "Supermarkets", "🛒", frozenset({"supermarket", "superstore"})),
+    BrowseCategory(
+        "convenience", "Convenience", "🏪", frozenset({"convenience", "mini mart", "corner shop"})
+    ),
+    BrowseCategory("drinks", "Drinks & water", "🥤", frozenset({"drinks", "water", "soft drinks", "juice"})),
+    BrowseCategory(
+        "fresh", "Fresh & frozen", "🥦", frozenset({"fresh produce", "frozen", "dairy", "bakery"})
+    ),
+    BrowseCategory("baby", "Baby", "🍼", frozenset({"baby", "baby & toddler"})),
+    BrowseCategory("household", "Household", "🧻", frozenset({"household", "toiletries", "cleaning"})),
+)
+
+PHARMACY_CATEGORIES: tuple[BrowseCategory, ...] = (
+    BrowseCategory(PROMOTIONS, "Promotions", "🏷️"),
+    BrowseCategory("pain", "Pain & fever", "💊", frozenset({"pain relief", "pain & fever", "analgesics"})),
+    BrowseCategory("cold", "Cough & cold", "🤧", frozenset({"cough & cold", "cold & flu", "allergy"})),
+    BrowseCategory("vitamins", "Vitamins", "🍊", frozenset({"vitamins", "supplements", "multivitamins"})),
+    BrowseCategory("firstaid", "First aid", "🩹", frozenset({"first aid", "medical supplies", "devices"})),
+    BrowseCategory("baby", "Mother & baby", "🍼", frozenset({"mother & baby", "baby care"})),
+    BrowseCategory(
+        "personal", "Personal care", "🧼", frozenset({"personal care", "toiletries", "skin care"})
+    ),
+)
+
+MARKET_CATEGORIES: tuple[BrowseCategory, ...] = (
+    BrowseCategory(PROMOTIONS, "Promotions", "🏷️"),
+    BrowseCategory("foodstuff", "Foodstuff", "🧺", frozenset({"foodstuff", "grains", "rice & grains"})),
+    BrowseCategory(
+        "vegetables", "Pepper & vegetables", "🍅", frozenset({"pepper & vegetables", "vegetables"})
+    ),
+    BrowseCategory("protein", "Meat & fish", "🐟", frozenset({"meat", "fish", "meat & fish", "protein"})),
+    BrowseCategory("tubers", "Tubers", "🍠", frozenset({"tubers", "yam"})),
+    BrowseCategory("fruits", "Fruits", "🍌", frozenset({"fruits"})),
+    BrowseCategory("combos", "Soup combos", "🍲", frozenset({"combos", "soup combos"})),
 )
 
 CATEGORIES_BY_VERTICAL: dict[str, tuple[BrowseCategory, ...]] = {
     "food": FOOD_CATEGORIES,
     "beauty": BEAUTY_CATEGORIES,
+    "grocery": GROCERY_CATEGORIES,
+    "pharmacy": PHARMACY_CATEGORIES,
+    "market": MARKET_CATEGORIES,
 }
 
 

@@ -50,7 +50,7 @@ export function WalletView() {
         <div className="container-page max-w-3xl">
           <p className="flex items-center gap-2 text-sm font-semibold text-white/90"><Wallet className="size-4" aria-hidden="true" /> Yummy Chops wallet</p>
           <p className="mt-1 text-5xl font-black tracking-tight" aria-live="polite">{formatNaira(w.balance_kobo)}</p>
-          <p className="mt-2 max-w-md text-sm text-white/90">Pay for food, supplements & skin care and package deliveries in one tap. Refunds come back here instantly.</p>
+          <p className="mt-2 max-w-md text-sm text-white/90">Pay for food, pharmacy, beauty, groceries, foodstuff and package deliveries in one tap. Refunds come back here instantly.</p>
         </div>
       </div>
 

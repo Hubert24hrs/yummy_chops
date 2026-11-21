@@ -123,16 +123,17 @@ void main() {
     expect(nearestArea(const GeoPoint(lat: 6.45, lng: 3.47), const []), isNull);
   });
 
-  testWidgets('home is minimal: the three services and the picks, no banners or explanations', (tester) async {
+  testWidgets('home is minimal: the six services and the picks, no banners or explanations', (tester) async {
     await _pump(tester, const HomeScreen(), overrides: [forYouProvider.overrideWith((ref) async => const <RestaurantCard>[])]);
-    for (final service in ['Food', 'Supplements & Skin Care', 'Package Delivery']) {
+    for (final service in ['Order Food', 'Pharmacy', 'Beauty & Skin Care', 'Shop & Groceries', 'Buy Foodstuff', 'Package Delivery']) {
       expect(find.text(service), findsOneWidget, reason: service);
     }
-    for (final gone in ['Groceries', 'Pharmacy', 'Market Shopping', 'Ask Yummy', 'Send a package', 'Yummy plans to your budget',
+    for (final gone in ['Ask Yummy', 'Send a package', 'Yummy plans to your budget',
         'Transparent, safe payments', 'Live tracking to your door', 'Sell on Yummy Chops. Ride with Yummy Chops.']) {
       expect(find.text(gone), findsNothing, reason: gone);
     }
     // "See all" beside the picks opens Discover.
+    await _pump(tester, const HomeScreen(), overrides: [forYouProvider.overrideWith((ref) async => const <RestaurantCard>[])]);
     await tester.tap(find.byTooltip('See all'));
     await tester.pumpAndSettle();
     expect(find.text('PAGE /discover'), findsOneWidget);
@@ -290,10 +291,42 @@ void main() {
     await tester.tap(find.text('Send application'));
     await tester.pumpAndSettle();
     expect(api.businesses.single, {
+      'vertical': 'food', // a restaurant unless the business picks another kind
       'business_name': 'Mama Nkechi Kitchen', 'cac_number': 'RC123456', 'contact_name': 'Nkechi Eze', 'contact_phone': '08031234567',
       'address': '4 Admiralty Way', 'area': 'Lekki Phase 1', 'location': {'lat': 6.4478, 'lng': 3.4723}, 'cuisines': ['nigerian', 'grills'],
       'bank_name': 'GTBank', 'bank_account_name': 'Mama Nkechi Kitchen Ltd', 'bank_account_last4': '4821',
     });
+    expect(find.text('Application received'), findsOneWidget);
+  });
+
+  testWidgets('a pharmacy picks its kind of business and gives its PCN premises licence', (tester) async {
+    final api = _Api();
+    await _pump(tester, const BusinessApplyScreen(), api: api, tall: true);
+    expect(find.text('PCN premises licence number'), findsNothing); // only pharmacies are asked
+    await tester.tap(find.byKey(const ValueKey('business-kind')));
+    await tester.pumpAndSettle();
+    for (final kind in ['Restaurant (Order Food)', 'Beauty & Skin Care shop', 'Supermarket or store (Shop & Groceries)', 'Market shopper (Buy Foodstuff)']) {
+      expect(find.text(kind), findsWidgets, reason: kind);
+    }
+    await tester.tap(find.text('Pharmacy').last);
+    await tester.pumpAndSettle();
+    for (final (label, value) in [
+      ('Business name', 'Allen Avenue Pharmacy'), ('What you sell', 'Pain relief, Vitamins'), ('Street address', '12 Allen Avenue'),
+      ('Contact name', 'Tobi Ade'), ('Contact phone', '08033333333'), ('CAC number', 'RC654321'), ('Bank', 'GTBank'),
+      ('Account name', 'Allen Avenue Pharmacy Ltd'), ('Account number (last 4)', '4321'),
+    ]) {
+      await tester.enterText(find.widgetWithText(TextFormField, label), value);
+    }
+    await tester.tap(find.text('Send application'));
+    await tester.pumpAndSettle();
+    expect(api.businesses, isEmpty); // a pharmacy cannot apply without its licence
+    expect(find.text('Enter your PCN premises licence number'), findsOneWidget);
+
+    await tester.enterText(find.widgetWithText(TextFormField, 'PCN premises licence number'), 'PCN/PR/12345');
+    await tester.tap(find.text('Send application'));
+    await tester.pumpAndSettle();
+    expect(api.businesses.single['vertical'], 'pharmacy');
+    expect(api.businesses.single['pcn_licence_number'], 'PCN/PR/12345');
     expect(find.text('Application received'), findsOneWidget);
   });
 
@@ -344,12 +377,15 @@ void main() {
         asked = q.vertical;
         return const [
           RestaurantCard(id: 'r-jollof', name: 'Jollof Junction', rating: 4.7, ratingCount: 900, isOpen: true),
-          RestaurantCard(id: 'b-ivie', vertical: 'beauty', name: 'Ivie & Oak Wellness', rating: 4.6, ratingCount: 700, isOpen: true),
+          RestaurantCard(id: 'g-fresh', vertical: 'grocery', name: 'FreshBasket Supermarket', rating: 4.6, ratingCount: 700, isOpen: true),
+          RestaurantCard(id: 'm-lekki', vertical: 'market', name: 'Lekki Market Shopper', rating: 4.5, ratingCount: 600, isOpen: true),
         ];
       }),
     ]);
     expect(asked, 'all');
-    await tester.scrollUntilVisible(find.text('Ivie & Oak Wellness'), 300, scrollable: page);
-    expect(find.text('Supplements & Skin Care'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Lekki Market Shopper'), 300, scrollable: page);
+    expect(find.text('FreshBasket Supermarket'), findsOneWidget);
+    expect(find.text('Shop & Groceries'), findsOneWidget);
+    expect(find.text('Buy Foodstuff'), findsOneWidget);
   });
 }

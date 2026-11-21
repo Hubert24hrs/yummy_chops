@@ -7,9 +7,9 @@ export function Footer() {
       <div className="container-page grid gap-8 py-10 sm:grid-cols-2 lg:grid-cols-4">
         <div className="space-y-3">
           <Logo />
-          <p className="max-w-xs text-sm text-muted">Food, supplements & skin care and package delivery in Lagos and Enugu, with Yummy, an AI assistant that plans to your budget.</p>
+          <p className="max-w-xs text-sm text-muted">Food, pharmacy, beauty & skin care, groceries, foodstuff and package delivery in Lagos and Enugu, with Yummy, an AI assistant that plans to your budget.</p>
         </div>
-        <FooterCol title="Order" links={[["Food", "/food"], ["Supplements & Skin Care", "/beauty"], ["Send a package", "/send"], ["Track a package", "/track"], ["Ask Yummy", "/assistant"], ["My orders", "/orders"]]} />
+        <FooterCol title="Order" links={[["Order Food", "/food"], ["Pharmacy", "/pharmacy"], ["Beauty & Skin Care", "/beauty"], ["Shop & Groceries", "/groceries"], ["Buy Foodstuff", "/foodstuff"], ["Send a package", "/send"], ["Track a package", "/track"], ["Ask Yummy", "/assistant"], ["My orders", "/orders"]]} />
         <FooterCol title="Partner" links={[["Add your business", "/partner-with-us"], ["Ride with Yummy Chops", "/ride"]]} />
         <FooterCol title="Help" links={[["Support", "/support"], ["Help centre", "/help"], ["Privacy", "/help#privacy"], ["Terms", "/help#terms"]]} />
       </div>

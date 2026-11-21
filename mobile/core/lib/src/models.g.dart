@@ -46,6 +46,7 @@ _RestaurantCard _$RestaurantCardFromJson(Map<String, dynamic> json) =>
               ?.map((e) => PromoBadge.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const <PromoBadge>[],
+      badge: json['badge'] as String?,
     );
 
 Map<String, dynamic> _$RestaurantCardToJson(_RestaurantCard instance) =>
@@ -70,6 +71,7 @@ Map<String, dynamic> _$RestaurantCardToJson(_RestaurantCard instance) =>
       'supports_pickup': instance.supportsPickup,
       'supports_delivery': instance.supportsDelivery,
       'promotions': instance.promotions.map((e) => e.toJson()).toList(),
+      'badge': ?instance.badge,
     };
 
 _OptionChoice _$OptionChoiceFromJson(Map<String, dynamic> json) =>
@@ -131,6 +133,9 @@ _MenuItem _$MenuItemFromJson(Map<String, dynamic> json) => _MenuItem(
           .toList() ??
       const <String>[],
   unitLabel: json['unit_label'] as String?,
+  brand: json['brand'] as String?,
+  emoji: json['emoji'] as String?,
+  popularity: (json['popularity'] as num?)?.toInt() ?? 0,
 );
 
 Map<String, dynamic> _$MenuItemToJson(_MenuItem instance) => <String, dynamic>{
@@ -147,6 +152,9 @@ Map<String, dynamic> _$MenuItemToJson(_MenuItem instance) => <String, dynamic>{
   'is_available': instance.isAvailable,
   'option_group_ids': instance.optionGroupIds,
   'unit_label': ?instance.unitLabel,
+  'brand': ?instance.brand,
+  'emoji': ?instance.emoji,
+  'popularity': instance.popularity,
 };
 
 _MenuCategory _$MenuCategoryFromJson(Map<String, dynamic> json) =>
