@@ -257,3 +257,35 @@ so they cannot use the production API (which enforces App Check) until they do (
 `gcloud run services update-traffic <service> --to-revisions=<previous>=100` for any of the five services
 (`gudmeal-api`, `gudmeal-agents`, `gudmeal-web`, `gudmeal-partner`, `gudmeal-admin`). Database migrations are
 forward-only in production; ship a new migration to revert schema changes.
+
+## 8. The online test server (`yummy-chops-dev`, ADR-0026)
+
+For testers anywhere, without the owner's computer: the API and Yummy on Cloud Run, real Firebase sign-in (anyone can
+sign up), Paystack test mode and the invented demo shops. Done so far (2026-11-22): project created, Firebase added
+(customer app, rider app and websites registered), Firestore created and its rules deployed, Email/Password sign-in
+on, US$10 prepaid at Google's request. Left: billing on the project (Google's project-quota review), then:
+
+1. `gcloud billing projects link yummy-chops-dev --billing-account <id>` and a US$20 budget alert.
+2. The bootstrap steps of section 1 with `--project yummy-chops-dev` on each command (do not change the default
+   gcloud project; the owner has other projects), but Cloud SQL as **db-f1-micro** (`--tier db-f1-micro
+   --availability-type ZONAL`), databases `gudmeal` and `gudmeal_agents`, users with generated passwords, and the
+   secrets `api-database-url`, `agents-database-url`, `agents-checkpoint-url`, `api-code-pepper`,
+   `channel-token-secret`, plus `paystack-secret-key` from `.env.paystack` (then delete that file).
+3. Firestore indexes: `cd firebase && firebase deploy --only firestore --project yummy-chops-dev`.
+4. Images with Cloud Build (`gudmeal-api`, `gudmeal-agents`), `alembic upgrade head` as a Cloud Run job, then
+   `WEB_URL=https://yummy247.com PARTNER_URL=https://partner.yummy247.com ADMIN_URL=https://admin.yummy247.com
+   DEPLOY_WEBSITES=false infra/scripts/deploy.sh development yummy-chops-dev europe-west1 gudmeal <tag>`.
+5. Section 4's invoker, Pub/Sub push and Scheduler jobs, plus `demo-shops` every minute
+   (`/internal/jobs/demo-shops`); run `/internal/jobs/seed-demo` once (a one-off Scheduler job, `gcloud scheduler
+   jobs run`). Paystack test webhook: `https://<api-url>/v1/webhooks/paystack`.
+6. `services/api/.venv/Scripts/python services/api/scripts/online_accounts.py yummy-chops-dev` (staff logins).
+7. Google Maps ([GOOGLE_MAPS.md](GOOGLE_MAPS.md); free monthly limits cover testing): enable Maps SDK for Android,
+   Maps JavaScript API, Places API (New), Geocoding and Routes, then three keys: a server key in Secret Manager
+   `google-maps-server-key` (exact addresses for search and GPS), an Android key restricted to the two apps' package
+   names and SHA-1 as `MAPS_ANDROID_KEY` in `.env.online` ("Choose on the map" in the apps), and a browser key for the
+   yummy247.com domains as `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY` on Vercel (the website's map).
+8. `node scripts/build-online-apk.mjs`, then `node scripts/build-online-apk.mjs --publish`: testers download from
+   https://yummy-chops-dev.web.app.
+
+Sign-in on the test server: Email/Password and Google are on (Firebase console); the tester apps' signing key
+(the debug keystore, SHA-1 `0E:0C:D9:…:67:F3`) is registered for both Android apps, which Google sign-in needs.

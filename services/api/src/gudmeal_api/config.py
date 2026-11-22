@@ -34,7 +34,9 @@ class Settings(BaseSettings):
 
     # --- data ------------------------------------------------------------------------------
     data_backend: Literal["memory", "firestore"] = "memory"
-    seed_demo_data: bool = True  # only honoured with the memory backend
+    seed_demo_data: bool = (
+        True  # at start-up with the memory backend; online test server: /internal/jobs/seed-demo
+    )
     gcp_project_id: str = "demo-gudmeal"
     database_url: str = "sqlite+aiosqlite:///./gudmeal_local.db"
     database_echo: bool = False
@@ -110,7 +112,8 @@ class Settings(BaseSettings):
     dispatch_pickup_radius_km: float = 6.0
     # A rider who missed an offer (it ran out) is asked again for the same job after this long.
     dispatch_reoffer_seconds: int = 300
-    # Local testing only (ignored unless ENVIRONMENT=local with the seeded demo data):
+    # Testing only, refused in staging and production: the local stack (ENVIRONMENT=local with the seeded demo data)
+    # and the online test server (ENVIRONMENT=development, through /internal/jobs/seed-demo and /demo-shops; ADR-0026):
     demo_shops_always_open: bool = False  # demo shops take orders around the clock
     demo_shop_autopilot: bool = (
         False  # demo shops accept and pack orders by themselves (nobody at the dashboard)

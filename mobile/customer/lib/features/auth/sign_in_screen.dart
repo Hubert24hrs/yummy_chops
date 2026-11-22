@@ -6,6 +6,7 @@ import 'package:gud_meal_core/gud_meal_core.dart';
 
 import '../../providers.dart';
 import '../../ui/brand.dart';
+import '../location/delivery_location.dart';
 
 /// Accepts 0803…, 803… or +234803… and returns E.164 (+234…), or null if not a Nigerian mobile number.
 String? normaliseNigerianPhone(String input) {
@@ -43,10 +44,13 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   }
 
   /// Leave once signed in: back to the screen that opened sign-in (the Orders or Profile tab), or to `next`.
-  /// (Pushed routes don't change the web URL, so the router's redirect alone can't do this.)
-  void _leaveIfSignedIn() {
+  /// (Pushed routes don't change the web URL, so the router's redirect alone can't do this.) Right after signing in,
+  /// a customer with no saved address first chooses where to deliver: GPS, typing it, or the map.
+  Future<void> _leaveIfSignedIn() async {
     if (!mounted || ref.read(authRepositoryProvider).currentUser == null) return;
     final next = GoRouterState.of(context).uri.queryParameters['next'];
+    await askWhereToDeliverIfNeeded(context, ref);
+    if (!mounted) return;
     if (context.canPop()) {
       context.pop();
     } else {

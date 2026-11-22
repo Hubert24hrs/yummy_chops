@@ -383,3 +383,44 @@ async def test_a_business_says_what_kind_of_shop_it_is_and_pharmacies_give_their
     plain = {k: v for k, v in application.items() if k != "vertical"}
     r = await client.post("/v1/applications/restaurant", json=plain, headers=auth("customer"))
     assert r.status_code == 201 and r.json()["data"]["vertical"] == "food"
+
+
+# ------------------------------------------------------------------------------------------------- online test server
+async def test_the_online_test_server_seeds_demo_shops_and_runs_them_by_scheduler():
+    """ADR-0026: on the online test server (development) Cloud Scheduler fills the database once and lets the demo
+    shops accept orders; both jobs are internal and never run in staging or production."""
+    from conftest import make_container
+    from gudmeal_api.api.v1.system import demo_shops, seed_demo
+    from gudmeal_api.errors import NotFound
+
+    dev = await make_container(
+        environment="development", seed_demo_data=True, demo_shops_always_open=True, demo_shop_autopilot=True
+    )
+    try:
+        counts = await seed_demo(dev, "scheduler")
+        assert counts["restaurants"] > 20 and counts["open_all_day"] == counts["restaurants"]
+        riders_online = [r.uid for r in await dev.repos.riders.find() if r.is_online]
+        assert (
+            len(riders_online) <= 1
+        )  # only rider@'s profile can take jobs; nobody holds the other demo riders
+        assert (await demo_shops(dev, "scheduler")) == {"moved": 0}
+    finally:
+        await dev.close()
+
+    # With the switches off (as in staging and production, which refuse them at start-up) neither job runs.
+    off = await make_container(environment="development")
+    try:
+        with pytest.raises(NotFound):
+            await seed_demo(off, "scheduler")
+        with pytest.raises(NotFound):
+            await demo_shops(off, "scheduler")
+    finally:
+        await off.close()
+
+
+async def test_seed_and_autopilot_jobs_need_the_scheduler(client):
+    for job in ("seed-demo", "demo-shops"):
+        assert (await client.post(f"/internal/jobs/{job}")).status_code == 403
+        # The test settings switch both off, so even the scheduler gets "not here".
+        r = await client.post(f"/internal/jobs/{job}", headers={"X-Internal-Token": "test-internal-secret"})
+        assert r.status_code == 404

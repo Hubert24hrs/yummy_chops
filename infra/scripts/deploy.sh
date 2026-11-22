@@ -37,6 +37,20 @@ if [[ -n "$(gcloud secrets versions list google-maps-server-key --project "$PROJ
   MAPS_SECRET=",GOOGLE_MAPS_API_KEY=google-maps-server-key:latest"
 fi
 
+# Gemini (Yummy's AI): bound once gemini-api-key has a value; without it Yummy answers in its offline mode.
+GEMINI_SECRETS=""
+if [[ -n "$(gcloud secrets versions list gemini-api-key --project "$PROJECT" --filter 'state=ENABLED' --limit 1 --format 'value(name)' 2>/dev/null || true)" ]]; then
+  GEMINI_SECRETS="GOOGLE_API_KEY=gemini-api-key:latest,GEMINI_MODEL=gemini-model:latest,"
+fi
+
+# The online test server (ENVIRONMENT=development, ADR-0026) runs the invented demo shops: Cloud Scheduler fills the
+# database once (/internal/jobs/seed-demo) and lets the shops accept orders (/internal/jobs/demo-shops). Staging and
+# production refuse these switches at start-up.
+DEMO_ENV="SEED_DEMO_DATA=false"
+if [[ "$ENVIRONMENT" == "development" ]]; then
+  DEMO_ENV="SEED_DEMO_DATA=true,DEMO_SHOPS_ALWAYS_OPEN=true,DEMO_SHOP_AUTOPILOT=true"
+fi
+
 echo "==> Deploying gudmeal-api ($ENVIRONMENT, min=$MIN max=$MAX)"
 gcloud run deploy gudmeal-api --project "$PROJECT" --region "$REGION" \
   --image "$IMG/gudmeal-api:$TAG" \
@@ -45,7 +59,7 @@ gcloud run deploy gudmeal-api --project "$PROJECT" --region "$REGION" \
   --min-instances "$MIN" --max-instances "$MAX" \
   --set-cloudsql-instances "$SQL" \
   --allow-unauthenticated \
-  --set-env-vars "ENVIRONMENT=$ENVIRONMENT,DATA_BACKEND=firestore,SEED_DEMO_DATA=false,GCP_PROJECT_ID=$PROJECT,FIREBASE_PROJECT_ID=$PROJECT,EVENT_BUS=pubsub,TASK_QUEUE=cloudtasks,NOTIFIER=fcm,INTERNAL_AUTH_MODE=oidc,CLOUD_TASKS_LOCATION=$REGION,CLOUD_TASKS_SERVICE_ACCOUNT=gudmeal-tasks@$PROJECT.iam.gserviceaccount.com,INTERNAL_OIDC_AUDIENCE=$API_URL,PUBLIC_BASE_URL=$API_URL,APP_CHECK_ENFORCED=$([ "$ENVIRONMENT" = production ] && echo true || echo false),AGENTS_BASE_URL=$AGENTS_URL,PUBLIC_WEB_URL=$WEB_URL,PAYMENT_CALLBACK_URL=$WEB_URL/checkout/callback,$WHATSAPP_ENV" \
+  --set-env-vars "ENVIRONMENT=$ENVIRONMENT,DATA_BACKEND=firestore,$DEMO_ENV,GCP_PROJECT_ID=$PROJECT,FIREBASE_PROJECT_ID=$PROJECT,EVENT_BUS=pubsub,TASK_QUEUE=cloudtasks,NOTIFIER=fcm,INTERNAL_AUTH_MODE=oidc,CLOUD_TASKS_LOCATION=$REGION,CLOUD_TASKS_SERVICE_ACCOUNT=gudmeal-tasks@$PROJECT.iam.gserviceaccount.com,INTERNAL_OIDC_AUDIENCE=$API_URL,PUBLIC_BASE_URL=$API_URL,APP_CHECK_ENFORCED=$([ "$ENVIRONMENT" = production ] && echo true || echo false),AGENTS_BASE_URL=$AGENTS_URL,PUBLIC_WEB_URL=$WEB_URL,PAYMENT_CALLBACK_URL=$WEB_URL/checkout/callback,$WHATSAPP_ENV" \
   --set-env-vars "^;^INTERNAL_OIDC_SERVICE_ACCOUNTS=[\"gudmeal-tasks@$PROJECT.iam.gserviceaccount.com\"];TRUSTED_SERVICE_ACCOUNTS=[\"gudmeal-agents@$PROJECT.iam.gserviceaccount.com\"];CORS_ORIGINS=$SITES" \
   --set-secrets "DATABASE_URL=api-database-url:latest,PAYSTACK_SECRET_KEY=paystack-secret-key:latest,CODE_PEPPER=api-code-pepper:latest,CHANNEL_TOKEN_SECRET=channel-token-secret:latest$WHATSAPP_SECRETS$MAPS_SECRET"
 
@@ -59,11 +73,15 @@ gcloud run deploy gudmeal-agents --project "$PROJECT" --region "$REGION" \
   --allow-unauthenticated \
   --set-env-vars "ENVIRONMENT=$ENVIRONMENT,API_BASE_URL=$API_URL,FIREBASE_PROJECT_ID=$PROJECT,CHECKPOINTER=postgres,CHECK_TOKEN_REVOCATION=true,LANGSMITH_TRACING=false,INTERNAL_AUTH_MODE=oidc" \
   --set-env-vars "^;^CORS_ORIGINS=$SITES" \
-  --set-secrets "GOOGLE_API_KEY=gemini-api-key:latest,GEMINI_MODEL=gemini-model:latest,DATABASE_URL=agents-database-url:latest,CHECKPOINT_POSTGRES_URL=agents-checkpoint-url:latest,CHANNEL_TOKEN_SECRET=channel-token-secret:latest"
+  --set-secrets "${GEMINI_SECRETS}DATABASE_URL=agents-database-url:latest,CHECKPOINT_POSTGRES_URL=agents-checkpoint-url:latest,CHANNEL_TOKEN_SECRET=channel-token-secret:latest"
 
 # The websites hold no secrets and need no Google Cloud permissions: a role-less service account, public access.
 # Their browser settings are compiled into the images; API_URL is for the customer site's server-side pages.
-for SITE in web partner admin; do
+# DEPLOY_WEBSITES=false skips them: the live websites are on Vercel (docs/DEPLOYMENT.md §5a); then set WEB_URL,
+# PARTNER_URL and ADMIN_URL to their addresses so CORS and the payment return page point there.
+SITE_LIST="web partner admin"
+[[ "${DEPLOY_WEBSITES:-true}" == "false" ]] && SITE_LIST=""
+for SITE in $SITE_LIST; do
   echo "==> Deploying gudmeal-$SITE"
   gcloud run deploy "gudmeal-$SITE" --project "$PROJECT" --region "$REGION" \
     --image "$IMG/gudmeal-$SITE:$TAG" \

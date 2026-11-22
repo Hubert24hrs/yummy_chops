@@ -72,3 +72,26 @@ export function useLocation(): LocationState {
   if (!ctx) throw new Error("useLocation must be used inside LocationProvider");
   return ctx;
 }
+
+/** Distance in km between two points (haversine). */
+function kmBetween(a: GeoPoint, b: GeoPoint): number {
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
+
+/** The delivery area nearest to `point`, or null when even the nearest is more than `withinKm` away. */
+export function nearestArea(point: GeoPoint, withinKm = 25): Area | null {
+  let best: Area | null = null;
+  let bestKm = Infinity;
+  for (const area of AREAS) {
+    const km = kmBetween(point, area.location);
+    if (km < bestKm) {
+      bestKm = km;
+      best = area;
+    }
+  }
+  return best && bestKm <= withinKm ? best : null;
+}

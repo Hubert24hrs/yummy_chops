@@ -73,16 +73,21 @@ export interface MapViewProps {
    * fails, a schematic map is drawn from the same data.
    */
   googleKey?: string;
+  /**
+   * With Google tiles, the "home" pin can be dragged to the customer's gate ("Choose on the map"); this gets where
+   * it was dropped. The schematic map has no real streets, so it never offers dragging.
+   */
+  onPinMoved?: (point: GeoPoint) => void;
 }
 
-export function MapView({ pins, route, height = 260, className, selectedId, onPinClick, connect = true, googleKey }: MapViewProps) {
+export function MapView({ pins, route, height = 260, className, selectedId, onPinClick, connect = true, googleKey, onPinMoved }: MapViewProps) {
   const routePoints = useMemo(() => (typeof route === "string" ? safeDecode(route) : route ?? []), [route]);
   const [googleFailed, setGoogleFailed] = useState(false);
   const label = `Map showing ${pins.map((p) => p.label ?? PIN_NAME[p.kind]).join(", ")}`;
   return (
     <div className={cn("relative overflow-hidden rounded-xl border border-border bg-surface-muted", className)} style={{ height }}>
       {googleKey && !googleFailed ? (
-        <GoogleCanvas apiKey={googleKey} pins={pins} route={routePoints} label={label} onFail={() => setGoogleFailed(true)} onPinClick={onPinClick} />
+        <GoogleCanvas apiKey={googleKey} pins={pins} route={routePoints} label={label} onFail={() => setGoogleFailed(true)} onPinClick={onPinClick} onPinMoved={onPinMoved} />
       ) : (
         <Schematic pins={pins} route={routePoints} height={height} selectedId={selectedId} onPinClick={onPinClick} connect={connect} label={label} />
       )}
@@ -169,7 +174,10 @@ interface GoogleMapsGlobal {
   maps: {
     Map: new (el: HTMLElement, opts: Record<string, unknown>) => { fitBounds: (b: unknown, pad?: number) => void; setCenter: (p: unknown) => void; setZoom: (z: number) => void };
     LatLngBounds: new () => { extend: (p: { lat: number; lng: number }) => void };
-    Marker: new (opts: Record<string, unknown>) => { setMap: (m: unknown) => void; addListener: (e: string, f: () => void) => void };
+    Marker: new (opts: Record<string, unknown>) => {
+      setMap: (m: unknown) => void; addListener: (e: string, f: () => void) => void;
+      getPosition: () => { lat: () => number; lng: () => number } | null | undefined;
+    };
     Polyline: new (opts: Record<string, unknown>) => { setMap: (m: unknown) => void };
   };
 }
@@ -192,15 +200,16 @@ function loadGoogleMaps(apiKey: string): Promise<GoogleMapsGlobal> {
 
 const MARKER_LETTER: Record<PinKind, string> = { kitchen: "K", place: "R", home: "H", you: "•", rider: "R", "rider-idle": "r" };
 
-function GoogleCanvas({ apiKey, pins, route, label, onFail, onPinClick }: {
+function GoogleCanvas({ apiKey, pins, route, label, onFail, onPinClick, onPinMoved }: {
   apiKey: string; pins: MapPin[]; route: GeoPoint[]; label: string; onFail: () => void; onPinClick?: (id: string) => void;
+  onPinMoved?: (point: GeoPoint) => void;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<{ g: GoogleMapsGlobal; map: InstanceType<GoogleMapsGlobal["maps"]["Map"]> } | null>(null);
   const [ready, setReady] = useState(false);
   const fitted = useRef("");
-  const latest = useRef({ pins, route, onPinClick });
-  latest.current = { pins, route, onPinClick };
+  const latest = useRef({ pins, route, onPinClick, onPinMoved });
+  latest.current = { pins, route, onPinClick, onPinMoved };
   // Only redraw when the data actually changes (the order page polls every few seconds).
   const sig = JSON.stringify([pins, route]);
 
@@ -218,11 +227,19 @@ function GoogleCanvas({ apiKey, pins, route, label, onFail, onPinClick }: {
     const m = mapRef.current;
     if (!ready || !m) return;
     const { pins: ps, route: rt, onPinClick: click } = latest.current;
+    const movable = Boolean(latest.current.onPinMoved);
     const cleanup: (() => void)[] = [];
     const bounds = new m.g.maps.LatLngBounds();
     for (const p of ps) {
-      const marker = new m.g.maps.Marker({ position: p.point, map: m.map, title: p.label ?? PIN_NAME[p.kind], label: MARKER_LETTER[p.kind] });
+      const draggable = movable && p.kind === "home";
+      const marker = new m.g.maps.Marker({ position: p.point, map: m.map, title: p.label ?? PIN_NAME[p.kind], label: MARKER_LETTER[p.kind], draggable });
       if (p.id && click) marker.addListener("click", () => click(p.id!));
+      if (draggable) {
+        marker.addListener("dragend", () => {
+          const at = marker.getPosition();
+          if (at) latest.current.onPinMoved?.({ lat: at.lat(), lng: at.lng() });
+        });
+      }
       cleanup.push(() => marker.setMap(null));
       bounds.extend(p.point);
     }

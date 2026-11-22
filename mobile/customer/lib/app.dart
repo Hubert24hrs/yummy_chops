@@ -12,6 +12,7 @@ import 'features/discover/discover_screen.dart';
 import 'features/group/group_screens.dart';
 import 'features/home/home_screen.dart';
 import 'features/info/info_screens.dart';
+import 'features/location/delivery_location.dart';
 import 'features/location/nearby_map_screen.dart';
 import 'features/orders/order_screen.dart';
 import 'features/orders/orders_screen.dart';
@@ -138,6 +139,8 @@ class GudMealApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Notices a fresh sign-in, so the customer is asked where to deliver (features/location/delivery_location.dart).
+    ref.listen(askWhereToDeliverProvider, (_, _) {});
     return MaterialApp.router(
       title: 'Yummy Chops',
       debugShowCheckedModeBanner: false,

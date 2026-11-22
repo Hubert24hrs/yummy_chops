@@ -55,17 +55,22 @@ class PickedAddress {
   final String? placeId;
 }
 
+/// How the picker opens: on the search box, finding the phone's position at once, or on the map with a pin to move.
+enum AddressStart { search, myLocation, map }
+
 /// Opens the address picker. Search goes through the Yummy Chops API (Google Places behind it when configured,
-/// the neighbourhood list otherwise), so no Google key is in the app for this.
-Future<PickedAddress?> pickDeliveryAddress(BuildContext context, {String title = 'Delivery address'}) =>
+/// the neighbourhood list otherwise), so no Google key is in the app for this. "Choose on the map" needs Google map
+/// tiles (a build with MAPS_ENABLED and the app's Maps key); without them the picker offers search and GPS only.
+Future<PickedAddress?> pickDeliveryAddress(BuildContext context, {String title = 'Delivery address', AddressStart start = AddressStart.search}) =>
     // Root navigator: a focused full-screen step above the tab bar and the assistant button.
     Navigator.of(context, rootNavigator: true).push<PickedAddress>(
-      MaterialPageRoute(fullscreenDialog: true, builder: (_) => AddressPickerScreen(title: title)),
+      MaterialPageRoute(fullscreenDialog: true, builder: (_) => AddressPickerScreen(title: title, start: start)),
     );
 
 class AddressPickerScreen extends ConsumerStatefulWidget {
-  const AddressPickerScreen({super.key, this.title = 'Delivery address'});
+  const AddressPickerScreen({super.key, this.title = 'Delivery address', this.start = AddressStart.search});
   final String title;
+  final AddressStart start;
 
   @override
   ConsumerState<AddressPickerScreen> createState() => _AddressPickerScreenState();
@@ -85,6 +90,50 @@ class _AddressPickerScreenState extends ConsumerState<AddressPickerScreen> {
 
   PlaceLookup? _chosen;
   GeoPoint? _pin;
+
+  /// "Choose on the map": the pin the customer is moving, before the API turns it into an address.
+  bool _onMap = false;
+  GeoPoint? _mapPin;
+  bool _placing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.start == AddressStart.myLocation) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _useMyLocation());
+    } else if (widget.start == AddressStart.map && googleMapsReady) {
+      _onMap = true;
+      _mapPin = ref.read(areaProvider).location;
+    }
+  }
+
+  void _openMap() => setState(() {
+        _onMap = true;
+        _mapPin ??= ref.read(areaProvider).location;
+        _error = null;
+      });
+
+  /// The spot the customer chose on the map, as an address the rider can find (the API looks it up).
+  Future<void> _useMapSpot() async {
+    final spot = _mapPin;
+    if (spot == null) return;
+    setState(() {
+      _placing = true;
+      _error = null;
+    });
+    try {
+      final lookup = await ref.read(apiProvider).reverseGeocode(spot);
+      _show(lookup);
+      setState(() {
+        _onMap = false;
+        _pin = spot; // keep the exact spot, not the looked-up centre
+      });
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _placing = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -187,17 +236,24 @@ class _AddressPickerScreenState extends ConsumerState<AddressPickerScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
-        leading: _chosen == null
+        leading: _chosen == null && !_onMap
             ? null
             : IconButton(
                 tooltip: 'Back to search',
                 icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: () => setState(() => _chosen = null),
+                onPressed: () => setState(() {
+                  _chosen = null;
+                  _onMap = false;
+                }),
               ),
       ),
-      body: _chosen == null ? _searchView(context) : _confirmView(context, _chosen!),
+      body: _chosen != null
+          ? _confirmView(context, _chosen!)
+          : _onMap
+              ? _mapView(context)
+              : _searchView(context),
       bottomNavigationBar: _chosen == null
-          ? null
+          ? (_onMap ? _mapBar(context) : null)
           : SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -240,6 +296,15 @@ class _AddressPickerScreenState extends ConsumerState<AddressPickerScreen> {
         subtitle: const Text('Asked once to find your address; Yummy Chops does not track you'),
         onTap: _locating ? null : _useMyLocation,
       ),
+      if (googleMapsReady)
+        ListTile(
+          key: const ValueKey('choose-on-map'),
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.map_rounded, color: theme.colorScheme.primary),
+          title: const Text('Choose on the map', style: TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: const Text('Move the pin to your gate'),
+          onTap: _openMap,
+        ),
       if (_error != null) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),
       for (final s in _suggestions)
         ListTile(
@@ -269,6 +334,37 @@ class _AddressPickerScreenState extends ConsumerState<AddressPickerScreen> {
       ],
     ]);
   }
+
+  /// "Choose on the map": a Google map with one pin the customer drags to their gate.
+  Widget _mapView(BuildContext context) {
+    final theme = Theme.of(context);
+    final pin = _mapPin ?? ref.read(areaProvider).location;
+    return ListView(padding: const EdgeInsets.all(16), children: [
+      Text('Drag the pin to where the rider should stop, then tap "Use this spot".', style: theme.textTheme.bodyMedium),
+      const SizedBox(height: 12),
+      GmMap(
+        height: 380,
+        pins: [MapPin(pin, PinKind.home, label: 'Deliver here')],
+        onPinMoved: (p) => setState(() => _mapPin = p),
+      ),
+      if (_error != null)
+        Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),
+    ]);
+  }
+
+  Widget _mapBar(BuildContext context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: FilledButton.icon(
+            key: const ValueKey('use-map-spot'),
+            onPressed: _placing ? null : _useMapSpot,
+            icon: _placing
+                ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.check_rounded),
+            label: const Text('Use this spot'),
+          ),
+        ),
+      );
 
   Widget _confirmView(BuildContext context, PlaceLookup chosen) {
     final theme = Theme.of(context);

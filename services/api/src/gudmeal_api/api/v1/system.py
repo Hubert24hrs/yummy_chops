@@ -83,6 +83,37 @@ async def renew_plus(c: Ctr, _caller: InternalCaller) -> dict[str, int]:
     return await c.membership.renew_due()
 
 
+@internal.post("/jobs/seed-demo")
+async def seed_demo(c: Ctr, _caller: InternalCaller) -> dict[str, int]:
+    """Online test server only (ENVIRONMENT=development with SEED_DEMO_DATA, never staging or production; ADR-0026): fill the
+    database once with the invented demo shops, menus, riders and vouchers, open the shops around the clock
+    (DEMO_SHOPS_ALWAYS_OPEN) and keep only rider@ for jobs. Saving the same ids again overwrites them."""
+    s = c.settings
+    if not s.seed_demo_data or s.environment in ("staging", "production"):
+        raise NotFound("Not available here")
+    from ...seed import seed
+    from ...seed.lagos import open_demo_shops_all_day, park_extra_demo_riders
+
+    counts = await seed(c.repos)
+    if s.demo_shops_always_open:
+        counts["open_all_day"] = await open_demo_shops_all_day(c.repos)
+    await park_extra_demo_riders(c.repos)
+    return counts
+
+
+@internal.post("/jobs/demo-shops")
+async def demo_shops(c: Ctr, _caller: InternalCaller) -> dict[str, int]:
+    """Online test server only (DEMO_SHOP_AUTOPILOT, never staging or production; ADR-0026): nobody sits at the demo
+    shops' dashboards, so they accept orders left waiting and mark accepted ones ready. Cloud Scheduler calls it every
+    minute (the local stack runs the same pass every few seconds in-process)."""
+    s = c.settings
+    if not s.demo_shop_autopilot or s.environment in ("staging", "production"):
+        raise NotFound("Not available here")
+    from ...seed.autopilot import run_demo_shops
+
+    return {"moved": await run_demo_shops(c)}
+
+
 @internal.post("/jobs/sweep")
 async def sweep(c: Ctr, _caller: InternalCaller) -> dict[str, int]:
     """Repairs work whose triggering event may have been lost (idempotent)."""

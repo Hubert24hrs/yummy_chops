@@ -6,7 +6,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { useApi } from "@/lib/api";
 import { authErrorMessage, useAuth } from "@/lib/auth";
+import { safeNext } from "@/lib/next-path";
 
 const schema = z.object({
   name: z.string().max(80).optional(),
@@ -21,21 +23,34 @@ export default function LoginPage() {
 
 function Login() {
   const { signIn, signUp, signInWithGoogle } = useAuth();
+  const api = useApi();
   const router = useRouter();
   const next = useSearchParams().get("next") ?? "/";
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [error, setError] = useState<string | null>(null);
   const { register, handleSubmit, formState } = useForm<Values>({ resolver: zodResolver(schema) });
 
-  // Only same-site paths: "//host" and "/\host" would leave the site (open redirect).
-  const done = () => router.replace(/^\/(?![/\\])/.test(next) ? next : "/");
+  // Then on to `next` (same-site paths only). A customer with no saved address first chooses where to deliver: GPS,
+  // typing it, or the map, as in the app. Reading the address book never blocks signing in.
+  const done = async () => {
+    const target = safeNext(next);
+    try {
+      if ((await api.me.addresses()).length === 0) {
+        router.replace(`/where-to-deliver?next=${encodeURIComponent(target)}`);
+        return;
+      }
+    } catch {
+      /* go on without asking */
+    }
+    router.replace(target);
+  };
 
   const onSubmit = handleSubmit(async (v) => {
     setError(null);
     try {
       if (mode === "signup") await signUp(v.name?.trim() || "Yummy Chops customer", v.email, v.password);
       else await signIn(v.email, v.password);
-      done();
+      await done();
     } catch (e) {
       setError(authErrorMessage(e));
     }
@@ -61,7 +76,7 @@ function Login() {
           {error && <p role="alert" className="text-sm text-danger">{error}</p>}
           <Button type="submit" block size="lg" loading={formState.isSubmitting}>{mode === "signin" ? "Sign in" : "Create account"}</Button>
         </form>
-        <Button variant="outline" block onClick={async () => { try { await signInWithGoogle(); done(); } catch (e) { setError(authErrorMessage(e)); } }}>
+        <Button variant="outline" block onClick={async () => { try { await signInWithGoogle(); await done(); } catch (e) { setError(authErrorMessage(e)); } }}>
           Continue with Google
         </Button>
         <p className="text-center text-sm text-muted">
