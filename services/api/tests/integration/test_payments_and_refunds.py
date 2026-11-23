@@ -6,7 +6,7 @@ import json
 
 from sqlalchemy import select, text
 
-from conftest import auth, idem
+from conftest import auth, idem, make_container
 from gudmeal_api.ledger.tables import LedgerEntry, PaymentRecord
 from gudmeal_api.services import orders as orders_mod
 
@@ -288,3 +288,24 @@ async def test_sandbox_sends_a_phone_on_the_wifi_back_to_the_app(flow, container
         else:
             assert r.headers["location"].startswith("http://localhost:3000/checkout/callback?reference=")
         assert (await flow.get(order["id"]))["payment"]["status"] == "paid"
+
+
+async def test_payment_gateways_get_an_email_that_can_receive_mail() -> None:
+    # Paystack refuses special-use domains ("email must be a valid email"): the demo accounts are @yummychops.test.
+    from gudmeal_api.security.rbac import Principal
+
+    c = await make_container()
+    try:
+        fallback = c.settings.customer_email_fallback_domain
+        assert c.payments.payer_email(Principal(uid="u1", email="ada@gmail.com")) == "ada@gmail.com"
+        assert c.payments.payer_email(Principal(uid="u2")) == f"u2@{fallback}"
+        for demo in (
+            "customer@yummychops.test",
+            "x@example",
+            "y@shop.invalid",
+            "z@host.local",
+            "q@localhost",
+        ):
+            assert c.payments.payer_email(Principal(uid="demo-1", email=demo)) == f"demo-1@{fallback}", demo
+    finally:
+        await c.close()

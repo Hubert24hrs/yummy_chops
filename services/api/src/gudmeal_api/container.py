@@ -163,6 +163,22 @@ def _sandbox_base_url(settings: Settings) -> str | Callable[[], str]:
     return lambda: reachable_base_url(port, settings.public_base_url)
 
 
+def _payment_callback_url(settings: Settings) -> str | Callable[[], str]:
+    """Where a card payment page (Paystack, or the sandbox) sends the payer back: PAYMENT_CALLBACK_URL, the
+    website's callback page. In phone tests (SANDBOX_FOLLOWS_LAN_ADDRESS) that is this computer's own localhost,
+    which the paying phone cannot open, so the payer comes back to this API's "return to the app" page instead
+    (/v1/dev/payment-return), at an address the phone can reach."""
+    url = settings.payment_callback_url
+    if (
+        settings.environment not in ("local", "test")
+        or not settings.sandbox_follows_lan_address
+        or urlsplit(url).hostname not in ("localhost", "127.0.0.1")
+    ):
+        return url
+    port = urlsplit(settings.public_base_url).port or 8000
+    return lambda: f"{reachable_base_url(port, settings.public_base_url)}/v1/dev/payment-return"
+
+
 async def build_container(
     settings: Settings,
     *,
@@ -259,7 +275,7 @@ async def build_container(
         repos=repos,
         providers=providers,
         default_provider=default_provider,
-        callback_url=settings.payment_callback_url,
+        callback_url=_payment_callback_url(settings),
         email_fallback_domain=settings.customer_email_fallback_domain,
         refund_auto_approve_limit_kobo=settings.refund_auto_approve_limit_kobo,
         failover_provider=settings.payment_failover_provider,

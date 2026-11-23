@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import secrets
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
@@ -36,6 +36,8 @@ from ..security.rbac import Permission, Principal, require
 
 logger = logging.getLogger(__name__)
 REUSE_WINDOW = timedelta(minutes=25)
+# Top-level domains reserved for testing and examples (RFC 2606, RFC 6761): no mailbox exists there.
+_UNDELIVERABLE_TLDS = frozenset({"test", "example", "invalid", "localhost", "local"})
 
 
 def utcnow() -> datetime:
@@ -112,7 +114,7 @@ class PaymentService:
         repos: Repositories,
         providers: Mapping[str, PaymentProvider],
         default_provider: str,
-        callback_url: str,
+        callback_url: str | Callable[[], str],
         email_fallback_domain: str,
         refund_auto_approve_limit_kobo: int = 0,
         failover_provider: str | None = None,
@@ -131,6 +133,22 @@ class PaymentService:
         self.refund_auto_approve_limit = refund_auto_approve_limit_kobo
         self.wallet_enabled = wallet_enabled
         self.health = ProviderHealth()
+
+    def payer_email(self, principal: Principal) -> str:
+        """The email a payment gateway gets for this payer. Gateways require one: customers who signed in without an
+        email, and accounts on special-use domains that can never receive mail (the demo accounts' @yummychops.test;
+        RFC 2606 and 6761), which Paystack refuses ("email must be a valid email"), get an address on our own domain."""
+        email = (principal.email or "").strip()
+        domain = email.rpartition("@")[2].lower()
+        if "@" not in email or not domain or domain.rsplit(".", 1)[-1] in _UNDELIVERABLE_TLDS:
+            return f"{principal.uid}@{self.email_fallback_domain}"
+        return email
+
+    def _return_to(self, query: str) -> str:
+        """Where the payment page sends the payer back. The address can change while the API runs (phone tests
+        follow the laptop's Wi-Fi address), so it is worked out for each payment."""
+        base = self.callback_url() if callable(self.callback_url) else self.callback_url
+        return f"{base}?{query}"
 
     def provider(self, name: str | None) -> PaymentProvider:
         key = name or self.default_provider
@@ -191,7 +209,7 @@ class PaymentService:
             reference_stem=f"YC-{order.short_code}",
             idempotency_key=f"{order.id}:{idempotency_key}",
             principal=principal,
-            callback_url=f"{self.callback_url}?order_id={order.id}",
+            callback_url=self._return_to(f"order_id={order.id}"),
             metadata={"order_id": order.id, "short_code": order.short_code, "customer_id": order.customer_id},
         )
 
@@ -210,7 +228,7 @@ class PaymentService:
             reference_stem="YC-TOPUP",
             idempotency_key=f"topup:{principal.uid}:{idempotency_key}",
             principal=principal,
-            callback_url=f"{self.callback_url}?purpose=wallet_topup",
+            callback_url=self._return_to("purpose=wallet_topup"),
             metadata={"purpose": "wallet_topup", "customer_id": principal.uid},
         )
 
@@ -227,7 +245,7 @@ class PaymentService:
             reference_stem="YC-PLUS",
             idempotency_key=f"plus:{principal.uid}:{idempotency_key}",
             principal=principal,
-            callback_url=f"{self.callback_url}?purpose=plus",
+            callback_url=self._return_to("purpose=plus"),
             metadata={"purpose": "plus", "customer_id": principal.uid},
         )
 
@@ -269,7 +287,7 @@ class PaymentService:
             reference_stem=f"YC-{order.short_code}-G",
             idempotency_key=f"share:{order.id}:{principal.uid}:{idempotency_key}",
             principal=principal,
-            callback_url=f"{self.callback_url}?group_order_id={order.group_order_id}",
+            callback_url=self._return_to(f"group_order_id={order.group_order_id}"),
             metadata={
                 "purpose": "group_share",
                 "order_id": order.id,
@@ -422,7 +440,7 @@ class PaymentService:
         metadata: dict[str, Any],
     ) -> dict[str, Any]:
         """Start a gateway checkout, failing over to the next gateway when one cannot start it."""
-        email = principal.email or f"{principal.uid}@{self.email_fallback_domain}"
+        email = self.payer_email(principal)
         last_error: PaymentProviderError | None = None
         for attempt, name in enumerate(names):
             provider = self.provider(name)

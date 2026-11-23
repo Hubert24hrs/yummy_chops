@@ -59,8 +59,8 @@ Added on 2026-11-17 at the owner's request, outside the numbered phases:
 
 - **Groceries, Pharmacy and Market Shopping** ([ADR-0018](adr/0018-groceries-pharmacy-market.md)): built on 17 Nov,
   removed on 18 Nov ([ADR-0021](adr/0021-supplements-and-skin-care-minimal-home.md)) and back on 21 Nov as
-  Shop & Groceries, Pharmacy and Buy Foodstuff ([ADR-0025](adr/0025-six-services.md)). To confirm: the Plus minimum
-  basket for these services, their commission, and a legal review of selling over-the-counter medicines online.
+  Shop & Groceries, Pharmacy and Buy Foodstuff ([ADR-0025](adr/0025-six-services.md)). Plus minimum basket: ₦3,000
+  (decided 22 Nov). To confirm: their commission, and a legal review of selling over-the-counter medicines online.
 - **Receipts and the receipt printer** ([ADR-0019](adr/0019-receipt-printer.md)): done and tested.
 
 Delivery phases (each tested, documented and pushed before the next):

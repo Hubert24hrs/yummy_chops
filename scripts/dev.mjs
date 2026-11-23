@@ -5,6 +5,7 @@
 // (see docs/LOCAL_DEVELOPMENT.md, "Test on your phone"). Set LAN_IP to choose the address yourself.
 // customer-web takes --port=5051, the spare address (see WEB_APP_PORTS below).
 // Several names run together, and --seed creates the demo accounts: `auth api agents downloads --lan --seed`.
+// --paystack: card payments in Paystack TEST mode, with the key from the git-ignored .env.paystack.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -118,11 +119,26 @@ for (const name of names) {
   }
 }
 
+// --paystack: card payments go to Paystack in TEST mode instead of the local sandbox (docs/PAYSTACK_TEST_MODE.md).
+// The key stays out of the repository, in the git-ignored .env.paystack (PAYSTACK_SECRET_KEY=sk_test_...), and only
+// a test key is accepted: the local stack must never take real money.
+const paystack = {};
+if (process.argv.includes("--paystack")) {
+  const file = join(root, ".env.paystack");
+  const found = existsSync(file) && /^[ \t]*PAYSTACK_SECRET_KEY[ \t]*=[ \t]*["']?([^"'\s#]+)/m.exec(readFileSync(file, "utf8"));
+  if (!found || !found[1].startsWith("sk_test_")) {
+    console.error("--paystack needs a Paystack TEST secret key: PAYSTACK_SECRET_KEY=sk_test_... in .env.paystack (live keys are refused)");
+    process.exit(2);
+  }
+  paystack.PAYSTACK_SECRET_KEY = found[1];
+  console.log("Card payments: Paystack TEST mode (no real money moves; pay with Paystack's test cards)");
+}
+
 const children = names.map((name) => {
   const target = targets[name];
   const child = spawn(target.cmd, target.args, {
     cwd: target.cwd, stdio: "inherit", shell: target.shell ?? false,
-    env: { ...process.env, ...shared, ...target.env },
+    env: { ...process.env, ...shared, ...target.env, ...(name === "api" ? paystack : {}) },
   });
   child.on("error", (error) => {
     console.error(`${name} did not start: ${error.message}`);

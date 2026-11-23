@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from ...domain.money import format_naira
 from ...domain.whatsapp import signature
-from ...errors import NotFound
+from ...errors import DomainError, NotFound
 from ...services.infra import decode_pubsub_push
 from ...services.whatsapp import SandboxSender
 from ..deps import Ctr, InternalCaller, client_ip
@@ -163,16 +163,36 @@ async def sandbox_complete(
     if _from_another_device(request) and urlparse(callback).hostname in ("localhost", "127.0.0.1"):
         # A phone on the same Wi-Fi as the laptop (testing the app) cannot open the laptop's localhost callback;
         # the app verifies the payment itself, so send the tester back to it.
-        title = "Payment approved" if success else "Payment declined"
-        return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
+        return _back_to_the_app("Payment approved" if success else "Payment declined")
+    sep = "&" if "?" in callback else "?"
+    return RedirectResponse(f"{callback}{sep}reference={reference}", status_code=303)
+
+
+@dev.get("/payment-return", response_class=HTMLResponse)
+async def payment_return(c: Ctr, reference: str | None = None, trxref: str | None = None) -> HTMLResponse:
+    """Phone tests: where a card payment page (Paystack test mode, or the sandbox) sends the payer back. The phone
+    cannot open the laptop's localhost website, so this page asks the payment provider how the payment went (never
+    trusting the redirect itself) and sends the payer back to the app, which shows the order."""
+    title = "Payment finished"
+    if found := reference or trxref:
+        try:
+            status = (await c.payments.verify_reference(found, source="client"))["status"]
+        except DomainError:
+            status = None  # unknown reference, or the provider could not be reached: the app checks again
+        title = {"succeeded": "Payment approved", "failed": "Payment not completed"}.get(
+            status, "Payment finished"
+        )
+    return _back_to_the_app(title)
+
+
+def _back_to_the_app(title: str) -> HTMLResponse:
+    return HTMLResponse(f"""<!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Yummy Chops · {title}</title>
 <style>body{{font-family:system-ui,sans-serif;background:#FFFBF8;color:#2A0D06;display:grid;place-items:center;
 min-height:100vh;margin:0}}.card{{background:#fff;border-radius:16px;padding:32px;max-width:380px;width:90%;
 box-shadow:0 8px 30px rgba(0,0,0,.08);text-align:center}}h1{{font-size:24px;margin:0 0 12px}}</style>
 </head><body><div class="card"><h1>{title}</h1><p>Return to the Yummy Chops app: it confirms the payment and
 updates your order. You can close this page.</p></div></body></html>""")
-    sep = "&" if "?" in callback else "?"
-    return RedirectResponse(f"{callback}{sep}reference={reference}", status_code=303)
 
 
 def _from_another_device(request: Request) -> bool:

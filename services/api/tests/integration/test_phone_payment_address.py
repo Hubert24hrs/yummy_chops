@@ -90,3 +90,68 @@ async def test_before_any_phone_the_laptops_own_guess_is_used(phone_test: Contai
     assert started["authorization_url"].startswith(
         f"http://{VPN_GUESS}:8000/"
     )  # the guess (tested in unit tests)
+
+
+# ---------------------------------------------------------------------------------------- back to the app
+# Paystack test mode on a phone (docs/PAYSTACK_TEST_MODE.md): after paying, the payment page sends the payer to
+# PAYMENT_CALLBACK_URL, the website on the laptop's localhost, which the phone cannot open. In phone tests the
+# payer comes back to the API's own "return to the app" page instead, at the address the phone reached it at.
+
+
+@pytest.fixture
+async def website_on_localhost() -> AsyncIterator[Container]:
+    """The API as `node scripts/dev.mjs api --lan` runs it, with the website's callback page on localhost."""
+    c = await make_container(
+        public_base_url=PHONE_SEES,
+        sandbox_follows_lan_address=True,
+        payment_callback_url="http://localhost:3000/checkout/callback",
+    )
+    yield c
+    await c.close()
+
+
+async def test_after_paying_the_phone_comes_back_to_a_page_it_can_open(
+    website_on_localhost: Container,
+) -> None:
+    c = website_on_localhost
+    async with _client(c, PHONE_SEES) as phone:
+        started = await _checkout(phone, c)
+        done = await phone.post(f"/v1/dev/sandbox-checkout/{started['reference']}/complete?outcome=success")
+        assert done.status_code == 303, done.text
+        back = done.headers["location"]
+        assert back.startswith(f"{PHONE_SEES}/v1/dev/payment-return?order_id={started['order_id']}&")
+        page = await phone.get(back)
+        assert page.status_code == 200
+        assert "Payment approved" in page.text and "Return to the Yummy Chops app" in page.text
+
+
+async def test_the_return_page_asks_the_provider_and_never_trusts_the_redirect(
+    website_on_localhost: Container,
+) -> None:
+    c = website_on_localhost
+    async with _client(c, PHONE_SEES) as phone:
+        started = await _checkout(phone, c)
+        # Paystack adds `trxref` and `reference`; arriving here without having paid changes nothing.
+        page = await phone.get(
+            f"/v1/dev/payment-return?order_id={started['order_id']}&trxref={started['reference']}"
+        )
+        assert page.status_code == 200 and "Payment approved" not in page.text
+        order = (await phone.get(f"/v1/orders/{started['order_id']}", headers=auth("customer"))).json()
+        assert order["payment"]["status"] != "paid"
+        unknown = await phone.get("/v1/dev/payment-return?reference=YC-NOT-A-PAYMENT")
+        assert unknown.status_code == 200 and "Return to the Yummy Chops app" in unknown.text
+
+
+async def test_the_website_keeps_its_own_callback_page_outside_phone_tests() -> None:
+    from gudmeal_api.config import Settings
+    from gudmeal_api.container import _payment_callback_url
+
+    website = "http://localhost:3000/checkout/callback"
+    assert _payment_callback_url(Settings(environment="test", payment_callback_url=website)) == website
+    online = Settings(
+        environment="development", payment_callback_url=website, sandbox_follows_lan_address=True
+    )
+    assert _payment_callback_url(online) == website  # the return page exists only on local and test servers
+    phone = Settings(environment="test", payment_callback_url=website, sandbox_follows_lan_address=True)
+    follows = _payment_callback_url(phone)
+    assert callable(follows) and follows().endswith("/v1/dev/payment-return")

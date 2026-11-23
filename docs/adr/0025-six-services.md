@@ -66,8 +66,8 @@ services by name, in this order. Nothing was to be built twice: the three shop s
 
 ## Open (the owner's decisions)
 
-- Plus minimum basket for supermarkets and market shoppers (now ₦3,000, as for food), and the commission for the
-  new kinds of shop (now the platform default).
+- Decided 2026-11-22: the Plus minimum basket for supermarkets and market shoppers is ₦3,000, as for food.
+- Still open: the commission for the new kinds of shop (now the platform default).
 - A legal review of selling over-the-counter medicines online before real pharmacies join, including how the PCN
   licence is checked.
 

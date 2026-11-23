@@ -16,13 +16,21 @@ Saved on 17 Nov 2026 to do later. Tick each one off as you go.
 - [ ] **The websites open, but they can't show shops, sign anyone in or take orders yet.** That needs the next
   step: the Google Cloud and Firebase project, so the API and Yummy can run at api.yummy247.com and
   assistant.yummy247.com.
-- [ ] **Test on your phone** and tell me what breaks.
+- [ ] **Test on your phone** and tell me what breaks. To pay through Paystack's test mode instead of the pretend
+  payment page, start `phone-test-paystack` ([PAYSTACK_TEST_MODE.md](PAYSTACK_TEST_MODE.md); tested 23 Nov).
   QR code page: https://claude.ai/artifact/G8H3KNWTrxetV8iwS7z5Kg. To start the test servers again after a restart,
   see [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md), section 6.
 - [ ] **Create a Google Cloud and Firebase project with billing, and get Paystack test keys.** Then I deploy a
   staging version that works anywhere, not just on your Wi-Fi.
-- [ ] **Add a Gemini key for Yummy and a Google Maps key** for real addresses and routes.
-- [ ] **Line up a pilot:** 3–5 restaurants and 5 riders in one area, for example Lekki.
+- [x] **Gemini key for Yummy (22 Nov).** A Google AI Studio key, for testing only. It lives in the git-ignored
+  `services/agents/.env`.
+- [ ] **Before real customers use Yummy, move it to Vertex AI** (your choice, 22 Nov). The AI Studio key is only for
+  experimenting. Vertex is billed to the Google Cloud project, keeps customers' chats out of Google's product
+  improvement and needs no key in a file. After the move, delete the AI Studio key.
+- [ ] **Add a Google Maps key** for real addresses and routes.
+- [ ] **Line up a pilot:** 3–5 restaurants and 5 riders in one area, for example Lekki. Simulated on 22 Nov with
+  pretend shops, riders and customers: 30 of 30 orders delivered, no server errors and the money balanced
+  ([PILOT_SIMULATION.md](PILOT_SIMULATION.md)).
 - [ ] **Confirm the prices set as defaults** (Plus at ₦1,500 for 30 days, fees, points), and arrange the legal
   reviews (privacy notice, wallet, terms).
 - [ ] **Open Google Play and Apple developer accounts.** The Android apps now use the Yummy Chops pin from your
@@ -30,8 +38,8 @@ Saved on 17 Nov 2026 to do later. Tick each one off as you go.
   logo file (SVG, or a PNG at least 1024 pixels wide per symbol).
 - [ ] **WhatsApp ordering is still off.** When you're ready, it needs a Meta business account, verification and
   approval of Meta's message charges.
-- [ ] **Decide three things for Pharmacy, Shop & Groceries and Buy Foodstuff** (back on 21 Nov with your names,
-  [ADR-0025](adr/0025-six-services.md)): the Plus minimum basket for supermarkets and market shoppers (now the
-  same ₦3,000 as food), the commission for these shops (now the platform default), and a legal review of selling
-  over-the-counter medicines and supplements online (NAFDAC registration, no health claims) before real pharmacies
-  join, including how the team checks each pharmacy's PCN premises licence.
+- [x] **Plus minimum basket** for supermarkets and market shoppers: **₦3,000**, the same as food (decided 22 Nov).
+- [ ] **Two more things for Pharmacy, Shop & Groceries and Buy Foodstuff** ([ADR-0025](adr/0025-six-services.md)): the
+  commission for these shops (now the platform default), and a legal review of selling over-the-counter medicines
+  and supplements online (NAFDAC registration, no health claims) before real pharmacies join, including how the team
+  checks each pharmacy's PCN premises licence.

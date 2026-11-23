@@ -10,6 +10,7 @@
     { "name": "customer-app-web", "runtimeExecutable": "node", "runtimeArgs": ["scripts/dev.mjs", "customer-web"], "port": 5050 },
     { "name": "admin", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "-w", "@gudmeal/admin"], "port": 3002 },
     { "name": "customer-app-web-5051", "runtimeExecutable": "node", "runtimeArgs": ["scripts/dev.mjs", "customer-web", "--port=5051"], "port": 5051, "autoPort": false },
-    { "name": "phone-test", "runtimeExecutable": "node", "runtimeArgs": ["scripts/dev.mjs", "auth", "api", "agents", "downloads", "--lan", "--seed"], "port": 8000, "autoPort": false }
+    { "name": "phone-test", "runtimeExecutable": "node", "runtimeArgs": ["scripts/dev.mjs", "auth", "api", "agents", "downloads", "--lan", "--seed"], "port": 8000, "autoPort": false },
+    { "name": "phone-test-paystack", "runtimeExecutable": "node", "runtimeArgs": ["scripts/dev.mjs", "auth", "api", "agents", "downloads", "--lan", "--seed", "--paystack"], "port": 8000, "autoPort": false }
   ]
 }
