@@ -21,7 +21,7 @@
 - Paystack TEST mode on the phone test: preview server `phone-test-paystack` (`dev.mjs ... --paystack`; the key comes from the
   git-ignored `.env.paystack`, live keys are refused; docs/PAYSTACK_TEST_MODE.md). Phones come back to `/v1/dev/payment-return`.
   The e2e check approves card payments on the sandbox page, so run it against `phone-test`, not `phone-test-paystack`
-- Brand files: `python scripts/make-brand-assets.py` (needs Pillow and numpy) makes the logo cut-outs, app icons, launch screens and favicons from `assets/brand/yummychops-logo.webp` (ADR-0022). The platform is called **Yummy Chops** (renamed from GudMeals on 2026-11-19, ADR-0023; its domain is yummy247.com: websites on Vercel, mail on Zoho, docs/DEPLOYMENT.md §5a–5b); colours come from the logo via `packages/tokens/tokens.json`
+- Brand files: `python scripts/make-brand-assets.py` (needs Pillow and numpy) makes the logo cut-outs, launch screens, app icons and favicons from `assets/brand/yummychops-logo.webp` (the logo) and `yummychops-app-icon.png` (the app icon; ADR-0022, ADR-0029). The platform is called **Yummy Chops** (renamed from GudMeals on 2026-11-19, ADR-0023; its domain is yummy247.com: websites on Vercel, mail on Zoho, docs/DEPLOYMENT.md §5a–5b); colours come from the logo via `packages/tokens/tokens.json`
 
 ## Gotchas
 - `packages/ui/src/components.tsx` is a `"use client"` module: pure helpers that server components call

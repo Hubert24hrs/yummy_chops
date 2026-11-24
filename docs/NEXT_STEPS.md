@@ -38,9 +38,9 @@ Saved on 17 Nov 2026 to do later. Tick each one off as you go.
   ([PILOT_SIMULATION.md](PILOT_SIMULATION.md)).
 - [ ] **Confirm the prices set as defaults** (Plus at ₦1,500 for 30 days, fees, points), and arrange the legal
   reviews (privacy notice, wallet, terms).
-- [ ] **Open Google Play and Apple developer accounts.** The Android apps now use the Yummy Chops pin from your
-  logo as their icon (17 Nov). The store listings and the iPhone app need a bigger picture: send the original
-  logo file (SVG, or a PNG at least 1024 pixels wide per symbol).
+- [ ] **Open Google Play and Apple developer accounts.** The apps now use your new red chef's-hat icon and the
+  Yummy247 logo (24 Nov, [ADR-0029](adr/0029-new-logo-and-app-icon.md)); the icon picture is 1190 pixels, big
+  enough for both stores' listings.
 - [ ] **WhatsApp ordering is still off.** When you're ready, it needs a Meta business account, verification and
   approval of Meta's message charges.
 - [x] **Plus minimum basket** for supermarkets and market shoppers: **₦3,000**, the same as food (decided 22 Nov).

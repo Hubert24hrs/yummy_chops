@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Made by scripts/make-brand-assets.py: the launcher icon's background, a colour of the logo. -->
+<!-- Made by scripts/make-brand-assets.py: the launcher icon's background colour. -->
 <resources>
-    <color name="ic_launcher_background">#FFFFFF</color>
+    <color name="ic_launcher_background">#CF0C12</color>
 </resources>

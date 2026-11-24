@@ -1,19 +1,22 @@
-"""Makes every logo file and app icon of Yummy Chops from the one brand logo, assets/brand/yummychops-logo.webp.
+"""Makes every logo file and app icon of Yummy Chops from the owner's two brand pictures (docs/adr/0029-new-logo-and-app-icon.md).
 
     python scripts/make-brand-assets.py          (needs Pillow and numpy: pip install pillow numpy)
 
-The logo is the square master: a chef's hat on a cloche with a fork and spoon (the emblem), the name "Yummy Chops"
-(dark brown "Yummy", red "Chops") over a red underline, the line "Good Food. Great Mood.", a rider on a scooter
-and three small badges. Each place uses the part that reads at its size:
-  - the whole logo: both apps' icons (the owner's choice: the customer app's on white, the rider app's on a white
-    disc on chocolate brown so the two tell apart on one phone), the websites' home-screen icon, the sign-in
-    screens of the apps and the websites, the app's launch screen, the install page, link previews;
-  - the name (wordmark) with the emblem: website headers;
-  - the emblem: browser-tab icons (favicons), where the whole logo would be a blur of 16 to 32 pixels;
-  - the rider on the scooter: the rider app's browser-tab icon.
-Everything is cut from the logo itself; nothing is redrawn. The cut-outs keep the logo's own white where it is
-part of the drawing (the hat) and lose the white around them, so they sit on any light background; the name
-loses all its white (also inside the letters), so it sits on dark backgrounds too.
+The two masters, in assets/brand:
+  - yummychops-logo.webp, the logo (1080 px square): the chef in her kitchen under an arch, with the "Yummy Chops"
+    ribbon (the emblem); the name "Yummy247" (dark brown "Yummy", red "247"); a red swoosh; the line "Good Food.
+    Great Mood."; a rider on a scooter and three small badges;
+  - yummychops-app-icon.png, the app icon (1190 px square): a white chef's hat with a green "yc" and a yellow
+    sparkle, on red.
+Each place uses what reads at its size:
+  - the whole logo: the sign-in screens of the apps and the websites, the apps' launch screens, link previews;
+  - the emblem beside the name: website headers;
+  - the app icon: both apps' launcher icons (the rider app's on chocolate brown instead of red, so the two tell
+    apart on one phone), the websites' browser-tab and home-screen icons, the apps' browser builds.
+Everything is cut from the two pictures; nothing is redrawn. The cut-outs keep the logo's own white where it is part
+of the drawing and lose the white around them, so they sit on any light background; the name loses all its white
+(also inside the letters), so it sits on dark backgrounds too. The icon's red is lifted off its drawing the same way,
+so the drawing can sit on another colour or keep clear of the launchers' masks.
 """
 
 from __future__ import annotations
@@ -27,22 +30,23 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parent.parent
 BRAND = ROOT / "assets" / "brand"
 LOGO = BRAND / "yummychops-logo.webp"
+ICON = BRAND / "yummychops-app-icon.png"
 
-#: Colours read from the logo (see docs/adr/0022-brand.md and docs/adr/0023-yummy-chops.md).
 WHITE = (255, 255, 255, 255)
-CHOCOLATE = (58, 13, 5, 255)  # "Yummy", the rider, the cloche
+#: The rider app's icon ground: the logo's dark brown (docs/adr/0022-brand.md).
+CHOCOLATE = (58, 13, 5, 255)
 #: The website apps that get favicons and the logo files.
 WEBSITES = ("web", "partner", "admin")
 
 
-def load() -> Image.Image:
-    im = Image.open(LOGO).convert("RGBA")
-    assert im.size == (1254, 1254), f"expected the 1254 px square logo, got {im.size}"
+def load(path: Path, side: int) -> Image.Image:
+    im = Image.open(path).convert("RGBA")
+    assert im.size == (side, side), f"expected the {side} px square {path.name}, got {im.size}"
     return im
 
 
 def clear_background(im: Image.Image) -> Image.Image:
-    """The white around the drawing becomes transparent (white inside it, like the hat, stays)."""
+    """The white around the drawing becomes transparent (white inside it stays)."""
     out = im.copy()
     w, h = out.size
     for seed in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
@@ -59,44 +63,14 @@ def clear_background(im: Image.Image) -> Image.Image:
     return out
 
 
-def is_green(c) -> bool:
-    r, g, b = c[:3]
-    return g > r + 20 and g > b + 20
-
-
 def is_red(c) -> bool:
     r, g, b = c[:3]
     return r > 140 and g < 110 and b < 110 and r > g + 60
 
 
-def is_orange(c) -> bool:
-    r, g, b = c[:3]
-    return r > 200 and 90 < g < 215 and b < 120
-
-
 def emblem(im: Image.Image) -> Image.Image:
-    """The chef's hat on the cloche, with the orange arc and the leaf; the letters below are left out."""
-    out = clear_background(im.crop((150, 0, 1230, 540)))
-    px = out.load()
-    w, h = out.size
-    for y in range(h):
-        oy = y  # rows of the crop are rows of the logo
-        for x in range(w):
-            ox = x + 150
-            c = px[x, y]
-            if not c[3] or oy <= 470:
-                continue
-            # The name "Yummy Chops" starts at row 528 (its tallest letters, Y, C and h; the rest at ~575).
-            if ox >= 1000:
-                keep = is_green(c) or (is_orange(c) and oy <= 500)  # the leaf, the arc's end
-            elif ox < 250:
-                keep = is_orange(c) and oy <= 500  # the arc's end
-            elif 440 <= ox < 800:
-                keep = oy < 500  # the cloche's rim
-            else:
-                keep = oy < 519 and not (ox < 300 and oy >= 517)  # the rim's tips
-            if not keep:
-                px[x, y] = (0, 0, 0, 0)
+    """The chef under her arch, with the "Yummy Chops" ribbon (rows 30 to 425 of the logo; the name starts at 428)."""
+    out = clear_background(im.crop((290, 24, 790, 427)))
     return out.crop(out.getbbox())
 
 
@@ -115,45 +89,13 @@ def white_to_alpha(im: Image.Image) -> Image.Image:
 
 
 def wordmark(im: Image.Image) -> Image.Image:
-    """The name "Yummy Chops" with its red underline (no tagline, no rim or leaf above it)."""
-    top, bottom = 520, 772  # the letters start at 528 (the rim ends at 516); the underline ends at 767
-    out = white_to_alpha(im.crop((0, top, 1254, bottom)))
-    px = out.load()
-    w, h = out.size
-    for y in range(h):
-        oy = y + top
-        for x in range(w):
-            c = px[x, y]
-            if not c[3]:
-                continue
-            drop = is_green(c) or is_orange(c)  # the leaf, the rim's gold
-            if x >= 1000 and oy < 560 and not is_red(c):
-                drop = True  # the leaf's tips above "ps": only the red letters stay
-            if oy >= 712 and not is_red(c):
-                drop = True  # the tagline (dark) starts at 730; the tails of "y" end at 702, the underline is red
-            if drop:
-                px[x, y] = (0, 0, 0, 0)
-    return out.crop(out.getbbox())
-
-
-def rider(im: Image.Image) -> Image.Image:
-    """The rider on the scooter with the red food box and the speed lines."""
-    top = 793
-    out = clear_background(im.crop((20, top, 510, 1062)))
-    px = out.load()
-    w, h = out.size
-    for y in range(h):
-        for x in range(w):
-            c = px[x, y]
-            low = y + top > 1040
-            # The swoosh under the wheels (orange, red, and its light edge); only the dark wheels go that low.
-            if c[3] and (is_orange(c) or (low and (is_red(c) or sum(c[:3]) > 300))):
-                px[x, y] = (0, 0, 0, 0)
+    """The name "Yummy247" (rows 428 to 593 of the logo; the swoosh and the tagline start at 601)."""
+    out = white_to_alpha(im.crop((30, 426, 1050, 597)))
     return out.crop(out.getbbox())
 
 
 def on_dark(art: Image.Image) -> Image.Image:
-    """The same art for dark backgrounds: its dark brown ("Yummy", outlines) turns cream; the red stays."""
+    """The same art for dark backgrounds: its dark brown ("Yummy") turns cream; the red stays."""
     out = art.copy()
     px = out.load()
     for y in range(out.height):
@@ -162,6 +104,32 @@ def on_dark(art: Image.Image) -> Image.Image:
             if a and r + g + b < 260 and not is_red((r, g, b)):
                 px[x, y] = (251, 240, 234, a)
     return out
+
+
+def ground_of(icon: Image.Image) -> tuple[int, int, int, int]:
+    """The icon's background colour: the middle value of a 40 px strip along its edges (an even red)."""
+    a = np.asarray(icon.convert("RGB"), dtype=np.float64)
+    strip = np.concatenate([a[:40].reshape(-1, 3), a[-40:].reshape(-1, 3), a[:, :40].reshape(-1, 3), a[:, -40:].reshape(-1, 3)])
+    r, g, b = (int(round(v)) for v in np.median(strip, axis=0))
+    return (r, g, b, 255)
+
+
+def lift(icon: Image.Image, ground) -> Image.Image:
+    """The icon's drawing without its ground colour, at its own size and place. Each pixel gets the least opacity
+    that explains it as the drawing's colour over the ground, so soft edges stay soft and keep their true colour
+    (the hat's edge is white, not pink) on any new ground. Put back on the same ground it is the icon again."""
+    rgb = np.asarray(icon.convert("RGB"), dtype=np.float64)
+    bg = np.array(ground[:3], dtype=np.float64)
+    # The red varies by up to 8 levels; a channel near 0 (its green and blue) would turn that into a lot of opacity.
+    noise = 8
+    up = np.maximum(rgb - bg - noise, 0) / np.maximum(255 - bg, 1e-6)
+    down = np.maximum(bg - rgb - noise, 0) / np.maximum(bg, 1e-6)
+    alpha = np.minimum(np.maximum(up, down).max(axis=2), 1)
+    alpha[alpha < 0.06] = 0
+    safe = np.maximum(alpha, 1e-6)[..., None]
+    colour = np.clip(bg + (rgb - bg) / safe, 0, 255)
+    out = np.dstack([colour, alpha * 255])
+    return Image.fromarray(out.round().astype(np.uint8), "RGBA")
 
 
 def shape_layer(size: int, fill, shape: str = "square") -> Image.Image:
@@ -180,32 +148,30 @@ def shape_layer(size: int, fill, shape: str = "square") -> Image.Image:
 
 
 def fit(art: Image.Image, size: int, box: float, ground=None, shape: str = "square") -> Image.Image:
-    """`art` scaled to fit `box` (a share of `size`) and centred on a `size` square of `ground` (None: clear)."""
-    canvas = shape_layer(size, ground if ground is not None else (0, 0, 0, 0), shape)
+    """`art` scaled to fit `box` (a share of `size`) and centred on a `size` square of `ground` (None: clear),
+    cut to `shape`."""
+    canvas = Image.new("RGBA", (size, size), ground if ground is not None else (0, 0, 0, 0))
     limit = size * box
     scale = min(limit / art.width, limit / art.height)
     piece = art.resize((max(1, round(art.width * scale)), max(1, round(art.height * scale))), Image.LANCZOS)
     canvas.alpha_composite(piece, ((size - piece.width) // 2, (size - piece.height) // 2))
-    return canvas
+    if shape == "square":
+        return canvas
+    mask = shape_layer(size, WHITE, shape).split()[3]
+    out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    out.paste(canvas, (0, 0), mask)
+    return out
 
 
 def reach(art: Image.Image) -> float:
-    """How far the drawing reaches from the middle of `art`, as a share of its side. The logo's corners are empty,
-    so it fits a circle only a little wider than itself: about 0.62 of its side from the middle."""
-    alpha = art.split()[3].load()
-    w, h = art.size
-    cx, cy = (w - 1) / 2, (h - 1) / 2
-    far = max(((x - cx) ** 2 + (y - cy) ** 2 for y in range(h) for x in range(w) if alpha[x, y] > 40), default=0)
-    return far**0.5 / max(w, h)
-
-
-def on_disc(art: Image.Image, size: int, ground, disc, disc_share: float, art_share: float, shape="square"):
-    """The rider app's icon: the art on a light disc on a dark ground."""
-    canvas = shape_layer(size, ground, shape)
-    d = round(size * disc_share)
-    canvas.alpha_composite(shape_layer(d, disc, "circle"), ((size - d) // 2, (size - d) // 2))
-    canvas.alpha_composite(fit(art, size, art_share), (0, 0))
-    return canvas
+    """How far the drawing reaches from the middle of `art`, as a share of its side (the icon's sparkle, near a
+    corner, reaches about 0.48)."""
+    alpha = np.asarray(art.split()[3])
+    ys, xs = np.nonzero(alpha > 40)
+    if not len(xs):
+        return 0.0
+    cx, cy = (art.width - 1) / 2, (art.height - 1) / 2
+    return float(np.sqrt((xs - cx) ** 2 + (ys - cy) ** 2).max()) / max(art.size)
 
 
 def save(img: Image.Image, path: Path, *, opaque: bool = False) -> None:
@@ -225,35 +191,34 @@ def write_text(path: Path, text: str) -> None:
 
 
 def main() -> None:
-    im = load()
+    im = load(LOGO, 1080)
     full = clear_background(im)
-    mark, name, scooter = emblem(im), wordmark(im), rider(im)
+    mark, name = emblem(im), wordmark(im)
 
     # Master cut-outs, kept next to the logo.
     save(full, BRAND / "yummychops-logo.png")
     save(mark, BRAND / "yummychops-emblem.png")
     save(name, BRAND / "yummychops-wordmark.png")
     save(on_dark(name), BRAND / "yummychops-wordmark-light.png")
-    save(scooter, BRAND / "yummychops-rider.png")
-    print(f"emblem {mark.size}, wordmark {name.size}, rider {scooter.size}")
+    print(f"emblem {mark.size}, wordmark {name.size}")
 
-    # Websites: the files their pages show, and favicons (Next.js picks up app/icon.png and app/apple-icon.png).
-    # Icons show the whole logo. Every drawn pixel stays inside a centred circle (`radius`, a share of the icon's
-    # side), so no mask cuts any of it: Android launchers always show the middle 66dp of the 108dp adaptive layer
-    # (radius 33/108), iOS rounds the corners, and maskable web icons keep the middle 80% (radius 0.40).
-    far = reach(full)
+    # The app icon: its drawing lifted off its red, to sit on the red again (the customer app and the websites) or on
+    # chocolate brown (the rider app). `as_drawn` keeps the owner's framing; `inside` keeps every drawn pixel in a
+    # centred circle (`radius`, a share of the side), so no mask cuts any of it: Android launchers always show the
+    # middle 66dp of the 108dp adaptive layer (radius 33/108) and maskable web icons keep the middle 80% (radius 0.40).
+    icon = load(ICON, 1190)
+    red = ground_of(icon)
+    drawing = lift(icon, red)
+    far = reach(drawing)
+    print(f"the icon's red is #{red[0]:02X}{red[1]:02X}{red[2]:02X}; its drawing reaches {far:.3f} of its side")
 
-    def logo_icon(size: int, radius: float, ground=None, shape: str = "square") -> Image.Image:
-        """The customer app (and the websites): the whole logo, on white."""
-        return fit(full, size, radius / far, ground, shape)
+    def as_drawn(size: int, ground, shape: str = "square") -> Image.Image:
+        return fit(drawing, size, 1.0, ground, shape)
 
-    def rider_icon(size: int, disc_radius: float, ground=CHOCOLATE, shape: str = "square") -> Image.Image:
-        """The rider app: the whole logo on a white disc, the disc on chocolate brown."""
-        return on_disc(full, size, ground, WHITE, 2 * disc_radius, 0.95 * disc_radius / far, shape)
+    def inside(size: int, radius: float, ground=None, shape: str = "square") -> Image.Image:
+        return fit(drawing, size, radius / far, ground, shape)
 
-    print(f"the logo's drawing reaches {far:.3f} of its side from the middle")
-
-    lockup_h = 112  # 2x of the header's 56 px
+    lockup_h = 112  # the header shows the emblem 36 px tall: this covers 3x screens
     for app in WEBSITES:
         public = ROOT / "apps" / app / "public" / "brand"
         save(mark.resize((round(mark.width * lockup_h / mark.height), lockup_h), Image.LANCZOS), public / "yummychops-emblem.png")
@@ -261,8 +226,8 @@ def main() -> None:
         save(on_dark(name).resize((round(name.width * 96 / name.height), 96), Image.LANCZOS), public / "yummychops-wordmark-light.png")
         # Sign-in pages show the whole logo at 160 px; WebP is under half the size of PNG for this artwork.
         full.resize((320, 320), Image.LANCZOS).save(public / "yummychops-logo.webp", quality=90, method=6)
-        save(fit(mark, 192, 0.92), ROOT / "apps" / app / "src" / "app" / "icon.png")  # browser tab
-        save(logo_icon(180, 0.45, WHITE), ROOT / "apps" / app / "src" / "app" / "apple-icon.png", opaque=True)  # home screen
+        save(as_drawn(192, red, "rounded"), ROOT / "apps" / app / "src" / "app" / "icon.png")  # browser tab
+        save(as_drawn(180, red), ROOT / "apps" / app / "src" / "app" / "apple-icon.png", opaque=True)  # home screen
 
     # Link previews of the customer website (WhatsApp, X, Facebook): the whole logo on white, 1200x630.
     preview = Image.new("RGBA", (1200, 630), WHITE)
@@ -275,27 +240,21 @@ def main() -> None:
     for app in ("customer", "rider"):
         base = ROOT / "mobile" / app
         save(full.resize((720, 720), Image.LANCZOS), base / "assets" / "brand" / "yummychops-logo.png")
-        customer = app == "customer"
-        ground = WHITE if customer else CHOCOLATE
+        ground = red if app == "customer" else CHOCOLATE
         res = base / "android" / "app" / "src" / "main" / "res"
         for density, k in densities.items():
             # Adaptive icon layer: 108dp, launchers show the middle 72dp (a 66dp circle is always visible).
-            fg = round(108 * k)
-            clear = (0, 0, 0, 0)
-            foreground = logo_icon(fg, 32 / 108) if customer else rider_icon(fg, 31 / 108, clear)
-            save(foreground, res / f"mipmap-{density}" / "ic_launcher_foreground.png")
+            save(inside(round(108 * k), 33 / 108), res / f"mipmap-{density}" / "ic_launcher_foreground.png")
             # Older launchers (Android 7 and before) show this one as it is.
-            legacy = round(48 * k)
-            icon = logo_icon(legacy, 0.46, ground, "rounded") if customer else rider_icon(legacy, 0.43, ground, "rounded")
-            save(icon, res / f"mipmap-{density}" / "ic_launcher.png")
+            save(as_drawn(round(48 * k), ground, "rounded"), res / f"mipmap-{density}" / "ic_launcher.png")
         hex_ground = "#{:02X}{:02X}{:02X}".format(*ground[:3])
         write_text(res / "values" / "ic_launcher_background.xml",
                    '<?xml version="1.0" encoding="utf-8"?>\n'
-                   "<!-- Made by scripts/make-brand-assets.py: the launcher icon's background, a colour of the logo. -->\n"
+                   "<!-- Made by scripts/make-brand-assets.py: the launcher icon's background colour. -->\n"
                    f'<resources>\n    <color name="ic_launcher_background">{hex_ground}</color>\n</resources>\n')
         write_text(res / "mipmap-anydpi-v26" / "ic_launcher.xml",
                    '<?xml version="1.0" encoding="utf-8"?>\n'
-                   "<!-- Made by scripts/make-brand-assets.py from assets/brand/yummychops-logo.webp. -->\n"
+                   "<!-- Made by scripts/make-brand-assets.py from assets/brand/yummychops-app-icon.png. -->\n"
                    '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
                    '    <background android:drawable="@color/ic_launcher_background" />\n'
                    '    <foreground android:drawable="@mipmap/ic_launcher_foreground" />\n'
@@ -312,14 +271,13 @@ def main() -> None:
                   "</layer-list>\n")
         for folder in ("drawable", "drawable-v21"):
             write_text(res / folder / "launch_background.xml", launch)
-        # Browser builds (flutter build web): installed-app icons show the whole logo; the tab icon is a cut-out.
+        # Browser builds (flutter build web): the app icon in the tab and when installed.
         web = base / "web"
         if web.exists():
-            save(fit(mark if customer else scooter, 32, 0.96), web / "favicon.png")
+            save(as_drawn(32, ground, "rounded"), web / "favicon.png")
             for n in (192, 512):
-                save(logo_icon(n, 0.45, ground) if customer else rider_icon(n, 0.44), web / "icons" / f"Icon-{n}.png")
-                maskable = logo_icon(n, 0.38, ground) if customer else rider_icon(n, 0.38)
-                save(maskable, web / "icons" / f"Icon-maskable-{n}.png")
+                save(as_drawn(n, ground), web / "icons" / f"Icon-{n}.png")
+                save(inside(n, 0.38, ground), web / "icons" / f"Icon-maskable-{n}.png")
         # iOS: every size the asset catalogue lists (no transparency allowed; iOS rounds the corners).
         appicon = base / "ios" / "Runner" / "Assets.xcassets" / "AppIcon.appiconset"
         contents = appicon / "Contents.json"
@@ -329,8 +287,7 @@ def main() -> None:
                     continue
                 points = float(entry["size"].split("x")[0])
                 px = round(points * float(entry["scale"].rstrip("x")))
-                icon = logo_icon(px, 0.45, ground) if customer else rider_icon(px, 0.43)
-                save(icon, appicon / entry["filename"], opaque=True)
+                save(as_drawn(px, ground), appicon / entry["filename"], opaque=True)
         print(f"made the {app} app's icons and launch screen")
 
 

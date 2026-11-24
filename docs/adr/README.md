@@ -29,3 +29,4 @@
 | [0026](0026-online-test-server.md) | An online test server anyone with the tester app can use: Cloud Run, real sign-in (email and Google), Paystack test mode, the demo shops | Accepted (waiting for Google to allow billing) |
 | [0027](0027-rider-kyc.md) | Rider sign-up and KYC (documents, NIN, two guarantors, a selfie) checked by hand by the team, with a Verified badge | Accepted |
 | [0028](0028-business-branches-and-split-payments.md) | Businesses with a unique ID (YCB-…), branches that sell one menu (customers order from the nearest), and card payments split by Paystack so the business's share goes straight to its bank account | Accepted (subaccounts wait for Paystack activation) |
+| [0029](0029-new-logo-and-app-icon.md) | The owner's new logo (the chef under her arch, Yummy247) and app icon (a white chef's hat with a green "yc" on red; the rider app's on chocolate brown) across the apps and websites | Accepted |

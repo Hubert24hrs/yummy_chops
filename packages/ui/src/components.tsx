@@ -200,8 +200,9 @@ export function Dialog({ open, onClose, title, children, footer }: { open: boole
 
 // ------------------------------------------------------------------------------------- Brand
 /**
- * The Yummy Chops logo: the emblem (a chef's hat on a cloche) beside the name, both cut from the brand logo
- * (assets/brand/yummychops-logo.webp; scripts/make-brand-assets.py writes them to each website's public/brand).
+ * The Yummy Chops logo: the emblem (the chef under her arch, with the "Yummy Chops" ribbon) beside the name
+ * "Yummy247", both cut from the brand logo (assets/brand/yummychops-logo.webp, docs/adr/0029-new-logo-and-app-icon.md;
+ * scripts/make-brand-assets.py writes them to each website's public/brand).
  * The name's dark-brown "Yummy" turns cream wherever it sits on something dark: on the page in dark mode
  * (`surface="page"`), or on a panel drawn in the text colour, which is dark in light mode (`surface="inverse"`).
  */
@@ -214,12 +215,12 @@ export function Logo({ className, withWordmark = true, surface = "page" }: {
   return (
     <span className={cn("inline-flex shrink-0 items-center gap-1.5", className)}>
       {/* eslint-disable-next-line @next/next/no-img-element -- small static brand files, no image optimisation needed */}
-      <img src="/brand/yummychops-emblem.png" alt="" width={69} height={36} className="h-9 w-auto" />
+      <img src="/brand/yummychops-emblem.png" alt="" width={44} height={36} className="h-9 w-auto" />
       {withWordmark ? (
         <picture>
           <source srcSet={inDarkMode} media="(prefers-color-scheme: dark)" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={normal} alt="Yummy Chops" width={143} height={28} className="h-7 w-auto" />
+          <img src={normal} alt="Yummy247" width={165} height={28} className="h-7 w-auto" />
         </picture>
       ) : (
         <span className="sr-only">Yummy Chops</span>
@@ -229,7 +230,7 @@ export function Logo({ className, withWordmark = true, surface = "page" }: {
 }
 
 /**
- * The whole Yummy Chops logo (hat, name, tagline, rider and badges), for sign-in pages like the
+ * The whole Yummy Chops logo (the chef, the names, the tagline, the rider and the badges), for sign-in pages like the
  * apps' sign-in screens. It sits on white, as in the apps, so its dark brown still reads in dark mode.
  */
 export function FullLogo({ className, size = 160 }: { className?: string; size?: number }) {
