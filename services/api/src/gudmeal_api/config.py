@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     wallet_max_topup_kobo: int = 10_000_000  # ₦100,000 per top-up
     wallet_max_balance_kobo: int = 30_000_000  # ₦300,000
 
+    # --- private files (rider KYC documents; services/files.py) ------------------------------------
+    # memory: tests; local: the git-ignored UPLOADS_DIR on this computer; gcs: STORAGE_BUCKET (staging, production).
+    file_store: Literal["memory", "local", "gcs"] = "local"
+    uploads_dir: str = ".uploads"
+    storage_bucket: str | None = None
+
     # --- pay on delivery (cash to the rider) --------------------------------------------------------
     pay_on_delivery_enabled: bool = True  # the `pay_on_delivery` feature flag can switch it off live
     pay_on_delivery_max_kobo: int = 2_500_000  # ₦25,000 per order
@@ -182,6 +188,8 @@ class Settings(BaseSettings):
             problems.append("CODE_PEPPER must be set from Secret Manager")
         if self.payment_default_provider == "paystack" and not self.paystack_secret_key:
             problems.append("PAYSTACK_SECRET_KEY is required")
+        if self.file_store != "gcs" or not self.storage_bucket:
+            problems.append("FILE_STORE=gcs and STORAGE_BUCKET are required (riders' KYC documents)")
         if self.event_bus != "pubsub" or self.task_queue != "cloudtasks":
             problems.append("EVENT_BUS=pubsub and TASK_QUEUE=cloudtasks are required")
         if self.seed_demo_data:

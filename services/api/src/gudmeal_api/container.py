@@ -42,6 +42,7 @@ from .services.engagement import (
     ReviewService,
     SupportService,
 )
+from .services.files import FileStore, GcsFileStore, LocalFileStore, MemoryFileStore
 from .services.group_orders import GroupOrderService
 from .services.infra import (
     CloudTasksQueue,
@@ -63,6 +64,7 @@ from .services.payments import PaymentService
 from .services.quotes import QuoteService
 from .services.receipts import ReceiptService
 from .services.rewards import RewardsService
+from .services.rider_kyc import RiderKycService
 from .services.wallet import WalletService
 from .services.waybills import WaybillService
 from .services.whatsapp import (
@@ -113,6 +115,7 @@ class Container:
     dispatch: DispatchService
     profiles: ProfileService
     applications: ApplicationService
+    kyc: RiderKycService
     reviews: ReviewService
     support: SupportService
     meal_plans: MealPlanService
@@ -161,6 +164,17 @@ def _sandbox_base_url(settings: Settings) -> str | Callable[[], str]:
         return settings.public_base_url
     port = urlsplit(settings.public_base_url).port or 8000
     return lambda: reachable_base_url(port, settings.public_base_url)
+
+
+def _file_store(settings: Settings) -> FileStore:
+    """Where private files (riders' KYC documents) are kept: see services/files.py."""
+    if settings.file_store == "gcs":
+        if not settings.storage_bucket:
+            raise RuntimeError("FILE_STORE=gcs needs STORAGE_BUCKET")
+        return GcsFileStore(settings.storage_bucket)
+    if settings.file_store == "local":
+        return LocalFileStore(settings.uploads_dir)
+    return MemoryFileStore()
 
 
 def _payment_callback_url(settings: Settings) -> str | Callable[[], str]:
@@ -340,6 +354,7 @@ async def build_container(
             phone_number_id=settings.whatsapp_phone_number_id,
             version=settings.whatsapp_graph_version,
         )
+    kyc = RiderKycService(repos, _file_store(settings), identity, audit, notifier)
     container = Container(
         settings=settings,
         repos=repos,
@@ -397,7 +412,8 @@ async def build_container(
         orders=orders,
         dispatch=dispatch,
         profiles=ProfileService(repos),
-        applications=ApplicationService(repos, identity, audit, notifier),
+        applications=ApplicationService(repos, identity, audit, notifier, kyc=kyc),
+        kyc=kyc,
         reviews=ReviewService(repos, orders),
         support=SupportService(repos, orders, audit),
         meal_plans=MealPlanService(repos),

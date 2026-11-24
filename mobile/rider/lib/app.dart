@@ -9,7 +9,9 @@ import 'providers.dart';
 import 'screens/delivery_screen.dart';
 import 'screens/earnings_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/kyc_screen.dart';
 import 'screens/sign_in_screen.dart';
+import 'screens/sign_up_screen.dart';
 
 class _AuthListenable extends ChangeNotifier {
   _AuthListenable(Stream<GmUser?> stream) {
@@ -32,13 +34,16 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: listenable,
     redirect: (context, state) {
       final signedIn = auth.currentUser != null;
-      if (!signedIn && state.matchedLocation != '/sign-in') return '/sign-in';
+      // Signed out: sign in, or sign up as a new rider ("Become our rider").
+      if (!signedIn && state.matchedLocation != '/sign-in' && state.matchedLocation != '/sign-up') return '/sign-in';
       if (signedIn && state.matchedLocation == '/sign-in') return '/';
       return null;
     },
     routes: [
       GoRoute(path: '/', builder: (_, _) => const RiderHomeScreen()),
       GoRoute(path: '/sign-in', builder: (_, _) => const RiderSignInScreen()),
+      GoRoute(path: '/sign-up', builder: (_, _) => const RiderSignUpScreen()),
+      GoRoute(path: '/kyc', builder: (_, _) => const KycScreen()),
       GoRoute(path: '/deliveries/:id', builder: (_, s) => DeliveryScreen(orderId: s.pathParameters['id']!)),
       GoRoute(path: '/earnings', builder: (_, _) => const EarningsScreen()),
     ],

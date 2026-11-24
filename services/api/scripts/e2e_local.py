@@ -15,6 +15,7 @@ address, and never touches a real Firebase project or payment provider.
 
 from __future__ import annotations
 
+import base64
 import ipaddress
 import os
 import sys
@@ -444,6 +445,35 @@ def ensure_accounts(beauty_shop: str | None = None) -> None:
         except auth.UserNotFoundError:
             auth.create_user(uid=uid, email=email, password=PASSWORD, display_name=name, email_verified=True)
         auth.set_custom_user_claims(uid, {"roles": roles, "restaurant_roles": shops})
+
+
+# Tiny placeholder files for the KYC uploads (a JPEG and a PDF header): the API checks the kind, not the picture.
+KYC_PHOTO = base64.b64encode(bytes([0xFF, 0xD8, 0xFF, 0xE0]) + bytes(64)).decode()
+KYC_FORM = base64.b64encode(b"%PDF-1.4" + bytes(64)).decode()
+
+
+def complete_rider_kyc(who: str, name: str) -> None:
+    """What a new rider does in the rider app after signing up (docs/adr/0027-rider-kyc.md): details, NIN, two
+    guarantors, every photo, then Submit. Placeholder files stand in for the photos."""
+    TOKENS.pop(who, None)  # a fresh sign-in token carries the rider role given at sign-up
+    guarantor = {"email": "", "address": "1 Admiralty Way, Lekki", "occupation": "Trader"}
+    call(
+        "PUT",
+        "/v1/rider/kyc",
+        who,
+        {
+            "permanent_address": "1 Admiralty Way, Lekki",
+            "nin": "12345678901",
+            "guarantors": [
+                {**guarantor, "name": f"{name} guarantor 1", "phone": "+2348030000001"},
+                {**guarantor, "name": f"{name} guarantor 2", "phone": "+2348030000002"},
+            ],
+        },
+    )
+    for kind in call("GET", "/v1/rider/kyc", who)["documents"]:
+        data = KYC_FORM if kind.endswith("_form") else KYC_PHOTO
+        call("POST", f"/v1/rider/kyc/documents/{kind}", who, {"data": data})
+    call("POST", "/v1/rider/kyc/submit", who)
 
 
 def riders_online() -> None:
@@ -1175,7 +1205,19 @@ def onboarding_applications() -> None:
         "POST",
         "/v1/applications/rider",
         "applicant",
-        {"full_name": "E2E Applicant", "phone": "+2348099999999", "vehicle": "motorcycle", "city": "lagos"},
+        {
+            "full_name": "E2E Applicant",
+            "phone": "+2348099999999",
+            "email": email,
+            "residential_address": "1 Admiralty Way, Lekki",
+            "vehicle": "motorcycle",
+            "city": "lagos",
+        },
+    )
+    complete_rider_kyc("applicant", "E2E Applicant")
+    check(
+        "the new rider completes their KYC",
+        call("GET", "/v1/rider/kyc", "applicant")["status"] == "submitted",
     )
     shop_app = call(
         "POST",

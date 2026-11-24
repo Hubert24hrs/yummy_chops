@@ -324,6 +324,23 @@ export interface Application {
   decision_reason: string | null; created_entity_id: string | null;
 }
 
+/** A rider's KYC (docs/adr/0027-rider-kyc.md). `nin` is masked except for the reviewing team. */
+export type RiderKycStatus = "draft" | "submitted" | "needs_changes" | "verified" | "rejected";
+export interface RiderKycDocumentState {
+  label: string; uploaded: boolean; content_type: string | null; uploaded_at: string | null; needs_change: boolean;
+}
+export interface RiderKycGuarantor { name: string; phone: string; email: string; address: string; occupation: string }
+export interface RiderKyc {
+  uid: string; status: RiderKycStatus; full_name: string; whatsapp_phone: string; email: string; residential_address: string;
+  permanent_address: string; nin: string; documents: Record<string, RiderKycDocumentState>; guarantors: RiderKycGuarantor[];
+  submitted_at: string | null; reviewed_at: string | null; reviewed_by: string | null; review_note: string | null;
+  changes_needed: string[]; missing: string[]; editable: boolean;
+}
+export interface RiderKycSummary {
+  uid: string; full_name: string; whatsapp_phone: string; status: RiderKycStatus; submitted_at: string | null;
+  nin: string; documents: number; missing: number;
+}
+
 export interface Refund {
   id: string; order_id: string; payment_id: string; amount_kobo: Kobo; reason: string; liability: string; stage: string;
   status: string; requested_by: string; decided_by: string | null; decision_note: string | null; created_at: string;

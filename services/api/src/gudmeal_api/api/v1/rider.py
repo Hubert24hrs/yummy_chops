@@ -6,12 +6,13 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from ...domain.geo import GeoPoint
 from ...domain.order_state import OrderStatus
 from ...security.rbac import require_rider
+from ...services.rider_kyc import KycDetailsInput, KycUploadInput
 from ..deps import Ctr, CurrentPrincipal, limit, run_idempotent
 from ..serializers import order_view
 
@@ -122,6 +123,33 @@ async def unassign(order_id: str, data: ReasonInput, c: Ctr, principal: CurrentP
     require_rider(principal)
     order = await c.dispatch.unassign(principal, order_id, data.reason or "Rider unable to complete")
     return {"order_id": order.id, "status": order.status.value}
+
+
+# ---- KYC (docs/adr/0027-rider-kyc.md): what a new rider completes before the team verifies them ----------------
+@router.get("/kyc")
+async def kyc(c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.kyc.mine(principal)
+
+
+@router.put("/kyc")
+async def update_kyc(data: KycDetailsInput, c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.kyc.update(principal, data)
+
+
+@router.post("/kyc/documents/{kind}", dependencies=[Depends(limit("kyc_upload"))])
+async def upload_kyc_document(kind: str, data: KycUploadInput, c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.kyc.upload(principal, kind, data.data)
+
+
+@router.get("/kyc/documents/{kind}")
+async def kyc_document(kind: str, c: Ctr, principal: CurrentPrincipal) -> Response:
+    data, content_type = await c.kyc.document(principal, principal.uid, kind)
+    return Response(content=data, media_type=content_type, headers={"Cache-Control": "private, no-store"})
+
+
+@router.post("/kyc/submit")
+async def submit_kyc(c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.kyc.submit(principal)
 
 
 @router.get("/earnings")

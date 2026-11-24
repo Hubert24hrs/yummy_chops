@@ -248,7 +248,11 @@ void main() {
         heartbeat: const Duration(milliseconds: 30),
       );
       await reporter.start();
-      await Future<void>.delayed(const Duration(milliseconds: 140));
+      // Wait for the pings rather than a fixed time: timers run late when the machine is busy (tests in parallel).
+      final deadline = DateTime.now().add(const Duration(seconds: 2));
+      while (api.sent.length < 3 && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
       expect(api.sent.length, greaterThanOrEqualTo(3));
       await reporter.stop();
       final after = api.sent.length;

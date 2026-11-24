@@ -17,6 +17,9 @@ abstract class AuthRepository {
   Stream<GmUser?> authStateChanges();
   GmUser? get currentUser;
   Future<String?> idToken();
+
+  /// Gets a fresh sign-in token now, e.g. after the server gave the account a new role (a new rider).
+  Future<void> refreshToken();
   Future<void> signInWithEmail(String email, String password);
   Future<void> signUpWithEmail(String name, String email, String password);
 
@@ -65,6 +68,9 @@ class FirebaseAuthRepository implements AuthRepository {
 
   @override
   Future<String?> idToken() async => _auth.currentUser?.getIdToken();
+
+  @override
+  Future<void> refreshToken() async => _auth.currentUser?.getIdToken(true);
 
   @override
   Future<void> signInWithEmail(String email, String password) => _auth.signInWithEmailAndPassword(email: email, password: password);
@@ -140,6 +146,11 @@ class FakeAuthRepository implements AuthRepository {
 
   @override
   Future<String?> idToken() async => _user == null ? null : 'fake-token-${_user!.uid}';
+
+  int tokenRefreshes = 0;
+
+  @override
+  Future<void> refreshToken() async => tokenRefreshes++;
 
   @override
   Future<void> signInWithEmail(String email, String password) async {

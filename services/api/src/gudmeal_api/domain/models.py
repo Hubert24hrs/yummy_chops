@@ -587,6 +587,61 @@ class RiderProfile(Model):
     last_location_at: datetime | None = None
     geohash: str | None = None
     created_at: datetime | None = None
+    # Set when the team has checked the rider's KYC (documents, NIN, guarantors, face): the Verified badge.
+    verified_at: datetime | None = None
+
+
+# ---- rider KYC (docs/adr/0027-rider-kyc.md) ---------------------------------------------------------------------
+# What a rider uploads, in the order the rider app asks for it. Photos are images; the guarantors' signed forms may
+# also be PDFs.
+KYC_DOCUMENTS: dict[str, str] = {
+    "plate_number": "Plate number",
+    "hackney_permit": "Hackney permit",
+    "riders_card": "Rider's card or licence",
+    "bike": "Photo of your bike",
+    "guarantor_1_form": "Guarantor 1: signed form",
+    "guarantor_2_form": "Guarantor 2: signed form",
+    "face": "Face verification (selfie)",
+}
+
+
+class KycDocument(Model):
+    path: str  # in the file store, under applications/{uid}/kyc/
+    content_type: str
+    size: int
+    uploaded_at: datetime
+
+
+class Guarantor(Model):
+    name: str = Field(default="", max_length=80)
+    phone: str = Field(default="", max_length=20)
+    email: str = Field(default="", max_length=120)
+    address: str = Field(default="", max_length=200)
+    occupation: str = Field(default="", max_length=80)
+
+
+class RiderKyc(Model):
+    uid: str
+    # draft → submitted → verified, or → needs_changes → (rider fixes) → submitted → ...
+    status: Literal["draft", "submitted", "needs_changes", "verified", "rejected"] = "draft"
+    # From the sign-up form.
+    full_name: str = ""
+    whatsapp_phone: str = ""
+    email: str = ""
+    residential_address: str = ""
+    # From the KYC dashboard.
+    permanent_address: str = ""
+    nin: str = ""  # National Identification Number: shown in full only to the reviewing team
+    documents: dict[str, KycDocument] = Field(default_factory=dict)
+    guarantors: list[Guarantor] = Field(default_factory=lambda: [Guarantor(), Guarantor()])
+    submitted_at: datetime | None = None
+    reviewed_at: datetime | None = None
+    reviewed_by: str | None = None
+    review_note: str | None = None
+    changes_needed: list[str] = Field(
+        default_factory=list
+    )  # KYC_DOCUMENTS keys and/or "details", "guarantors"
+    updated_at: datetime | None = None
 
 
 class AssignmentStatus(StrEnum):

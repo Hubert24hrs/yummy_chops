@@ -23,6 +23,7 @@ from ..domain.models import (
     Quote,
     Restaurant,
     Review,
+    RiderKyc,
     RiderProfile,
     SavedAddress,
     SupportTicket,
@@ -102,6 +103,7 @@ class Repositories:
         self.reviews = TypedCollection(store, "reviews", Review)
         self.tickets = TypedCollection(store, "support_tickets", SupportTicket)
         self.applications = TypedCollection(store, "applications", Application)
+        self.rider_kyc = TypedCollection(store, "rider_kyc", RiderKyc, key="uid")
         self.notifications = TypedCollection(store, "notifications", Notification)
         # Growth (ADR-0016): Plus memberships, Yummy points and referrals, group orders.
         self.memberships = TypedCollection(store, "memberships", Membership, key="uid")

@@ -92,7 +92,7 @@ class DispatchService:
     async def set_availability(self, principal: Principal, online: bool) -> RiderProfile:
         profile = await self.rider_profile(principal)
         if online and profile.status != RiderStatus.ACTIVE:
-            raise PermissionDenied("Your rider account is not active yet")
+            raise PermissionDenied("You can go online once the team has verified your KYC")
         await self.repos.riders.update(principal.uid, {"is_online": online})
         if online and not profile.is_online:
             await self.sweep()  # jobs waiting for a rider are offered now, not at the next retry

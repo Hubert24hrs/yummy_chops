@@ -69,6 +69,35 @@ export function createApi(opts: ClientOptions) {
     return data as R;
   }
 
+  /** A private file (a rider's KYC photo or scan) as a Blob, fetched with the signed-in user's token. */
+  async function file(path: string): Promise<Blob> {
+    const headers: Record<string, string> = {};
+    if (opts.getToken) {
+      const token = await opts.getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+    if (opts.getAppCheckToken) {
+      const ac = await opts.getAppCheckToken();
+      if (ac) headers["X-Firebase-AppCheck"] = ac;
+    }
+    let res: Response;
+    try {
+      res = await doFetch(new URL(base + path), { method: "GET", headers });
+    } catch {
+      throw new ApiError(0, "network_error", "We couldn't reach Yummy Chops. Check your connection and try again.");
+    }
+    if (!res.ok) {
+      let err: { code?: string; message?: string } = {};
+      try {
+        err = JSON.parse(await res.text())?.error ?? {};
+      } catch {
+        // not JSON: keep the generic message
+      }
+      throw new ApiError(res.status, err.code ?? "error", err.message ?? "Could not load the file");
+    }
+    return res.blob();
+  }
+
   const get = <R>(path: string, query?: Query, auth = true) => request<R>("GET", path, { query, auth });
   const post = <R>(path: string, body: unknown = {}, idempotencyKey?: string) =>
     request<R>("POST", path, { body, idempotencyKey });
@@ -264,6 +293,12 @@ export function createApi(opts: ClientOptions) {
       assignRider: (id: string, rider_uid: string, reason: string) => post<T.Order>(`/v1/admin/orders/${id}/assign-rider`, { rider_uid, reason }),
       applications: (status?: string) => get<T.Application[]>("/v1/admin/applications", { status }),
       decideApplication: (id: string, approve: boolean, reason?: string) => post<T.Application>(`/v1/admin/applications/${id}/decision`, { approve, reason }),
+      /** Riders' KYC, checked by hand by the team (docs/adr/0027-rider-kyc.md). */
+      riderKyc: (status?: string) => get<T.RiderKycSummary[]>("/v1/admin/rider-kyc", { status }),
+      riderKycDetail: (uid: string) => get<T.RiderKyc>(`/v1/admin/rider-kyc/${uid}`),
+      riderKycDocument: (uid: string, kind: string) => file(`/v1/admin/rider-kyc/${uid}/documents/${kind}`),
+      decideRiderKyc: (uid: string, body: { approve: boolean; note?: string; changes_needed?: string[] }) =>
+        post<T.RiderKyc>(`/v1/admin/rider-kyc/${uid}/decision`, body),
       restaurants: () => get<T.Restaurant[]>("/v1/admin/restaurants"),
       setRestaurantStatus: (id: string, status: string, reason: string) => put(`/v1/admin/restaurants/${id}/status`, { status, reason }),
       riders: () => get<T.RiderProfile[]>("/v1/admin/riders"),

@@ -72,6 +72,7 @@ async def make_container(
         "internal_shared_secret": "test-internal-secret",
         "public_base_url": "http://test",
         "payment_callback_url": "http://web.test/checkout/callback",
+        "file_store": "memory",
     }
     settings = Settings(**(options | overrides))
     if db is not None:

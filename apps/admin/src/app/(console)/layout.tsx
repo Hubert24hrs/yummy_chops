@@ -2,7 +2,7 @@
 
 import { Logo, cn } from "@gudmeal/ui";
 import { useQuery } from "@tanstack/react-query";
-import { Banknote, Bike, Bot, ClipboardCheck, Gauge, Gift, Landmark, LifeBuoy, ListOrdered, ReceiptText, ScrollText, Settings2, Store, Undo2, Warehouse } from "lucide-react";
+import { Banknote, Bike, Bot, ClipboardCheck, Gauge, Gift, Landmark, LifeBuoy, ListOrdered, ReceiptText, ScrollText, Settings2, ShieldCheck, Store, Undo2, Warehouse } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -11,7 +11,7 @@ import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 const NAV = [
-  ["/", "Overview", Gauge], ["/orders", "Orders", ListOrdered], ["/applications", "Verification", ClipboardCheck],
+  ["/", "Overview", Gauge], ["/orders", "Orders", ListOrdered], ["/applications", "Verification", ClipboardCheck], ["/rider-kyc", "Rider KYC", ShieldCheck],
   ["/restaurants", "Restaurants", Store], ["/riders", "Riders", Bike], ["/refunds", "Refunds", Undo2],
   ["/payments", "Payments", ReceiptText], ["/finance", "Finance", Landmark], ["/cash", "Cash & wallets", Banknote], ["/hubs", "Hubs", Warehouse],
   ["/growth", "Growth", Gift],

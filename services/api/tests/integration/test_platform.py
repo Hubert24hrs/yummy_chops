@@ -164,10 +164,12 @@ async def test_rider_application_and_availability(client, container):
         },
     )
     app_id = r.json()["id"]
-    await client.post(
+    # Signing up gives the rider app at once; the team verifies the rider on their KYC (test_rider_kyc.py).
+    assert "rider" in (await container.identity.get_claims("cust-2"))["roles"]
+    r = await client.post(
         f"/v1/admin/applications/{app_id}/decision", json={"approve": True}, headers=auth("admin")
     )
-    assert "rider" in (await container.identity.get_claims("cust-2"))["roles"]
+    assert r.status_code == 409, r.text  # no KYC submitted yet
     r = await client.put("/v1/rider/availability", json={"online": True}, headers=auth("rider1"))
     assert r.status_code == 200 and r.json()["is_online"] is True
     await client.put(

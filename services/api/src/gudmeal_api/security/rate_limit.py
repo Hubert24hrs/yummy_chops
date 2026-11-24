@@ -59,4 +59,5 @@ LIMITS: dict[str, tuple[int, float]] = {
     "meal_plan": (10, 0.2),
     "support": (10, 0.05),
     "application": (5, 0.01),
+    "kyc_upload": (20, 0.2),  # a rider uploads 7 photos, sometimes twice
 }

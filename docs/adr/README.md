@@ -27,3 +27,4 @@
 | [0023](0023-yummy-chops.md) | The name Yummy Chops (logo lettering, every name people read, YC numbers, Yummy points), the assistant renamed Yummy (was Gudy), and the yummy247.com domain | Accepted |
 | [0025](0025-six-services.md) | Six services in the owner's order: Order Food, Pharmacy, Beauty & Skin Care, Shop & Groceries, Buy Foodstuff, Package Delivery; every kind of shop can sign up | Accepted (owner decisions open) |
 | [0026](0026-online-test-server.md) | An online test server anyone with the tester app can use: Cloud Run, real sign-in (email and Google), Paystack test mode, the demo shops | Accepted (waiting for Google to allow billing) |
+| [0027](0027-rider-kyc.md) | Rider sign-up and KYC (documents, NIN, two guarantors, a selfie) checked by hand by the team, with a Verified badge | Accepted |

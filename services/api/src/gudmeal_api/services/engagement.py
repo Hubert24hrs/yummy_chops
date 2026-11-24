@@ -35,6 +35,7 @@ from ..security.rbac import Permission, Principal, Role, require
 from .catalog import slugify
 from .infra import IdentityAdmin, Notifier
 from .orders import OrderService, refund_meta
+from .rider_kyc import RiderKycService
 
 
 def utcnow() -> datetime:
@@ -173,9 +174,13 @@ class RestaurantApplicationInput(BaseModel):
 
 
 class RiderApplicationInput(BaseModel):
+    """Rider sign-up (docs/adr/0027-rider-kyc.md): the KYC follows in the rider app."""
+
     full_name: str = Field(min_length=2, max_length=80)
-    phone: str = Field(min_length=7, max_length=20)
-    vehicle: VehicleType
+    phone: str = Field(min_length=7, max_length=20)  # the rider's WhatsApp number
+    email: str | None = Field(default=None, max_length=120)
+    residential_address: str | None = Field(default=None, max_length=200)
+    vehicle: VehicleType = VehicleType.MOTORCYCLE
     plate_number: str | None = Field(default=None, max_length=20)
     licence_number: str | None = Field(default=None, max_length=30)
     city: str = "Lagos"
@@ -184,12 +189,18 @@ class RiderApplicationInput(BaseModel):
 
 class ApplicationService:
     def __init__(
-        self, repos: Repositories, identity: IdentityAdmin, audit: AuditLog, notifier: Notifier
+        self,
+        repos: Repositories,
+        identity: IdentityAdmin,
+        audit: AuditLog,
+        notifier: Notifier,
+        kyc: RiderKycService | None = None,
     ) -> None:
         self.repos = repos
         self.identity = identity
         self.audit = audit
         self.notifier = notifier
+        self.kyc = kyc
 
     async def submit(
         self, principal: Principal, kind: Literal["restaurant", "rider"], data: BaseModel
@@ -211,6 +222,17 @@ class ApplicationService:
             submitted_at=utcnow(),
         )
         await self.repos.applications.create(app)
+        if kind == "rider" and self.kyc is not None and isinstance(data, RiderApplicationInput):
+            # The new rider gets the rider app straight away, to do their KYC there (they cannot go online yet).
+            await self.kyc.start(
+                principal.uid,
+                full_name=data.full_name,
+                whatsapp_phone=data.phone,
+                email=(data.email or principal.email or "").strip(),
+                residential_address=(data.residential_address or "").strip(),
+                vehicle=data.vehicle,
+                plate_number=data.plate_number,
+            )
         return app
 
     async def mine(self, principal: Principal) -> list[Application]:
@@ -236,7 +258,13 @@ class ApplicationService:
         if app.status not in ("submitted", "in_review"):
             raise InvalidTransition(f"Application already {app.status}")
         entity_id: str | None = None
-        if approve:
+        if app.type == "rider" and self.kyc is not None:
+            # Riders are verified on their KYC: approving needs it submitted; turning down stops them going online.
+            if approve:
+                entity_id = await self.kyc.verify(app.applicant_uid, reviewer_uid=principal.uid, note=reason)
+            else:
+                await self.kyc.reject(app.applicant_uid, reviewer_uid=principal.uid, note=reason)
+        elif approve:
             entity_id = await (
                 self._approve_restaurant(app) if app.type == "restaurant" else self._approve_rider(app)
             )

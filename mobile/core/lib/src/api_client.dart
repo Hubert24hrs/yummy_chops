@@ -463,6 +463,17 @@ class GudMealApi {
   Future<Earnings> earnings() => _call(() => _dio.get('/v1/rider/earnings'), (d) => Earnings.fromJson(_map(d)));
   Future<void> requestPayout(int amountKobo, String key) => _call(
       () => _dio.post('/v1/rider/payouts', data: {'amount_kobo': amountKobo}, options: Options(headers: {'Idempotency-Key': key})), (_) {});
+  // ------------------------------------------------------------------- rider KYC (docs/adr/0027-rider-kyc.md)
+  /// The rider's KYC: status, sign-up details, what is still missing, each document's state and the team's note.
+  Future<Map<String, dynamic>> riderKyc() => _call(() => _dio.get('/v1/rider/kyc'), (d) => _map(d));
+  /// Saves the typed details as the rider goes: permanent address, NIN and the two guarantors.
+  Future<Map<String, dynamic>> updateRiderKyc(Map<String, dynamic> details) =>
+      _call(() => _dio.put('/v1/rider/kyc', data: details), (d) => _map(d));
+  /// A photo or scan, base64-encoded (at most 5 MB once decoded); the API checks what it really is.
+  Future<Map<String, dynamic>> uploadKycDocument(String kind, String base64Data) =>
+      _call(() => _dio.post('/v1/rider/kyc/documents/$kind', data: {'data': base64Data}), (d) => _map(d));
+  Future<Map<String, dynamic>> submitRiderKyc() => _call(() => _dio.post('/v1/rider/kyc/submit'), (d) => _map(d));
+
   Future<void> emergency(String description, GeoPoint? at) => _call(
       () => _dio.post('/v1/rider/emergency', data: {'description': description, if (at != null) 'lat': at.lat, if (at != null) 'lng': at.lng}),
       (_) {});

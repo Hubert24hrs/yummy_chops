@@ -199,8 +199,16 @@ def onboard_rider(n: int) -> tuple[str, str]:
         "POST",
         "/v1/applications/rider",
         name,
-        {"full_name": f"Sim Rider {n}", "phone": f"+234803{n:07d}", "vehicle": "motorcycle", "city": "lagos"},
+        {
+            "full_name": f"Sim Rider {n}",
+            "phone": f"+234803{n:07d}",
+            "email": email,
+            "residential_address": "Lekki Phase 1",
+            "vehicle": "motorcycle",
+            "city": "lagos",
+        },
     )
+    e.complete_rider_kyc(name, f"Sim Rider {n}")  # the KYC the team checks before verifying a rider
     aid = application.get("id") or (application.get("application") or {}).get("id")
     e.call(
         "POST",

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../brand.dart';
 import '../providers.dart';
@@ -34,7 +35,7 @@ class _RiderSignInScreenState extends ConsumerState<RiderSignInScreen> {
           const SizedBox(height: 16),
           Text('Yummy Chops Rider', style: Theme.of(context).textTheme.headlineLarge),
           const SizedBox(height: 4),
-          const Text('Sign in with the account you applied with. Approved riders only.'),
+          const Text('Sign in with your rider account. New riders sign up first, then complete their KYC here.'),
           const SizedBox(height: 32),
           TextField(controller: _email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
           const SizedBox(height: 12),
@@ -59,6 +60,12 @@ class _RiderSignInScreenState extends ConsumerState<RiderSignInScreen> {
             child: const Text('Sign in'),
           ),
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
+          const SizedBox(height: 12),
+          TextButton(
+            key: const ValueKey('become-a-rider'),
+            onPressed: () => context.push('/sign-up'),
+            child: const Text('New here? Become our rider'),
+          ),
         ]),
       ),
     );

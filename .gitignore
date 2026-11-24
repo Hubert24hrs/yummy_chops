@@ -88,3 +88,6 @@ logs/
 # Test APKs for phones (scripts/build-test-apk.mjs) and the --lan Auth emulator config
 mobile/dist/
 firebase/firebase.lan.json
+
+# Private uploads kept by the local API (riders' KYC documents)
+.uploads/

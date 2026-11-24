@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Header, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from ...domain.models import RestaurantStatus, RiderStatus, Voucher
@@ -16,6 +16,7 @@ from ...security.rbac import Permission, require
 from ...services.admin import FlagInput, RolesInput
 from ...services.cash import PayOnDeliveryBlockInput, RemittanceInput
 from ...services.engagement import TicketResolution
+from ...services.rider_kyc import KycDecisionInput
 from ..deps import Ctr, CurrentPrincipal, run_idempotent
 from ..serializers import order_view
 
@@ -168,6 +169,28 @@ async def rider_status(uid: str, data: RiderStatusInput, c: Ctr, principal: Curr
 @router.put("/users/{uid}/roles")
 async def set_roles(uid: str, data: RolesInput, c: Ctr, principal: CurrentPrincipal) -> Any:
     return await c.admin.set_roles(principal, uid, data)
+
+
+# ---- rider KYC review (docs/adr/0027-rider-kyc.md) -----------------------------------------------------------
+@router.get("/rider-kyc")
+async def rider_kyc_list(c: Ctr, principal: CurrentPrincipal, status: str | None = None) -> Any:
+    return await c.kyc.list(principal, status)
+
+
+@router.get("/rider-kyc/{uid}")
+async def rider_kyc_detail(uid: str, c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.kyc.detail(principal, uid)
+
+
+@router.get("/rider-kyc/{uid}/documents/{kind}")
+async def rider_kyc_document(uid: str, kind: str, c: Ctr, principal: CurrentPrincipal) -> Response:
+    data, content_type = await c.kyc.document(principal, uid, kind)
+    return Response(content=data, media_type=content_type, headers={"Cache-Control": "private, no-store"})
+
+
+@router.post("/rider-kyc/{uid}/decision")
+async def rider_kyc_decision(uid: str, data: KycDecisionInput, c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.kyc.decide(principal, uid, data)
 
 
 @router.get("/refunds")

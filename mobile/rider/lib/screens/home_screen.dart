@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:gud_meal_core/gud_meal_core.dart';
 
 import '../providers.dart';
+import 'kyc_screen.dart';
 
 /// The rider's dashboard: online switch with location status, today's numbers, new offers (with a buzz), the
 /// deliveries in hand, and what to do while waiting.
@@ -74,6 +75,8 @@ class _RiderHomeScreenState extends ConsumerState<RiderHomeScreen> {
     final active = ref.watch(activeDeliveriesProvider);
     final earnings = ref.watch(earningsProvider);
     final reporter = ref.watch(locationReporterProvider);
+    final kyc = ref.watch(riderKycProvider).value;
+    final verified = kyc?['status'] == 'verified';
     final theme = Theme.of(context);
     final p = profile.value;
     final offerList = offers.value ?? const <DeliveryOffer>[];
@@ -81,7 +84,13 @@ class _RiderHomeScreenState extends ConsumerState<RiderHomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(p == null ? 'Yummy Chops Rider' : 'Hi, ${p.name.split(' ').first}'),
+        title: Row(mainAxisSize: MainAxisSize.min, children: [
+          Flexible(child: Text(p == null ? 'Yummy Chops Rider' : 'Hi, ${p.name.split(' ').first}', overflow: TextOverflow.ellipsis)),
+          if (verified) ...[
+            const SizedBox(width: 6),
+            const Tooltip(message: 'Verified rider', child: Icon(Icons.verified_rounded, color: GmLight.success, key: ValueKey('verified-badge'))),
+          ],
+        ]),
         actions: [
           IconButton(tooltip: 'Earnings', onPressed: () => context.push('/earnings'), icon: const Icon(Icons.account_balance_wallet_rounded)),
           IconButton(tooltip: 'Sign out', onPressed: () => ref.read(authRepositoryProvider).signOut(), icon: const Icon(Icons.logout_rounded)),
@@ -96,15 +105,33 @@ class _RiderHomeScreenState extends ConsumerState<RiderHomeScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
+          ref.invalidate(riderKycProvider);
           ref.invalidate(riderProfileProvider);
           ref.invalidate(earningsProvider);
           ref.invalidate(offersProvider);
           ref.invalidate(activeDeliveriesProvider);
         },
         child: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 96), children: [
+          // New riders: their KYC comes first; the team's verification lets them go online (the Verified badge).
+          if (kyc != null && !verified)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: KycStatusCard(kyc: kyc, onTap: () => context.push('/kyc')),
+            ),
           profile.when(
             loading: () => const LinearProgressIndicator(),
-            error: (e, _) => Text('$e'),
+            error: (e, _) => e is ApiException && (e.status == 403 || e.status == 404)
+                ? Card(
+                    key: const ValueKey('not-a-rider'),
+                    child: ListTile(
+                      leading: const Icon(Icons.two_wheeler_rounded),
+                      title: const Text('This account is not a rider yet'),
+                      subtitle: const Text('Sign up as a rider, then complete your KYC.'),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => context.push('/sign-up'),
+                    ),
+                  )
+                : Text('$e'),
             data: (p) => _StatusCard(profile: p, reporter: reporter, onChanged: p.status == 'active' ? _setOnline : null),
           ),
           if (_message != null)
