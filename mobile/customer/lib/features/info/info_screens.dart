@@ -290,7 +290,8 @@ class _BusinessApplyState extends ConsumerState<BusinessApplyScreen> {
   }
 }
 
-/// "Become a rider" (the website's /ride).
+/// "Become our rider" (the website's /ride; docs/adr/0027-rider-kyc.md): the sign-up. The KYC follows in the
+/// Yummy Chops Rider app, or on the website.
 class RiderApplyScreen extends ConsumerStatefulWidget {
   const RiderApplyScreen({super.key});
 
@@ -303,16 +304,24 @@ class _RiderApplyState extends ConsumerState<RiderApplyScreen> {
   final _form = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _phone = TextEditingController();
-  final _plate = TextEditingController();
-  final _licence = TextEditingController();
+  final _email = TextEditingController();
+  final _address = TextEditingController();
   String _vehicle = 'motorcycle';
   bool _busy = false;
   bool _sent = false;
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    final user = ref.read(authRepositoryProvider).currentUser;
+    _name.text = user?.name ?? '';
+    _email.text = user?.email ?? '';
+  }
+
+  @override
   void dispose() {
-    for (final c in [_name, _phone, _plate, _licence]) {
+    for (final c in [_name, _phone, _email, _address]) {
       c.dispose();
     }
     super.dispose();
@@ -328,9 +337,9 @@ class _RiderApplyState extends ConsumerState<RiderApplyScreen> {
       await ref.read(apiProvider).applyAsRider({
         'full_name': _name.text.trim(),
         'phone': _phone.text.trim(),
+        'email': _email.text.trim(),
+        'residential_address': _address.text.trim(),
         'vehicle': _vehicle,
-        if (_plate.text.trim().isNotEmpty) 'plate_number': _plate.text.trim(),
-        if (_licence.text.trim().isNotEmpty) 'licence_number': _licence.text.trim(),
         'city': ref.read(areaProvider).cityName,
       });
       if (mounted) setState(() => _sent = true);
@@ -345,21 +354,32 @@ class _RiderApplyState extends ConsumerState<RiderApplyScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Become a rider')),
+      appBar: AppBar(title: const Text('Become our rider')),
       body: _sent
           ? const _Received(
-              title: 'Thanks for applying',
-              body: "We'll verify your identity and vehicle documents and contact you.",
+              title: "You're signed up",
+              body: 'Next, your KYC: open the Yummy Chops Rider app and sign in with this account (or go to '
+                  'yummy247.com/ride/kyc). Upload your documents, NIN, two guarantors and a selfie. When the team '
+                  'has checked them you get the Verified badge and can start delivering.',
             )
           : Form(
               key: _form,
               child: ListView(padding: const EdgeInsets.all(16), children: [
-                Text('Ride with Yummy Chops', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
+                Text('Become our rider', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
                 const SizedBox(height: 8),
-                const Text('Flexible hours, transparent earnings per delivery, and withdrawals to your bank.'),
+                const Text('Flexible hours, clear earnings for every delivery, and withdrawals to your bank. Sign up '
+                    'here, then complete your KYC in the Yummy Chops Rider app.'),
                 const SizedBox(height: 16),
                 _Field(_name, 'Full name', validator: (v) => _atLeast(v, 2, 'Enter your full name'), maxLength: 80),
-                _Field(_phone, 'Phone', keyboard: TextInputType.phone, validator: (v) => _atLeast(v, 7, 'Enter your phone number'), maxLength: 20),
+                _Field(_phone, 'WhatsApp phone number', keyboard: TextInputType.phone, validator: (v) => _atLeast(v, 7, 'Enter your WhatsApp number'), maxLength: 20),
+                _Field(
+                  _email,
+                  'Email',
+                  keyboard: TextInputType.emailAddress,
+                  validator: (v) => RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v) ? null : 'Enter a valid email address',
+                  maxLength: 120,
+                ),
+                _Field(_address, 'Residential address', validator: (v) => _atLeast(v, 5, 'Enter where you live'), maxLength: 200),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: DropdownButtonFormField<String>(
@@ -370,10 +390,8 @@ class _RiderApplyState extends ConsumerState<RiderApplyScreen> {
                     onChanged: (v) => setState(() => _vehicle = v ?? 'motorcycle'),
                   ),
                 ),
-                _Field(_plate, 'Plate number', hint: 'Optional', maxLength: 20),
-                _Field(_licence, "Driver's licence number", hint: 'Optional', maxLength: 30),
                 if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),
-                FilledButton(onPressed: _busy ? null : _submit, child: Text(_busy ? 'Sending…' : 'Apply to ride')),
+                FilledButton(onPressed: _busy ? null : _submit, child: Text(_busy ? 'Sending…' : 'Sign up as a rider')),
               ]),
             ),
     );

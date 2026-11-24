@@ -259,6 +259,16 @@ export function createApi(opts: ClientOptions) {
       rider: (body: Record<string, unknown>) => post<T.Application>("/v1/applications/rider", body),
       mine: () => get<T.Application[]>("/v1/applications/mine"),
     },
+    /** A rider's own KYC (docs/adr/0027-rider-kyc.md): the same steps as in the rider app. */
+    riderKyc: {
+      get: () => get<T.RiderKyc>("/v1/rider/kyc"),
+      update: (details: { permanent_address?: string; nin?: string; guarantors?: T.RiderKycGuarantor[] }) =>
+        put<T.RiderKyc>("/v1/rider/kyc", details),
+      /** `data` is the file as base64 or a data: URL (at most 5 MB); the API checks what it really is. */
+      upload: (kind: string, data: string) => post<T.RiderKyc>(`/v1/rider/kyc/documents/${kind}`, { data }),
+      document: (kind: string) => file(`/v1/rider/kyc/documents/${kind}`),
+      submit: () => post<T.RiderKyc>("/v1/rider/kyc/submit"),
+    },
     partner: {
       restaurants: () => get<{ restaurant: T.Restaurant; role: string }[]>("/v1/partner/restaurants"),
       menu: (rid: string) => get<{ restaurant: T.Restaurant; categories: T.MenuCategory[]; items: T.MenuItem[]; option_groups: T.OptionGroup[] }>(

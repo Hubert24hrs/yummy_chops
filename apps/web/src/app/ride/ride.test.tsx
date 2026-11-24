@@ -9,6 +9,7 @@ const auth = {
   signIn: vi.fn(),
   signUp: vi.fn(),
   signInWithGoogle: vi.fn(),
+  refreshToken: vi.fn(async () => undefined),
 };
 vi.mock("@/lib/api", () => ({ useApi: () => api }));
 vi.mock("@/lib/auth", () => ({ useAuth: () => auth, authErrorMessage: (e: Error) => e.message }));
@@ -51,7 +52,8 @@ describe("Become our rider (docs/adr/0027-rider-kyc.md)", () => {
       }),
     );
     expect(await screen.findByRole("heading", { name: "You're signed up" })).toBeTruthy();
-    expect(screen.getByText(/open the/).textContent).toContain("Yummy Chops Rider");
+    expect(auth.refreshToken).toHaveBeenCalled(); // the KYC needs a token that says "rider"
+    expect(screen.getByRole("link", { name: "Complete your KYC" }).getAttribute("href")).toBe("/ride/kyc");
     expect(screen.getAllByRole("link", { name: /Print the guarantor form/ }).length).toBeGreaterThan(0);
   });
 

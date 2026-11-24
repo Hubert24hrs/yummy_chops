@@ -330,21 +330,36 @@ void main() {
     expect(find.text('Application received'), findsOneWidget);
   });
 
-  testWidgets('a rider applies to ride with Yummy Chops', (tester) async {
+  testWidgets('a rider signs up with the same details as on the website (docs/adr/0027-rider-kyc.md)', (tester) async {
     final api = _Api();
     await _pump(tester, const RiderApplyScreen(), api: api);
-    await tester.tap(find.text('Apply to ride'));
+    final signUp = find.text('Sign up as a rider');
+    await tester.ensureVisible(signUp);
+    await tester.tap(signUp);
     await tester.pumpAndSettle();
     expect(api.riders, isEmpty);
-    expect(find.text('Enter your full name'), findsOneWidget);
+    // The name and email come from the signed-in account; the WhatsApp number and the address are still missing.
+    expect(find.text('Enter your WhatsApp number', skipOffstage: false), findsOneWidget);
+    expect(find.text('Enter where you live', skipOffstage: false), findsOneWidget);
+    expect(find.text('Ada Obi', skipOffstage: false), findsOneWidget);
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Full name'), 'Emeka Obi');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Phone'), '08039876543');
-    await tester.enterText(find.widgetWithText(TextFormField, 'Plate number'), 'LSD-123-XY');
-    await tester.tap(find.text('Apply to ride'));
+    await tester.enterText(find.widgetWithText(TextFormField, 'WhatsApp phone number'), '08039876543');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Email'), 'emeka@gmail.com');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Residential address'), '12 Admiralty Way, Lekki');
+    await tester.ensureVisible(signUp);
+    await tester.tap(signUp);
     await tester.pumpAndSettle();
-    expect(api.riders.single, {'full_name': 'Emeka Obi', 'phone': '08039876543', 'vehicle': 'motorcycle', 'plate_number': 'LSD-123-XY', 'city': 'Lagos'});
-    expect(find.text('Thanks for applying'), findsOneWidget);
+    expect(api.riders.single, {
+      'full_name': 'Emeka Obi',
+      'phone': '08039876543',
+      'email': 'emeka@gmail.com',
+      'residential_address': '12 Admiralty Way, Lekki',
+      'vehicle': 'motorcycle',
+      'city': 'Lagos',
+    });
+    expect(find.text("You're signed up"), findsOneWidget);
+    expect(find.textContaining('Yummy Chops Rider app'), findsOneWidget);
   });
 
   testWidgets('a package is tracked by its number without signing in', (tester) async {

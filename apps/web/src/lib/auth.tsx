@@ -17,6 +17,8 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   getToken: () => Promise<string | null>;
+  /** A fresh sign-in token now, e.g. after the account became a rider (the token carries the role). */
+  refreshToken: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
@@ -41,6 +43,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     loading,
     getToken: async () => (firebaseAuth().currentUser ? firebaseAuth().currentUser!.getIdToken() : null),
+    refreshToken: async () => {
+      await firebaseAuth().currentUser?.getIdToken(true);
+    },
     signIn: async (email, password) => {
       await signInWithEmailAndPassword(firebaseAuth(), email, password);
     },

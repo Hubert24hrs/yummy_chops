@@ -32,7 +32,7 @@ export default function RidePage() {
         <ol className="space-y-3 text-sm">
           <li><strong>1. Sign up</strong> here.</li>
           <li>
-            <strong>2. Complete your KYC</strong> in the Yummy Chops Rider app, signed in with the same account: your
+            <strong>2. Complete your KYC</strong> in the Yummy Chops Rider app or <Link href="/ride/kyc" className="font-semibold text-primary hover:underline">here on the website</Link>, signed in with the same account: your
             permanent address and NIN; photos of your plate number, Hackney permit, rider&apos;s card or licence and
             your bike; two guarantors, each with a signed guarantor form; and a selfie for the face check.
           </li>
@@ -54,22 +54,31 @@ export default function RidePage() {
 
 function RiderForm() {
   const api = useApi();
-  const { user } = useAuth();
+  const { user, refreshToken } = useAuth();
   const { register, handleSubmit, formState } = useForm<Values>({
     resolver: zodResolver(schema),
     defaultValues: { vehicle: "motorcycle", email: user?.email ?? "", full_name: user?.displayName ?? "" },
   });
-  const submit = useMutation({ mutationFn: (v: Values) => api.applications.rider({ ...v, city: "Lagos" }) });
+  const submit = useMutation({
+    mutationFn: async (v: Values) => {
+      const application = await api.applications.rider({ ...v, city: "Lagos" });
+      await refreshToken(); // the account is now a rider: its sign-in token must say so for the KYC
+      return application;
+    },
+  });
   if (submit.isSuccess) {
     return (
       <Card className="space-y-4 p-8 text-center">
         <CheckCircle2 className="mx-auto size-12 text-secondary" />
         <h2 className="font-display text-2xl">You&apos;re signed up</h2>
         <p className="text-sm text-muted">
-          Next, your KYC: open the <strong>Yummy Chops Rider</strong> app and sign in with this account. It asks for each
-          document and photo in turn; then submit it and we check it.
+          Next, your KYC: complete it here, or in the <strong>Yummy Chops Rider</strong> app signed in with this account.
+          It asks for each document and photo in turn; then submit it and we check it.
         </p>
-        <Link href={GUARANTOR_FORM} className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline">
+        <Link href="/ride/kyc" className="inline-flex items-center justify-center rounded-xl bg-primary px-5 py-3 font-semibold text-on-primary shadow-sm hover:bg-primary-strong">
+          Complete your KYC
+        </Link>
+        <Link href={GUARANTOR_FORM} className="flex items-center justify-center gap-2 text-sm font-semibold text-primary hover:underline">
           <FileText className="size-4" /> Print the guarantor form
         </Link>
       </Card>

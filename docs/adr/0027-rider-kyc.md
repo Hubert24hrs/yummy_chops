@@ -16,11 +16,13 @@ Storage rules already reserved `applications/{uid}/` for onboarding documents, b
 
 ## Decision
 
-1. **Sign-up gives the rider app at once.** The rider application (`POST /v1/applications/rider`, the website's
-   `/ride` page or "Become our rider" in the rider app) now takes the WhatsApp number, email and residential address.
+1. **Sign-up gives the rider app at once.** The rider application (`POST /v1/applications/rider`: the website's
+   `/ride` page, "Become our rider" in the customer app, or the rider app's sign-up) now takes the WhatsApp number,
+   email and residential address.
    It gives the account the `rider` role, a **pending** rider profile and a KYC draft. A pending rider can do their KYC
    but cannot go online ("You can go online once the team has verified your KYC").
-2. **The KYC lives in the rider app** (`/v1/rider/kyc`): permanent address and NIN (11 digits), two guarantors' details,
+2. **The KYC is in the rider app and on the website** (`/ride/kyc`; both use `/v1/rider/kyc`): permanent address and
+   NIN (11 digits), two guarantors' details,
    and seven photos: plate number, Hackney permit, rider's card or licence, the bike, each guarantor's signed form (a
    photo or a scanned PDF) and a selfie for the face check. Answers are saved as the rider goes; **Submit** checks that
    nothing is missing. The guarantor form to print is a page on the website (`/ride/guarantor-form`); its wording is a
@@ -42,7 +44,8 @@ Riders approved before this keep working; their KYC starts as a draft they can c
 
 ## Consequences
 
-- Riders now need a phone with a camera and the rider app before they can deliver; the website only signs them up.
+- Riders deliver with the rider app; they can sign up and do their KYC on the website too (the website shrinks large
+  photos before uploading them).
 - The team must review KYC submissions promptly: riders wait as pending until they do.
 - NIN numbers, ID photos and selfies are personal data under the NDPR: keep access to the reviewing team, and decide
   how long to keep the files after a rider leaves (not yet decided).
