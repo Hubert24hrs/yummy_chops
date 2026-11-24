@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { Gate } from "@/components/gate";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { branchLine } from "@/lib/branch";
 
 export default function Home() {
   return <Gate><Pick /></Gate>;
@@ -31,11 +32,16 @@ function Pick() {
   }
   return (
     <div className="mx-auto max-w-lg space-y-3 p-8">
-      <h1 className="font-display text-2xl">Choose a restaurant</h1>
+      <h1 className="font-display text-2xl">Choose a shop or branch</h1>
       {mine.data.map(({ restaurant, role }) => (
         <button key={restaurant.id} onClick={() => router.push(`/r/${restaurant.id}/orders`)}
-          className="flex w-full items-center justify-between rounded-lg border border-border bg-surface p-4 text-left hover:border-primary">
-          <span className="font-semibold">{restaurant.name}</span><span className="text-sm capitalize text-muted">{role}</span>
+          className="flex w-full items-center justify-between gap-3 rounded-lg border border-border bg-surface p-4 text-left hover:border-primary">
+          <span className="min-w-0">
+            <span className="block font-semibold">{restaurant.name}</span>
+            {/* Branches of one business share its name: the branch and area tell them apart (ADR-0028). */}
+            <span className="block truncate text-sm text-muted">{branchLine(restaurant)}</span>
+          </span>
+          <span className="shrink-0 text-sm capitalize text-muted">{role}</span>
         </button>
       ))}
     </div>

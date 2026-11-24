@@ -485,14 +485,18 @@ class OrderService:
         )
 
     async def _notify_merchant(self, order: Order) -> None:
-        """New order for the merchant, and the timer that refunds/cancels it if nobody accepts."""
-        cash_note = " · customer pays cash on delivery" if order.is_pay_on_delivery else ""
-        await self.notifier.notify_restaurant(
-            order.restaurant_id,
-            "New order",
-            f"Order {order.short_code} · {format_naira(order.breakdown.subtotal_kobo)}{cash_note}",
-            {"order_id": order.id},
-        )
+        """New order for the merchant ("Payment received" when it is paid already), and the timer that refunds or
+        cancels it if nobody confirms it."""
+        if order.is_pay_on_delivery:
+            title = "New order"
+            body = f"Order {order.short_code} · {format_naira(order.breakdown.subtotal_kobo)} · customer pays cash on delivery"
+        else:
+            title = "Payment received"
+            body = f"Order {order.short_code} · {format_naira(order.breakdown.subtotal_kobo)} paid. Confirm the order to start."
+            if order.payment.split_to_business_kobo:
+                share = format_naira(order.payment.split_to_business_kobo)
+                body += f" Your {share} is on its way to your bank account (Paystack)."
+        await self.notifier.notify_restaurant(order.restaurant_id, title, body, {"order_id": order.id})
         await self.tasks.enqueue(
             TASK_RESTAURANT_TIMEOUT, {"order_id": order.id}, delay_seconds=self.accept_timeout
         )
@@ -587,6 +591,7 @@ class OrderService:
                     reference=payload.get("reference"),
                     status="paid",
                     paid_at=datetime.fromisoformat(str(paid_at)),
+                    split_to_business_kobo=int(payload.get("split_amount_kobo") or 0),
                 )
             )
         }

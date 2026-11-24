@@ -271,6 +271,15 @@ export function createApi(opts: ClientOptions) {
     },
     partner: {
       restaurants: () => get<{ restaurant: T.Restaurant; role: string }[]>("/v1/partner/restaurants"),
+      /** The owner's business: its ID, branches and bank account (docs/adr/0028-business-branches-and-split-payments.md). */
+      business: () => get<T.MyBusinesses>("/v1/partner/business"),
+      claimBusiness: (restaurant_id: string) => post<T.Business>("/v1/partner/business", { restaurant_id }),
+      addBranch: (bid: string, branch: T.BranchInput) => post<T.Business>(`/v1/partner/business/${bid}/branches`, branch),
+      updateBranch: (bid: string, rid: string, body: { branch_name?: string | null; manager_phone?: string | null }) =>
+        put<T.Business>(`/v1/partner/business/${bid}/branches/${rid}`, body),
+      banks: () => get<T.Bank[]>("/v1/partner/banks"),
+      connectBank: (bid: string, bank_code: string, account_number: string) =>
+        put<T.Business>(`/v1/partner/business/${bid}/bank`, { bank_code, account_number }),
       menu: (rid: string) => get<{ restaurant: T.Restaurant; categories: T.MenuCategory[]; items: T.MenuItem[]; option_groups: T.OptionGroup[] }>(
         `/v1/partner/restaurants/${rid}/menu`),
       setCategories: (rid: string, names: string[]) => put(`/v1/partner/restaurants/${rid}/categories`, { names }),
@@ -310,6 +319,7 @@ export function createApi(opts: ClientOptions) {
       decideRiderKyc: (uid: string, body: { approve: boolean; note?: string; changes_needed?: string[] }) =>
         post<T.RiderKyc>(`/v1/admin/rider-kyc/${uid}/decision`, body),
       restaurants: () => get<T.Restaurant[]>("/v1/admin/restaurants"),
+      businesses: () => get<T.Business[]>("/v1/admin/businesses"),
       setRestaurantStatus: (id: string, status: string, reason: string) => put(`/v1/admin/restaurants/${id}/status`, { status, reason }),
       riders: () => get<T.RiderProfile[]>("/v1/admin/riders"),
       liveRiders: () => get<T.LiveRider[]>("/v1/admin/riders/live"),

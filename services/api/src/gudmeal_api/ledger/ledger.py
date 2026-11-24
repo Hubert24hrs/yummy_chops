@@ -128,6 +128,17 @@ def payment_captured(provider: str, amount_kobo: int) -> list[Posting]:
     ]
 
 
+def split_settled(provider: str, restaurant_id: str, amount_kobo: int) -> list[Posting]:
+    """A split card payment: the provider sent the business's share straight to its bank account, so the business has
+    been paid that much already (like a payout made through the provider). When the order completes its earning is
+    credited and the two cancel out; if the order is refunded first, the business owes its share back
+    (docs/adr/0028-business-branches-and-split-payments.md)."""
+    return [
+        Posting(f"liability:restaurant:{restaurant_id}", "debit", amount_kobo),
+        Posting(f"cash:{provider}", "credit", amount_kobo),
+    ]
+
+
 def order_completed(order: Order) -> list[Posting]:
     """Recognise revenue and payables when an order completes (see docs/architecture/payments-and-ledger.md)."""
     b, s = order.breakdown, order.settlement

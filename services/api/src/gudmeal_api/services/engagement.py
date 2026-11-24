@@ -32,6 +32,7 @@ from ..errors import Conflict, InvalidTransition, NotFound, ValidationFailed
 from ..ledger.audit import AuditLog
 from ..repositories import Repositories, Transaction, to_doc
 from ..security.rbac import Permission, Principal, Role, require
+from .business import BranchInput, BusinessService
 from .catalog import slugify
 from .infra import IdentityAdmin, Notifier
 from .orders import OrderService, refund_meta
@@ -159,11 +160,14 @@ class RestaurantApplicationInput(BaseModel):
     area: str = Field(min_length=2, max_length=60)
     location: GeoPoint
     cuisines: list[str] = Field(min_length=1, max_length=8)
-    bank_name: str = Field(min_length=2, max_length=60)
-    bank_account_name: str = Field(min_length=2, max_length=80)
-    bank_account_last4: str = Field(
-        pattern=r"^\d{4}$", description="Full account details are collected by the payment provider"
-    )
+    #: The business's email (docs/adr/0028-business-branches-and-split-payments.md).
+    email: str | None = Field(default=None, max_length=120)
+    #: More branch addresses, besides the main one above: each becomes a branch selling the same menu.
+    branches: list[BranchInput] = Field(default_factory=list, max_length=20)
+    #: Bank details now come later, in the partner dashboard (they set up split payments); older apps still send them.
+    bank_name: str | None = Field(default=None, max_length=60)
+    bank_account_name: str | None = Field(default=None, max_length=80)
+    bank_account_last4: str | None = Field(default=None, pattern=r"^\d{4}$")
     document_paths: list[str] = Field(default_factory=list, max_length=10)
 
     @model_validator(mode="after")
@@ -195,12 +199,14 @@ class ApplicationService:
         audit: AuditLog,
         notifier: Notifier,
         kyc: RiderKycService | None = None,
+        businesses: BusinessService | None = None,
     ) -> None:
         self.repos = repos
         self.identity = identity
         self.audit = audit
         self.notifier = notifier
         self.kyc = kyc
+        self.businesses = businesses
 
     async def submit(
         self, principal: Principal, kind: Literal["restaurant", "rider"], data: BaseModel
@@ -299,9 +305,11 @@ class ApplicationService:
         rid = uuid.uuid4().hex[:20]
         location = GeoPoint.model_validate(d["location"])
         vertical = Vertical(d.get("vertical", "food"))
+        zone = (await self.repos.get_pricing_config()).zone_for(location)
         restaurant = Restaurant(
             id=rid,
             vertical=vertical,
+            city=zone.city if zone else "lagos",  # the city of the delivery zone it is in
             name=d["business_name"],
             slug=f"{slugify(d['business_name'])}-{rid[:4]}",
             cuisines=d.get("cuisines", []),
@@ -319,6 +327,15 @@ class ApplicationService:
         await self.repos.restaurants.create(restaurant)
         shelf_id, shelf_name = FIRST_CATEGORY.get(vertical.value, FIRST_CATEGORY["food"])
         await self.repos.set_menu_categories(rid, [MenuCategory(id=shelf_id, name=shelf_name, position=0)])
+        if self.businesses is not None:
+            # A business with its unique ID and every branch it signed up with (the owner manages them all).
+            await self.businesses.create(
+                owner_uid=app.applicant_uid,
+                main=restaurant,
+                email=d.get("email"),
+                branches=[BranchInput.model_validate(b) for b in d.get("branches") or []],
+            )
+            return rid
         claims = await self.identity.get_claims(app.applicant_uid)
         roles = set(claims.get("roles", [])) | {Role.RESTAURANT_OWNER.value}
         restaurant_roles = {**claims.get("restaurant_roles", {}), rid: "owner"}
@@ -575,8 +592,8 @@ class MealPlanService:
         )
         catalog = []
         for r in restaurants:
-            items = await self.repos.list_items(r.id)
-            groups = await self.repos.list_option_groups(r.id)
+            items = await self.repos.list_items(r.menu_id)
+            groups = await self.repos.list_option_groups(r.menu_id)
             catalog.append((r, items, groups))
         deliver_by = data.deliver_by
         if deliver_by is not None and deliver_by.tzinfo is None:

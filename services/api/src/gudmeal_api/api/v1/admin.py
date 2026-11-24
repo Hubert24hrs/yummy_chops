@@ -171,6 +171,12 @@ async def set_roles(uid: str, data: RolesInput, c: Ctr, principal: CurrentPrinci
     return await c.admin.set_roles(principal, uid, data)
 
 
+# ---- businesses and their branches (docs/adr/0028-business-branches-and-split-payments.md) -------------------
+@router.get("/businesses")
+async def businesses(c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.businesses.list_all(principal)
+
+
 # ---- rider KYC review (docs/adr/0027-rider-kyc.md) -----------------------------------------------------------
 @router.get("/rider-kyc")
 async def rider_kyc_list(c: Ctr, principal: CurrentPrincipal, status: str | None = None) -> Any:

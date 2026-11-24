@@ -88,6 +88,9 @@ export interface Restaurant {
   is_accepting_orders: boolean; status: "pending" | "active" | "suspended"; min_order_kobo: Kobo;
   supports_delivery: boolean; supports_pickup: boolean; image_url: string | null; cover_url: string | null;
   owner_uid: string | null; commission_bps: number | null; phone: string | null;
+  /** A branch of a business (ADR-0028): its business ID, the branch's name and its manager's number. A branch sells
+   * the menu of `menu_restaurant_id` (the main branch). */
+  business_id?: string | null; branch_name?: string | null; manager_phone?: string | null; menu_restaurant_id?: string | null;
 }
 
 export interface DeliveryAddress {
@@ -134,7 +137,11 @@ export interface Order {
   restaurant_name: string; restaurant_address: string; restaurant_location: GeoPoint; status: OrderStatus;
   fulfillment: Fulfillment; lines: PricedLine[]; breakdown: PriceBreakdown; delivery_address: DeliveryAddress | null;
   distance_km: number | null; scheduled_for: string | null;
-  payment: { provider: string | null; reference: string | null; status: string; paid_at: string | null };
+  payment: {
+    provider: string | null; reference: string | null; status: string; paid_at: string | null;
+    /** A split card payment: the business's share, sent straight to its bank account by Paystack (ADR-0028). */
+    split_to_business_kobo?: Kobo;
+  };
   rider_id: string | null; rider_name: string | null; prep_minutes: number | null; estimated_delivery_at: string | null;
   accepted_at: string | null; ready_at: string | null; picked_up_at: string | null; delivered_at: string | null;
   completed_at: string | null; cancelled_at: string | null; cancellation_reason: string | null;
@@ -149,6 +156,9 @@ export interface Order {
   waybill?: WaybillDetails | null;
   // restaurant view
   restaurant_earning_kobo?: Kobo; commission_kobo?: Kobo;
+  /** The rider on the way to the shop or with the order: their number, and about how many minutes away they are
+   * while coming to collect it (null when unknown). */
+  rider?: { name: string; phone: string | null; eta_minutes: number | null; verified: boolean } | null;
   // rider view: what to collect at the door, and waybill legs (first mile ends with hub staff)
   payment_method?: "cash" | "prepaid"; collect_cash_kobo?: Kobo;
   leg_kind?: "first_mile" | "last_mile" | null; hub_handover?: boolean;
@@ -599,3 +609,26 @@ export interface Receipt {
   paid_with: string; payment_reference: string | null; paid_at: string | null; ordered_at: string; issued_at: string;
   printed_at: string | null; print_count: number; saved: boolean;
 }
+
+// ------------------------------------------------------------------------------------- businesses (ADR-0028)
+export interface BusinessBranch {
+  restaurant_id: string; branch_name: string | null; address: string; area: string; location: GeoPoint;
+  manager_phone: string | null; main: boolean; status: "pending" | "active" | "suspended"; is_accepting_orders: boolean;
+}
+/** A business: its unique ID (YCB-XXXXXX), its branches and the bank account split payments go to. Only the
+ * account's last four digits are kept. */
+export interface Business {
+  id: string; name: string; owner_uid: string; vertical: MerchantVertical; phone: string | null; email: string | null;
+  main_restaurant_id: string; settlement_bank_code: string | null; settlement_bank_name: string | null;
+  settlement_account_name: string | null; settlement_account_last4: string | null; created_at: string;
+  bank_connected: boolean; branches: BusinessBranch[];
+}
+export interface MyBusinesses {
+  businesses: Business[];
+  /** The owner's shops that are not in a business yet: each can get a business ID. */
+  without_business: { restaurant_id: string; name: string; address: string; area: string }[];
+}
+export interface BranchInput {
+  branch_name?: string | null; address: string; area?: string; location: GeoPoint; manager_phone?: string | null;
+}
+export interface Bank { code: string; name: string }

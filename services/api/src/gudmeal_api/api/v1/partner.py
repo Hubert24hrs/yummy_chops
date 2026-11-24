@@ -2,17 +2,56 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from ...domain.order_state import OrderStatus
+from ...services.business import BankInput, BranchInput, BranchUpdate
 from ...services.catalog import ItemInput, OptionGroupInput, RestaurantSettingsInput
 from ..deps import Ctr, CurrentPrincipal
 from ..serializers import order_view
 
 router = APIRouter(prefix="/v1/partner", tags=["partner"])
+
+
+# ---- the business: its unique ID, branches and bank account (docs/adr/0028-business-branches-and-split-payments.md)
+class ClaimInput(BaseModel):
+    restaurant_id: str = Field(min_length=1, max_length=64)
+
+
+@router.get("/business")
+async def my_business(c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.businesses.mine(principal)
+
+
+@router.post("/business", status_code=201)
+async def claim_business(data: ClaimInput, c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.businesses.claim(principal, data.restaurant_id)
+
+
+@router.post("/business/{business_id}/branches", status_code=201)
+async def add_branch(business_id: str, data: BranchInput, c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.businesses.add_branch(principal, business_id, data)
+
+
+@router.put("/business/{business_id}/branches/{restaurant_id}")
+async def update_branch(
+    business_id: str, restaurant_id: str, data: BranchUpdate, c: Ctr, principal: CurrentPrincipal
+) -> Any:
+    return await c.businesses.update_branch(principal, business_id, restaurant_id, data)
+
+
+@router.get("/banks")
+async def banks(c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.businesses.banks()
+
+
+@router.put("/business/{business_id}/bank")
+async def connect_bank(business_id: str, data: BankInput, c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.businesses.connect_bank(principal, business_id, data)
 
 
 class AcceptInput(BaseModel):
@@ -117,7 +156,37 @@ async def restaurant_orders(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[dict[str, Any]]:
     orders = await c.orders.list_for_restaurant(principal, restaurant_id, status, limit)
-    return [order_view(o, principal) for o in orders]
+    views = [order_view(o, principal) for o in orders]
+    # The rider coming for the order or carrying it: who, their number and, while they are coming, about how many
+    # minutes away (docs/adr/0028-business-branches-and-split-payments.md).
+    riding = {o.rider_id for o in orders if o.rider_id and o.status in RIDER_ON_THE_WAY}
+    if not riding:
+        return views
+    riders = await c.repos.riders.get_many(sorted(riding))
+    cfg = await c.repos.get_pricing_config()
+    now = datetime.now(UTC)
+    for view, order in zip(views, orders, strict=True):
+        rider = riders.get(order.rider_id or "") if order.status in RIDER_ON_THE_WAY else None
+        if rider is None:
+            continue
+        minutes = None
+        at = rider.last_location
+        # Only from a recent location (the age dispatch trusts): an old one gives no estimate, not a wrong one.
+        recent = rider.last_location_at is not None and (
+            (now - rider.last_location_at).total_seconds() <= c.dispatch.cfg.max_location_age_seconds
+        )
+        if order.status == OrderStatus.RIDER_ASSIGNED and at is not None and recent:
+            minutes = c.maps.estimate(at, order.restaurant_location, cfg).duration_minutes
+        view["rider"] = {
+            "name": rider.name,
+            "phone": rider.phone,
+            "eta_minutes": minutes,
+            "verified": rider.verified_at is not None,
+        }
+    return views
+
+
+RIDER_ON_THE_WAY = (OrderStatus.RIDER_ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.IN_TRANSIT)
 
 
 async def _restaurant_order(c: Any, principal: Any, restaurant_id: str, order_id: str) -> None:

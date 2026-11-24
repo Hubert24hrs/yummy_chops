@@ -32,6 +32,7 @@ from .security.rate_limit import RateLimiter
 from .services import dispatch as dispatch_mod
 from .services import orders as orders_mod
 from .services.admin import AdminService, AnalyticsService
+from .services.business import BusinessService
 from .services.cash import CashService
 from .services.catalog import CatalogService
 from .services.dispatch import DispatchService
@@ -116,6 +117,7 @@ class Container:
     profiles: ProfileService
     applications: ApplicationService
     kyc: RiderKycService
+    businesses: BusinessService
     reviews: ReviewService
     support: SupportService
     meal_plans: MealPlanService
@@ -355,6 +357,7 @@ async def build_container(
             version=settings.whatsapp_graph_version,
         )
     kyc = RiderKycService(repos, _file_store(settings), identity, audit, notifier)
+    businesses = BusinessService(repos, identity, audit, paystack=providers.get("paystack"))
     container = Container(
         settings=settings,
         repos=repos,
@@ -412,7 +415,8 @@ async def build_container(
         orders=orders,
         dispatch=dispatch,
         profiles=ProfileService(repos),
-        applications=ApplicationService(repos, identity, audit, notifier, kyc=kyc),
+        applications=ApplicationService(repos, identity, audit, notifier, kyc=kyc, businesses=businesses),
+        businesses=businesses,
         kyc=kyc,
         reviews=ReviewService(repos, orders),
         support=SupportService(repos, orders, audit),

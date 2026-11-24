@@ -111,6 +111,9 @@ class PaymentRecord(Base):
     channel: Mapped[str | None] = mapped_column(String(40))
     failure_reason: Mapped[str | None] = mapped_column(Text)
     refunded_kobo: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    # Split card payments (migration 0004): the share sent straight to a business's Paystack subaccount.
+    split_subaccount: Mapped[str | None] = mapped_column(String(40))
+    split_amount_kobo: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0", nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
@@ -126,6 +129,9 @@ class PaymentRecord(Base):
         ),
         CheckConstraint(
             "purpose NOT IN ('order','group_share') OR order_id IS NOT NULL", name="ck_payment_order_ref"
+        ),
+        CheckConstraint(
+            "split_amount_kobo >= 0 AND split_amount_kobo < amount_kobo", name="ck_payment_split"
         ),
         Index("ix_payment_records_status_created", "status", "created_at"),
     )

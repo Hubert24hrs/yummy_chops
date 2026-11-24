@@ -18,6 +18,16 @@ class InitializeResult:
 
 
 @dataclass(frozen=True)
+class SplitInstruction:
+    """Send a business's share of a card payment straight to its own bank account through the provider (Paystack: a
+    subaccount; docs/adr/0028-business-branches-and-split-payments.md). Yummy Chops keeps `platform_kobo` and bears
+    the provider's fee; the business gets the rest of the amount."""
+
+    subaccount: str
+    platform_kobo: int
+
+
+@dataclass(frozen=True)
 class VerifyResult:
     reference: str
     status: VerifyStatus
@@ -49,6 +59,7 @@ class WebhookEvent:
 
 class PaymentProvider(Protocol):
     name: str
+    supports_split: bool  # can send a business's share straight to its account (SplitInstruction)
 
     async def initialize(
         self,
@@ -61,6 +72,7 @@ class PaymentProvider(Protocol):
         metadata: Mapping[str, Any],
         customer_name: str | None = None,
         customer_phone: str | None = None,
+        split: SplitInstruction | None = None,
     ) -> InitializeResult: ...
 
     async def verify(self, reference: str) -> VerifyResult: ...

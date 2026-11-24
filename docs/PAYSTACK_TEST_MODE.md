@@ -45,6 +45,12 @@ and the **Transfer**, **Bank** and **USSD** tabs. Try those on the phone.
 
 ## What does not work on this computer
 
+- **Businesses can't connect a bank account yet** ([ADR-0028](adr/0028-business-branches-and-split-payments.md)).
+  The partner dashboard's Business page checks the account with Paystack, then asks Paystack to add it as a
+  subaccount, and Paystack answers "Sorry, We cannot add subaccount at the moment" until the Paystack business is
+  activated. Card payments for these businesses are not split; they are paid weekly. To try split payments, use
+  `phone-test`: without a Paystack key it lists pretend banks and accepts any 10-digit account number.
+
 - **Paystack's webhooks can't reach a laptop.** Payments still work, because the app and the return page ask
   Paystack directly. But a refund back to a card stays "processing" in Yummy Chops even after Paystack completes
   it. The online test server receives the webhooks. Customers who switched on instant refunds to their wallet

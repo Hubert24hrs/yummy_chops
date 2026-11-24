@@ -48,8 +48,9 @@ const targets = {
     args: ["-m", "uvicorn", "--factory", "gudmeal_api.main:app_factory", "--port", "8000", ...(lan ? ["--host", "0.0.0.0"] : [])],
     cwd: join(root, "services/api"),
     env: {
-      // Local dev creates tables directly (no migrations): bump the file name when the money schema changes.
-      DATA_BACKEND: "memory", SEED_DEMO_DATA: "true", DATABASE_URL: "sqlite+aiosqlite:///./gudmeal_local_v3.db",
+      // Local dev creates tables directly (no migrations): bump the file name when the money schema changes
+      // (v4: split card payments, ADR-0028).
+      DATA_BACKEND: "memory", SEED_DEMO_DATA: "true", DATABASE_URL: "sqlite+aiosqlite:///./gudmeal_local_v4.db",
       // With --lan the payment sandbox page is opened by the phone, so its links use the Wi-Fi address.
       PUBLIC_BASE_URL: `http://${ip ?? "localhost"}:8000`, PAYMENT_CALLBACK_URL: "http://localhost:3000/checkout/callback",
       // ...and they follow this computer when it joins another Wi-Fi and gets a new address.

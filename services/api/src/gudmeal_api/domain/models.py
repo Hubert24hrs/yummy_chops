@@ -90,6 +90,39 @@ class Restaurant(Model):
     phone: str | None = None
     owner_uid: str | None = None
     created_at: datetime | None = None
+    # Businesses with branches (docs/adr/0028-business-branches-and-split-payments.md): every branch is a merchant of
+    # its own (address, hours, orders) under one business; branches share the main branch's menu.
+    business_id: str | None = None
+    menu_restaurant_id: str | None = None  # where this branch's menu lives (None: its own)
+    branch_name: str | None = Field(default=None, max_length=60)
+    manager_phone: str | None = Field(default=None, max_length=20)
+
+    @property
+    def menu_id(self) -> str:
+        """The merchant whose menu (items, shelves, options) this one sells."""
+        return self.menu_restaurant_id or self.id
+
+
+class Business(Model):
+    """A business on Yummy Chops: one owner, one or more branches (each a `Restaurant`), one menu, one bank account.
+
+    `id` is the business's unique ID (e.g. YCB-7K3Q9P): shown to the owner, tagged on every item it lists and used
+    for its split card payments."""
+
+    id: str
+    name: str = Field(min_length=2, max_length=80)
+    owner_uid: str
+    vertical: Vertical = Vertical.FOOD
+    phone: str | None = Field(default=None, max_length=20)
+    email: str | None = Field(default=None, max_length=120)
+    main_restaurant_id: str
+    # Split card payments (Paystack subaccount): the business's share goes straight to its bank account.
+    paystack_subaccount_code: str | None = None
+    settlement_bank_code: str | None = None
+    settlement_bank_name: str | None = None
+    settlement_account_name: str | None = None
+    settlement_account_last4: str | None = None  # never the full account number
+    created_at: datetime
 
 
 class MenuCategory(Model):
@@ -134,6 +167,7 @@ class OptionGroup(Model):
 class MenuItem(Model):
     id: str
     restaurant_id: str
+    business_id: str | None = None  # the business's unique ID, tagged on everything it lists
     category_id: str
     name: str = Field(min_length=1, max_length=80)
     description: str = Field(default="", max_length=400)
@@ -454,6 +488,8 @@ class PaymentSummary(Model):
     reference: str | None = None
     status: Literal["unpaid", "pending", "paid", "failed", "refunded", "partially_refunded"] = "unpaid"
     paid_at: datetime | None = None
+    # A split card payment: the business's share, sent straight to its bank account by the provider.
+    split_to_business_kobo: int = 0
 
 
 class Order(Model):

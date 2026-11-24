@@ -227,7 +227,7 @@ void main() {
     await _pump(tester, const ProfileScreen(), api: api, tall: true, overrides: [
       walletProvider.overrideWith((ref) async => const WalletOverview(balanceKobo: 500000)),
     ]);
-    for (final tile in ['My receipts', 'Food preferences', 'Track a package', 'Add your business', 'Ride with Yummy Chops', 'FAQ, privacy and terms', 'Download my data']) {
+    for (final tile in ['My receipts', 'Food preferences', 'Track a package', 'Register your business', 'Ride with Yummy Chops', 'FAQ, privacy and terms', 'Download my data']) {
       await tester.scrollUntilVisible(find.text(tile), 200, scrollable: page);
       expect(find.text(tile), findsOneWidget, reason: tile);
     }
@@ -281,20 +281,27 @@ void main() {
     expect(api.businesses, isEmpty); // nothing is sent until the form is complete
     expect(find.text('Enter your CAC registration number'), findsOneWidget);
 
+    expect(find.textContaining('Account'), findsNothing); // bank details come later, in the partner dashboard
     for (final (label, value) in [
-      ('Business name', 'Mama Nkechi Kitchen'), ('What you sell', 'Nigerian, Grills'), ('Street address', '4 Admiralty Way'),
-      ('Contact name', 'Nkechi Eze'), ('Contact phone', '08031234567'), ('CAC number', 'RC123456'), ('Bank', 'GTBank'),
-      ('Account name', 'Mama Nkechi Kitchen Ltd'), ('Account number (last 4)', '4821'),
+      ('Business name', 'Mama Nkechi Kitchen'), ('What you sell', 'Nigerian, Grills'), ('Address (main branch)', '4 Admiralty Way'),
+      ('Your name', 'Nkechi Eze'), ('Phone number', '08031234567'), ('Email', 'hello@mamankechi.ng'), ('CAC number', 'RC123456'),
     ]) {
       await tester.enterText(find.widgetWithText(TextFormField, label), value);
     }
+    // A second branch (ADR-0028): its own address, the same menu.
+    await tester.tap(find.byKey(const ValueKey('add-branch')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Branch 2 address'), '7 Ajose Adeogun Street');
     await tester.tap(find.text('Send application'));
     await tester.pumpAndSettle();
     expect(api.businesses.single, {
       'vertical': 'food', // a restaurant unless the business picks another kind
       'business_name': 'Mama Nkechi Kitchen', 'cac_number': 'RC123456', 'contact_name': 'Nkechi Eze', 'contact_phone': '08031234567',
-      'address': '4 Admiralty Way', 'area': 'Lekki Phase 1', 'location': {'lat': 6.4478, 'lng': 3.4723}, 'cuisines': ['nigerian', 'grills'],
-      'bank_name': 'GTBank', 'bank_account_name': 'Mama Nkechi Kitchen Ltd', 'bank_account_last4': '4821',
+      'email': 'hello@mamankechi.ng', 'address': '4 Admiralty Way', 'area': 'Lekki Phase 1', 'location': {'lat': 6.4478, 'lng': 3.4723},
+      'branches': [
+        {'address': '7 Ajose Adeogun Street', 'area': 'Lekki Phase 1', 'location': {'lat': 6.4478, 'lng': 3.4723}},
+      ],
+      'cuisines': ['nigerian', 'grills'],
     });
     expect(find.text('Application received'), findsOneWidget);
   });
@@ -311,9 +318,8 @@ void main() {
     await tester.tap(find.text('Pharmacy').last);
     await tester.pumpAndSettle();
     for (final (label, value) in [
-      ('Business name', 'Allen Avenue Pharmacy'), ('What you sell', 'Pain relief, Vitamins'), ('Street address', '12 Allen Avenue'),
-      ('Contact name', 'Tobi Ade'), ('Contact phone', '08033333333'), ('CAC number', 'RC654321'), ('Bank', 'GTBank'),
-      ('Account name', 'Allen Avenue Pharmacy Ltd'), ('Account number (last 4)', '4321'),
+      ('Business name', 'Allen Avenue Pharmacy'), ('What you sell', 'Pain relief, Vitamins'), ('Address (main branch)', '12 Allen Avenue'),
+      ('Your name', 'Tobi Ade'), ('Phone number', '08033333333'), ('CAC number', 'RC654321'),
     ]) {
       await tester.enterText(find.widgetWithText(TextFormField, label), value);
     }

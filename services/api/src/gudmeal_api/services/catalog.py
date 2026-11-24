@@ -257,6 +257,7 @@ class CatalogService:
         )
         promotions = await self._active_promotions(now)
         cards: list[RestaurantCard] = []
+        branch_of: dict[str, tuple[str, bool]] = {}  # card id -> (business, is the main branch)
         q = (query or "").lower().strip()
         for r in restaurants:
             if vertical is not None and r.vertical.value != vertical:
@@ -281,6 +282,9 @@ class CatalogService:
             if location is not None and card.distance_km is not None and card.distance_km > 25:
                 continue
             cards.append(card)
+            if r.business_id:
+                branch_of[r.id] = (r.business_id, r.menu_restaurant_id is None)
+        cards = one_branch_each(cards, branch_of)
 
         def rec_key(c: RestaurantCard) -> tuple[Any, ...]:
             return (
@@ -309,14 +313,14 @@ class CatalogService:
         self, restaurant_id: str, *, location: GeoPoint | None = None, include_unavailable: bool = True
     ) -> RestaurantDetail:
         r = await self.get_restaurant(restaurant_id)
-        categories = await self.repos.get_menu_categories(r.id)
+        categories = await self.repos.get_menu_categories(r.menu_id)  # branches sell the main branch's menu
         items = [
             i
-            for i in await self.repos.list_items(r.id)
+            for i in await self.repos.list_items(r.menu_id)
             # Prescription-only medicines are never shown to customers (the partner's own menu lists them).
             if i.is_active and not i.requires_prescription and (include_unavailable or i.is_available)
         ]
-        groups = await self.repos.list_option_groups(r.id)
+        groups = await self.repos.list_option_groups(r.menu_id)
         by_cat: dict[str, list[MenuItem]] = {}
         for item in items:
             by_cat.setdefault(item.category_id, []).append(item)
@@ -462,7 +466,7 @@ class CatalogService:
         if accepting and restaurant.status == RestaurantStatus.PENDING:
             # A newly approved shop stays hidden from customers until it first opens for orders, and it can only do
             # that with something to sell (ops can also activate it from the Command Centre).
-            if not any(item.is_available for item in await self.repos.list_items(restaurant_id)):
+            if not any(item.is_available for item in await self.repos.list_items(restaurant.menu_id)):
                 raise ValidationFailed(
                     "Add at least one available item to your menu before opening for orders"
                 )
@@ -476,7 +480,8 @@ class CatalogService:
         require_restaurant(principal, restaurant_id, "menu")
         if not 1 <= len(names) <= 40:
             raise ValidationFailed("Provide between 1 and 40 categories")
-        existing = {c.name.lower(): c for c in await self.repos.get_menu_categories(restaurant_id)}
+        menu = await self._menu_of(restaurant_id)
+        existing = {c.name.lower(): c for c in await self.repos.get_menu_categories(menu)}
         cats = [
             MenuCategory(
                 id=existing[n.lower()].id if n.lower() in existing else uuid.uuid4().hex[:12],
@@ -485,7 +490,7 @@ class CatalogService:
             )
             for i, n in enumerate(names)
         ]
-        await self.repos.set_menu_categories(restaurant_id, cats)
+        await self.repos.set_menu_categories(menu, cats)
         return cats
 
     async def _validate_item_refs(self, restaurant_id: str, data: ItemInput) -> None:
@@ -503,10 +508,11 @@ class CatalogService:
     async def create_item(self, principal: Principal, restaurant_id: str, data: ItemInput) -> MenuItem:
         require_restaurant(principal, restaurant_id, "menu")
         r = await self.get_restaurant(restaurant_id, include_inactive=True)
-        await self._validate_item_refs(restaurant_id, data)
+        await self._validate_item_refs(r.menu_id, data)
         item = MenuItem(
             id=uuid.uuid4().hex,
-            restaurant_id=restaurant_id,
+            restaurant_id=r.menu_id,
+            business_id=r.business_id,  # every item a business lists carries its unique ID
             **data.model_dump(),
             search_keywords=search_keywords(
                 data.name, data.description, " ".join(data.tags), " ".join(r.cuisines)
@@ -515,9 +521,13 @@ class CatalogService:
         await self.repos.items.create(item)
         return item
 
+    async def _menu_of(self, restaurant_id: str) -> str:
+        """Branches sell their main branch's menu: a menu change made from any branch changes that menu."""
+        return (await self.get_restaurant(restaurant_id, include_inactive=True)).menu_id
+
     async def _owned_item(self, restaurant_id: str, item_id: str) -> MenuItem:
         item = await self.repos.items.get(item_id)
-        if item is None or item.restaurant_id != restaurant_id or not item.is_active:
+        if item is None or item.restaurant_id != await self._menu_of(restaurant_id) or not item.is_active:
             raise NotFound("Menu item not found")
         return item
 
@@ -527,7 +537,7 @@ class CatalogService:
         require_restaurant(principal, restaurant_id, "menu")
         r = await self.get_restaurant(restaurant_id, include_inactive=True)
         current = await self._owned_item(restaurant_id, item_id)
-        await self._validate_item_refs(restaurant_id, data)
+        await self._validate_item_refs(r.menu_id, data)
         item = current.model_copy(
             update={
                 **data.model_dump(),
@@ -560,11 +570,12 @@ class CatalogService:
         self, principal: Principal, restaurant_id: str, data: OptionGroupInput, group_id: str | None = None
     ) -> OptionGroup:
         require_restaurant(principal, restaurant_id, "menu")
+        menu = await self._menu_of(restaurant_id)
         if group_id:
             existing = await self.repos.option_groups.get(group_id)
-            if existing is None or existing.restaurant_id != restaurant_id:
+            if existing is None or existing.restaurant_id != menu:
                 raise NotFound("Option group not found")
-        group = OptionGroup(id=group_id or uuid.uuid4().hex, restaurant_id=restaurant_id, **data.model_dump())
+        group = OptionGroup(id=group_id or uuid.uuid4().hex, restaurant_id=menu, **data.model_dump())
         await self.repos.option_groups.save(group)
         return group
 
@@ -573,10 +584,36 @@ class CatalogService:
         r = await self.get_restaurant(restaurant_id, include_inactive=True)
         return {
             "restaurant": r,
-            "categories": await self.repos.get_menu_categories(restaurant_id),
-            "items": [i for i in await self.repos.list_items(restaurant_id) if i.is_active],
-            "option_groups": list((await self.repos.list_option_groups(restaurant_id)).values()),
+            "categories": await self.repos.get_menu_categories(r.menu_id),
+            "items": [i for i in await self.repos.list_items(r.menu_id) if i.is_active],
+            "option_groups": list((await self.repos.list_option_groups(r.menu_id)).values()),
         }
+
+
+def one_branch_each(
+    cards: list[RestaurantCard], branch_of: dict[str, tuple[str, bool]]
+) -> list[RestaurantCard]:
+    """Businesses with branches show once: the branch that is open and nearest to the customer (the one their order
+    goes to); without a location, the main branch."""
+    best: dict[str, RestaurantCard] = {}
+
+    def rank(c: RestaurantCard) -> tuple[Any, ...]:
+        return (
+            not (c.is_open and c.is_accepting_orders),
+            c.distance_km is None,
+            c.distance_km or 0,
+            not branch_of[c.id][1],
+        )
+
+    out: list[RestaurantCard] = []
+    for card in cards:
+        if card.id not in branch_of:
+            out.append(card)
+            continue
+        business = branch_of[card.id][0]
+        if business not in best or rank(card) < rank(best[business]):
+            best[business] = card
+    return out + list(best.values())
 
 
 def restaurant_geohash(r: Restaurant) -> Restaurant:

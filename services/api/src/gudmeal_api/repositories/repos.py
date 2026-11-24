@@ -11,6 +11,7 @@ from ..domain.growth import GroupOrder, GrowthConfig, Membership, RewardsAccount
 from ..domain.logistics import WaybillNetwork, default_network
 from ..domain.models import (
     Application,
+    Business,
     CustomerProfile,
     DeliveryAssignment,
     MenuCategory,
@@ -104,6 +105,7 @@ class Repositories:
         self.tickets = TypedCollection(store, "support_tickets", SupportTicket)
         self.applications = TypedCollection(store, "applications", Application)
         self.rider_kyc = TypedCollection(store, "rider_kyc", RiderKyc, key="uid")
+        self.businesses = TypedCollection(store, "businesses", Business)
         self.notifications = TypedCollection(store, "notifications", Notification)
         # Growth (ADR-0016): Plus memberships, Yummy points and referrals, group orders.
         self.memberships = TypedCollection(store, "memberships", Membership, key="uid")

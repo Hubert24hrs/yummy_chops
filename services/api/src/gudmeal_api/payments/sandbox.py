@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from ..errors import NotFound
-from .base import InitializeResult, RefundResult, VerifyResult, WebhookEvent
+from .base import InitializeResult, RefundResult, SplitInstruction, VerifyResult, WebhookEvent
 
 
 @dataclass
@@ -32,6 +32,7 @@ class _SandboxCharge:
 
 class LocalSandboxProvider:
     name = "local_sandbox"
+    supports_split = True  # stands in for Paystack, splits included (nothing really moves)
 
     def __init__(self, *, public_base_url: str | Callable[[], str], signing_secret: str) -> None:
         # A function is asked again for every checkout: in a phone test this computer's address changes with
@@ -54,6 +55,7 @@ class LocalSandboxProvider:
         metadata: Mapping[str, Any],
         customer_name: str | None = None,
         customer_phone: str | None = None,
+        split: SplitInstruction | None = None,
     ) -> InitializeResult:
         self.charges[reference] = _SandboxCharge(reference, amount_kobo, currency, callback_url)
         return InitializeResult(

@@ -167,11 +167,11 @@ class _BusinessApplyState extends ConsumerState<BusinessApplyScreen> {
   final _address = TextEditingController();
   final _contact = TextEditingController();
   final _phone = TextEditingController();
+  final _email = TextEditingController();
   final _cac = TextEditingController();
-  final _bank = TextEditingController();
-  final _accountName = TextEditingController();
-  final _last4 = TextEditingController();
   final _licence = TextEditingController();
+  // More branches besides the main one (docs/adr/0028-business-branches-and-split-payments.md).
+  final _branches = <({TextEditingController address, Area? area})>[];
   String _kind = 'food';
   Area? _area;
   bool _busy = false;
@@ -179,8 +179,16 @@ class _BusinessApplyState extends ConsumerState<BusinessApplyScreen> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    final user = ref.read(authRepositoryProvider).currentUser;
+    _contact.text = user?.name ?? '';
+    _email.text = user?.email ?? '';
+  }
+
+  @override
   void dispose() {
-    for (final c in [_name, _sells, _address, _contact, _phone, _cac, _bank, _accountName, _last4, _licence]) {
+    for (final c in [_name, _sells, _address, _contact, _phone, _email, _cac, _licence, for (final b in _branches) b.address]) {
       c.dispose();
     }
     super.dispose();
@@ -200,13 +208,15 @@ class _BusinessApplyState extends ConsumerState<BusinessApplyScreen> {
         'cac_number': _cac.text.trim(),
         'contact_name': _contact.text.trim(),
         'contact_phone': _phone.text.trim(),
+        'email': _email.text.trim(),
         'address': _address.text.trim(),
         'area': area.name,
         'location': area.location.toJson(),
+        'branches': [
+          for (final b in _branches)
+            {'address': b.address.text.trim(), 'area': (b.area ?? area).name, 'location': (b.area ?? area).location.toJson()},
+        ],
         'cuisines': FoodPreferences.split(_sells.text),
-        'bank_name': _bank.text.trim(),
-        'bank_account_name': _accountName.text.trim(),
-        'bank_account_last4': _last4.text.trim(),
       });
       if (mounted) setState(() => _sent = true);
     } on ApiException catch (e) {
@@ -216,6 +226,18 @@ class _BusinessApplyState extends ConsumerState<BusinessApplyScreen> {
     }
   }
 
+  Widget _areaPicker(List<Area> areas, Area value, String label, ValueChanged<Area?> onChanged, {Key? key}) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: DropdownButtonFormField<Area>(
+          key: key,
+          isExpanded: true, // a long name is cut short instead of running past the edge
+          initialValue: areas.contains(value) ? value : areas.first,
+          decoration: InputDecoration(labelText: label),
+          items: [for (final a in areas) DropdownMenuItem(value: a, child: Text('${a.name}, ${a.cityName}'))],
+          onChanged: onChanged,
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -223,22 +245,24 @@ class _BusinessApplyState extends ConsumerState<BusinessApplyScreen> {
     final Area area = _area ?? ref.watch(areaProvider);
     final kind = businessKinds.firstWhere((k) => k.id == _kind);
     return Scaffold(
-      appBar: AppBar(title: const Text('Add your business')),
+      appBar: AppBar(title: const Text('Register your business')),
       body: _sent
           ? const _Received(
               title: 'Application received',
-              body: 'Our partnerships team will review your documents within 2 business days.',
+              body: 'Our partnerships team will review it within 2 business days. When you are approved, your partner '
+                  'dashboard shows your business ID, your branches and where to add your bank account.',
             )
           : Form(
               key: _form,
               child: ListView(padding: const EdgeInsets.all(16), children: [
-                Text('Grow your business with Yummy Chops', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
+                Text('Register your business', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
                 const SizedBox(height: 8),
-                const Text('• Reach customers across Lagos and Enugu, including through Yummy, our AI assistant.'),
-                const Text('• Live order board, product tools, sales insights and demand forecasts.'),
-                const Text('• Transparent commission and weekly settlement statements.'),
+                const Text('• Add every branch: customers order from the one nearest to them, with one menu for all.'),
+                const Text("• Your own business ID, a live order board and a manager's number for each branch."),
+                const Text('• Paid straight away: Paystack sends your share of every card payment to your bank account.'),
                 const SizedBox(height: 8),
-                Text('We verify every partner (CAC registration, bank details and, for pharmacies, the PCN premises licence) before going live.',
+                Text('We verify every partner (CAC registration and, for pharmacies, the PCN premises licence) before going '
+                    'live. After approval, add your bank account in your partner dashboard.',
                     style: theme.textTheme.bodySmall),
                 const SizedBox(height: 16),
                 Padding(
@@ -253,35 +277,55 @@ class _BusinessApplyState extends ConsumerState<BusinessApplyScreen> {
                   ),
                 ),
                 _Field(_name, 'Business name', validator: (v) => _atLeast(v, 2, 'Enter the name of your restaurant or shop'), maxLength: 80),
+                _Field(_phone, 'Phone number', keyboard: TextInputType.phone, validator: (v) => _atLeast(v, 7, 'Enter a phone number'), maxLength: 20),
+                _Field(
+                  _email,
+                  'Email',
+                  keyboard: TextInputType.emailAddress,
+                  validator: (v) => RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v) ? null : 'Enter a valid email address',
+                  maxLength: 120,
+                ),
+                _Field(_contact, 'Your name', validator: (v) => _atLeast(v, 2, 'Enter your name'), maxLength: 80),
+                _Field(_address, 'Address (main branch)', validator: (v) => _atLeast(v, 5, 'Enter the street address'), maxLength: 200),
+                _areaPicker(areas, area, 'Area', (a) => setState(() => _area = a)),
+                for (var i = 0; i < _branches.length; i++) ...[
+                  Row(children: [
+                    Expanded(child: Text('Branch ${i + 2}', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800))),
+                    IconButton(
+                      tooltip: 'Remove branch ${i + 2}',
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => setState(() => _branches.removeAt(i).address.dispose()),
+                    ),
+                  ]),
+                  _Field(_branches[i].address, 'Branch ${i + 2} address',
+                      validator: (v) => _atLeast(v, 5, "Enter the branch's street address"), maxLength: 200),
+                  _areaPicker(
+                    areas,
+                    _branches[i].area ?? area,
+                    'Branch ${i + 2} area',
+                    (a) => setState(() => _branches[i] = (address: _branches[i].address, area: a)),
+                    key: ValueKey('branch-area-$i'),
+                  ),
+                ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('add-branch'),
+                    onPressed: _branches.length >= 20
+                        ? null
+                        : () => setState(() => _branches.add((address: TextEditingController(), area: null))),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Add another branch'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _Field(_cac, 'CAC number', validator: (v) => _atLeast(v, 4, 'Enter your CAC registration number'), maxLength: 20),
                 _Field(_sells, 'What you sell', hint: 'Comma separated, e.g. ${kind.example}', validator: (v) => _atLeast(v, 2, 'List at least one')),
                 if (_kind == 'pharmacy')
                   _Field(_licence, 'PCN premises licence number',
                       hint: 'From the Pharmacists Council of Nigeria',
                       validator: (v) => _atLeast(v, 4, 'Enter your PCN premises licence number'),
                       maxLength: 30),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: DropdownButtonFormField<Area>(
-                    isExpanded: true, // a long name is cut short instead of running past the edge
-                    initialValue: areas.contains(area) ? area : areas.first,
-                    decoration: const InputDecoration(labelText: 'Area'),
-                    items: [for (final a in areas) DropdownMenuItem(value: a, child: Text('${a.name}, ${a.cityName}'))],
-                    onChanged: (a) => setState(() => _area = a),
-                  ),
-                ),
-                _Field(_address, 'Street address', validator: (v) => _atLeast(v, 5, 'Enter the street address'), maxLength: 200),
-                _Field(_contact, 'Contact name', validator: (v) => _atLeast(v, 2, 'Enter a contact name'), maxLength: 80),
-                _Field(_phone, 'Contact phone', keyboard: TextInputType.phone, validator: (v) => _atLeast(v, 7, 'Enter a phone number'), maxLength: 20),
-                _Field(_cac, 'CAC number', validator: (v) => _atLeast(v, 4, 'Enter your CAC registration number'), maxLength: 20),
-                _Field(_bank, 'Bank', validator: (v) => _atLeast(v, 2, 'Enter the bank'), maxLength: 60),
-                _Field(_accountName, 'Account name', validator: (v) => _atLeast(v, 2, 'Enter the account name'), maxLength: 80),
-                _Field(
-                  _last4,
-                  'Account number (last 4)',
-                  keyboard: TextInputType.number,
-                  maxLength: 4,
-                  validator: (v) => RegExp(r'^\d{4}$').hasMatch(v) ? null : 'Last 4 digits only',
-                ),
                 if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(_error!, style: TextStyle(color: theme.colorScheme.error))),
                 FilledButton(onPressed: _busy ? null : () => _submit(area), child: Text(_busy ? 'Sending…' : 'Send application')),
               ]),

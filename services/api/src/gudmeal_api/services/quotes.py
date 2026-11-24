@@ -125,7 +125,9 @@ class QuoteService:
         items = await self.repos.items.get_many(item_ids)
         for line in req.lines:
             item = items.get(line.item_id)
-            if item is None or item.restaurant_id != restaurant.id:
+            if (
+                item is None or item.restaurant_id != restaurant.menu_id
+            ):  # branches sell the main branch's menu
                 raise ItemUnavailable(
                     "An item in your cart is no longer on the menu", details={"item_id": line.item_id}
                 )

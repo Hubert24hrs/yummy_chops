@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import ipaddress
 import os
+import re
 import sys
 import time
 import uuid
@@ -1190,6 +1191,66 @@ def partner_tools() -> None:
 
 
 @flow
+def business_and_split_payments() -> None:
+    """Businesses (ADR-0028): a business ID, a branch on the same menu, a bank account, a split card payment"""
+    mine = call("GET", "/v1/partner/business", "owner")
+    if any(r["restaurant_id"] == JJ for r in mine["without_business"]):
+        call("POST", "/v1/partner/business", "owner", {"restaurant_id": JJ}, expect=201)
+        mine = call("GET", "/v1/partner/business", "owner")
+    business = next(b for b in mine["businesses"] if any(br["restaurant_id"] == JJ for br in b["branches"]))
+    bid = business["id"]
+    check("the shop has a business ID", re.fullmatch(r"YCB-[2-9A-HJ-NP-Z]{6}", bid), bid)
+    if len(business["branches"]) == 1:
+        business = call(
+            "POST",
+            f"/v1/partner/business/{bid}/branches",
+            "owner",
+            {
+                "branch_name": "E2E Ikeja",
+                "address": "1 Allen Avenue",
+                "area": "Ikeja",
+                "location": {"lat": 6.6018, "lng": 3.3515},
+                "manager_phone": "+2348044444444",
+            },
+            expect=201,
+        )
+    branch = next(b for b in business["branches"] if not b["main"])
+    TOKENS.pop("owner", None)  # a fresh sign-in lists the new branch
+    menu = call("GET", f"/v1/partner/restaurants/{branch['restaurant_id']}/menu", "owner")
+    main_menu = call("GET", f"/v1/partner/restaurants/{JJ}/menu", "owner")
+    check(
+        "the branch sells the main branch's menu",
+        {i["id"] for i in menu["items"]} == {i["id"] for i in main_menu["items"]},
+    )
+    banks = call("GET", "/v1/partner/banks", "owner")
+    connected = call(
+        "PUT",
+        f"/v1/partner/business/{bid}/bank",
+        "owner",
+        {"bank_code": banks[0]["code"], "account_number": "0123456789"},
+    )
+    check(
+        "the bank account is connected; only its last 4 digits are kept",
+        connected["bank_connected"]
+        and connected["settlement_account_last4"] == "6789"
+        and "0123456789" not in str(connected),
+        connected,
+    )
+    riders_online()
+    order = paid_order()
+    board = items_of(call("GET", f"/v1/partner/restaurants/{JJ}/orders", "owner"))
+    seen = next(o for o in board if o["id"] == order["id"])
+    share = seen.get("restaurant_earning_kobo") or 0
+    check(
+        "the card payment is split: the shop's share goes to its bank account",
+        share > 0 and seen["payment"].get("split_to_business_kobo") == share,
+        seen["payment"],
+    )
+    deliver(order["id"])
+    ledger_balanced()
+
+
+@flow
 def onboarding_applications() -> None:
     """Sign-ups: a brand-new person signs up, applies to ride and to list a shop; admin approves both"""
     email = f"applicant-{uuid.uuid4().hex[:8]}@yummychops.test"
@@ -1228,13 +1289,19 @@ def onboarding_applications() -> None:
             "cac_number": "RC1234567",
             "contact_name": "E2E Applicant",
             "contact_phone": "+2348099999999",
+            "email": email,
             "address": "1 Admiralty Way",
             "area": "Lekki Phase 1",
             "location": LEKKI,
+            # A second branch (ADR-0028); the bank account comes later, in the partner dashboard.
+            "branches": [
+                {
+                    "address": "7 Ajose Adeogun Street",
+                    "area": "Victoria Island",
+                    "location": ADDRESS["location"],
+                },
+            ],
             "cuisines": ["nigerian"],
-            "bank_name": "Test Bank",
-            "bank_account_name": "E2E Test Kitchen",
-            "bank_account_last4": "6789",
         },
     )
     check("rider and shop applications submitted", rider_app and shop_app)
@@ -1255,6 +1322,12 @@ def onboarding_applications() -> None:
     TOKENS.pop("applicant")  # a fresh token carries the new roles
     me = call("GET", "/v1/me", "applicant")
     check("the new rider and shop roles are on the account", "rider" in str(me), me)
+    [business] = call("GET", "/v1/partner/business", "applicant")["businesses"]
+    check(
+        "the new business gets its ID and both branches",
+        re.fullmatch(r"YCB-[2-9A-HJ-NP-Z]{6}", business["id"]) and len(business["branches"]) == 2,
+        business,
+    )
     listed = items_of(call("GET", "/v1/restaurants", params={"city": "lagos", "q": "E2E Test Kitchen"}))
     check("the new shop stays hidden until it is set up", not listed, [s.get("name") for s in listed])
 

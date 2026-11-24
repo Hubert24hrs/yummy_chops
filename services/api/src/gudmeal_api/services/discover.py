@@ -186,7 +186,7 @@ class DiscoverService:
             )
             if r.id in cards
         }
-        menus = {rid: await self.repos.list_items(rid) for rid in kitchens}
+        menus = {rid: await self.repos.list_items(r.menu_id) for rid, r in kitchens.items()}
         new_since = now - timedelta(days=NEW_KITCHEN_DAYS)
 
         def is_new(r: Restaurant) -> bool:

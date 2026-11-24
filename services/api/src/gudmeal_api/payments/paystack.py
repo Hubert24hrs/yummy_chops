@@ -17,7 +17,7 @@ from typing import Any
 import httpx
 
 from ..errors import PaymentProviderError
-from .base import InitializeResult, RefundResult, VerifyResult, VerifyStatus, WebhookEvent
+from .base import InitializeResult, RefundResult, SplitInstruction, VerifyResult, VerifyStatus, WebhookEvent
 
 _STATUS_MAP: dict[str, VerifyStatus] = {
     "success": "success",
@@ -40,6 +40,7 @@ _EVENT_MAP = {
 
 class PaystackProvider:
     name = "paystack"
+    supports_split = True
 
     def __init__(
         self,
@@ -90,6 +91,7 @@ class PaystackProvider:
         metadata: Mapping[str, Any],
         customer_name: str | None = None,
         customer_phone: str | None = None,
+        split: SplitInstruction | None = None,
     ) -> InitializeResult:
         payload = {
             "email": email,
@@ -99,6 +101,13 @@ class PaystackProvider:
             "callback_url": callback_url,
             "metadata": json.dumps({**metadata, "cancel_action": callback_url}),
         }
+        if split is not None:
+            # The business's share goes to its subaccount; Yummy Chops keeps a flat amount and bears Paystack's fee.
+            payload |= {
+                "subaccount": split.subaccount,
+                "transaction_charge": split.platform_kobo,
+                "bearer": "account",
+            }
         body = await self._request("POST", "/transaction/initialize", json=payload)
         data = body.get("data") or {}
         if not data.get("authorization_url"):
@@ -108,6 +117,56 @@ class PaystackProvider:
             authorization_url=data["authorization_url"],
             access_code=data.get("access_code"),
         )
+
+    # ---- businesses' bank accounts (split payments) ----------------------------------------------------------------
+    async def list_banks(self) -> list[dict[str, str]]:
+        """Nigerian banks and their Paystack codes, for a business to pick its settlement bank."""
+        body = await self._request(
+            "GET", "/bank", params={"country": "nigeria", "currency": "NGN", "perPage": 100}
+        )
+        return [
+            {"code": str(b["code"]), "name": str(b["name"])}
+            for b in body.get("data") or []
+            if b.get("code") and b.get("name") and b.get("active", True) and not b.get("is_deleted")
+        ]
+
+    async def resolve_account(self, *, account_number: str, bank_code: str) -> str:
+        """The name on a bank account, as the bank has it (so the owner can see it is theirs)."""
+        body = await self._request(
+            "GET", "/bank/resolve", params={"account_number": account_number, "bank_code": bank_code}
+        )
+        return str((body.get("data") or {}).get("account_name") or "")
+
+    async def save_subaccount(
+        self,
+        *,
+        code: str | None,
+        business_name: str,
+        bank_code: str,
+        account_number: str,
+        email: str | None = None,
+        phone: str | None = None,
+    ) -> str:
+        """Creates (or, with `code`, updates) the business's subaccount; returns its code (ACCT_...)."""
+        payload = {
+            "business_name": business_name,
+            "settlement_bank": bank_code,
+            "account_number": account_number,
+            # Each payment says what Yummy Chops keeps (transaction_charge), so the default share is never used.
+            "percentage_charge": 0,
+            "description": "Yummy Chops business",
+            "primary_contact_email": email,
+            "primary_contact_phone": phone,
+        }
+        payload = {k: v for k, v in payload.items() if v not in (None, "")}
+        if code:
+            body = await self._request("PUT", f"/subaccount/{code}", json=payload)
+        else:
+            body = await self._request("POST", "/subaccount", json=payload)
+        saved = str((body.get("data") or {}).get("subaccount_code") or code or "")
+        if not saved:
+            raise PaymentProviderError("Paystack did not return a subaccount code")
+        return saved
 
     async def verify(self, reference: str) -> VerifyResult:
         body = await self._request("GET", f"/transaction/verify/{reference}")

@@ -18,7 +18,7 @@ import httpx
 
 from ..domain.money import kobo_to_naira_decimal, naira_decimal_to_kobo
 from ..errors import PaymentProviderError
-from .base import InitializeResult, RefundResult, VerifyResult, VerifyStatus, WebhookEvent
+from .base import InitializeResult, RefundResult, SplitInstruction, VerifyResult, VerifyStatus, WebhookEvent
 
 _STATUS_MAP: dict[str, VerifyStatus] = {
     "successful": "success",
@@ -30,6 +30,7 @@ _STATUS_MAP: dict[str, VerifyStatus] = {
 
 class FlutterwaveProvider:
     name = "flutterwave"
+    supports_split = False  # the backup gateway: Yummy Chops receives it all and pays the business out later
 
     def __init__(
         self,
@@ -76,6 +77,7 @@ class FlutterwaveProvider:
         metadata: Mapping[str, Any],
         customer_name: str | None = None,
         customer_phone: str | None = None,
+        split: SplitInstruction | None = None,
     ) -> InitializeResult:
         payload = {
             "tx_ref": reference,

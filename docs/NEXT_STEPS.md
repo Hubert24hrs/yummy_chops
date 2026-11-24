@@ -20,6 +20,11 @@ Saved on 17 Nov 2026 to do later. Tick each one off as you go.
   payment page, start `phone-test-paystack` ([PAYSTACK_TEST_MODE.md](PAYSTACK_TEST_MODE.md); tested 23 Nov).
   QR code page: https://claude.ai/artifact/G8H3KNWTrxetV8iwS7z5Kg. To start the test servers again after a restart,
   see [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md), section 6.
+- [ ] **Activate your Paystack business** so businesses can connect their bank accounts and get their share of
+  each card payment straight away ([ADR-0028](adr/0028-business-branches-and-split-payments.md)). In test mode
+  Paystack refused to add their accounts ("Sorry, We cannot add subaccount at the moment"). Until then businesses
+  are paid weekly, as before. On the `phone-test` server, which has no Paystack key, the whole flow works with
+  pretend banks.
 - [ ] **Create a Google Cloud and Firebase project with billing, and get Paystack test keys.** Then I deploy a
   staging version that works anywhere, not just on your Wi-Fi.
 - [x] **Gemini key for Yummy (22 Nov).** A Google AI Studio key, for testing only. It lives in the git-ignored

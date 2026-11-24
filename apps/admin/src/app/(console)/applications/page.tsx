@@ -11,6 +11,16 @@ const BUSINESS_KINDS: Record<string, string> = {
   food: "Restaurant", pharmacy: "Pharmacy", beauty: "Beauty & Skin Care shop", grocery: "Supermarket or store", market: "Market shopper",
 };
 
+/** One answer from the form, readable: branch addresses (ADR-0028) one per line, lists joined. */
+function answer(key: string, value: unknown): string {
+  if (key === "branches" && Array.isArray(value)) {
+    if (!value.length) return "None (one address)";
+    return value.map((b: { address?: string; area?: string; manager_phone?: string | null }) =>
+      [b.address, b.area, b.manager_phone].filter(Boolean).join(", ")).join("\n");
+  }
+  return Array.isArray(value) ? value.join(", ") : String(value ?? "—");
+}
+
 export default function ApplicationsPage() {
   const api = useApi();
   const qc = useQueryClient();
@@ -42,7 +52,8 @@ export default function ApplicationsPage() {
               </div>
               <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
                 {Object.entries(a.data).filter(([k]) => !["location", "document_paths"].includes(k)).map(([k, v]) => (
-                  <div key={k} className="contents"><dt className="text-muted">{k.replaceAll("_", " ")}</dt><dd className="truncate">{Array.isArray(v) ? v.join(", ") : String(v ?? "—")}</dd></div>
+                  <div key={k} className="contents"><dt className="text-muted">{k.replaceAll("_", " ")}</dt>
+                    <dd className={k === "branches" ? "whitespace-pre-line" : "truncate"}>{answer(k, v)}</dd></div>
                 ))}
               </dl>
               <p className="text-xs text-muted">Submitted {formatDateTime(a.submitted_at)} · {a.document_paths.length} document(s) in secure storage</p>

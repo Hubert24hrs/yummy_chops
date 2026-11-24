@@ -30,7 +30,7 @@ from ..ledger.tables import (
     new_id,
 )
 from ..logging_setup import log_event
-from ..payments.base import PaymentProvider
+from ..payments.base import PaymentProvider, SplitInstruction
 from ..repositories import Repositories
 from ..security.rbac import Permission, Principal, require
 
@@ -202,6 +202,7 @@ class PaymentService:
             return self._init_view(existing)
         return await self._hosted_checkout(
             names,
+            split=await self.split_for(order),
             purpose="order",
             order_id=order.id,
             customer_id=order.customer_id,
@@ -212,6 +213,21 @@ class PaymentService:
             callback_url=self._return_to(f"order_id={order.id}"),
             metadata={"order_id": order.id, "short_code": order.short_code, "customer_id": order.customer_id},
         )
+
+    async def split_for(self, order: Order) -> SplitInstruction | None:
+        """How an order's card payment is split when its business has a bank account at the provider: the business's
+        earning goes straight to it, Yummy Chops keeps the rest (fees, commission, delivery). None when there is no
+        such account (docs/adr/0028-business-branches-and-split-payments.md)."""
+        restaurant = await self.repos.restaurants.get(order.restaurant_id) if order.restaurant_id else None
+        if restaurant is None or not restaurant.business_id:
+            return None
+        business = await self.repos.businesses.get(restaurant.business_id)
+        if business is None or not business.paystack_subaccount_code:
+            return None
+        share, total = order.settlement.restaurant_earning_kobo, order.breakdown.total_kobo
+        if share <= 0 or share >= total:
+            return None
+        return SplitInstruction(subaccount=business.paystack_subaccount_code, platform_kobo=total - share)
 
     async def start_wallet_topup(
         self, principal: Principal, amount_kobo: int, provider_name: str | None, idempotency_key: str
@@ -438,14 +454,17 @@ class PaymentService:
         principal: Principal,
         callback_url: str,
         metadata: dict[str, Any],
+        split: SplitInstruction | None = None,
     ) -> dict[str, Any]:
-        """Start a gateway checkout, failing over to the next gateway when one cannot start it."""
+        """Start a gateway checkout, failing over to the next gateway when one cannot start it. A `split` is used only
+        by gateways that can split (the backup gateway takes the whole payment; the business is paid out later)."""
         email = self.payer_email(principal)
         last_error: PaymentProviderError | None = None
         for attempt, name in enumerate(names):
             provider = self.provider(name)
             now = utcnow()
             key = idempotency_key if attempt == 0 else f"{idempotency_key}:{provider.name}"
+            use_split = split if split is not None and getattr(provider, "supports_split", False) else None
             async with self.db.transaction() as s:
                 prior = await s.scalar(select(PaymentRecord).where(PaymentRecord.idempotency_key == key))
                 if prior is not None and prior.status == "pending" and prior.authorization_url:
@@ -463,6 +482,8 @@ class PaymentService:
                     currency="NGN",
                     status="initialized",
                     idempotency_key=key,
+                    split_subaccount=use_split.subaccount if use_split else None,
+                    split_amount_kobo=amount_kobo - use_split.platform_kobo if use_split else 0,
                     created_at=now,
                     updated_at=now,
                 )
@@ -477,6 +498,7 @@ class PaymentService:
                     metadata=metadata,
                     customer_name=principal.name,
                     customer_phone=principal.phone,
+                    split=use_split,
                 )
             except PaymentProviderError as exc:
                 self.health.record(provider.name, ok=False)
@@ -871,6 +893,22 @@ class PaymentService:
                             order_id=row.order_id,
                             description=f"Payment {row.reference} captured",
                         )
+                        if row.split_amount_kobo and row.order_id:
+                            # The business's share went straight to its bank account: it is paid that much already.
+                            paid_order = await self.repos.orders.get(row.order_id)
+                            if paid_order is not None and paid_order.restaurant_id:
+                                await self.ledger.post(
+                                    s,
+                                    kind="split_settled",
+                                    idempotency_key=f"payment:{row.id}:split",
+                                    postings=postings.split_settled(
+                                        row.provider, paid_order.restaurant_id, row.split_amount_kobo
+                                    ),
+                                    created_by=f"payments:{source}",
+                                    reference=row.reference,
+                                    order_id=row.order_id,
+                                    description=f"Payment {row.reference}: the business's share paid by split",
+                                )
                         add_outbox_event(
                             s,
                             "payment.succeeded",
@@ -880,6 +918,7 @@ class PaymentService:
                                 "provider": row.provider,
                                 "reference": row.reference,
                                 "amount_kobo": row.amount_kobo,
+                                "split_amount_kobo": row.split_amount_kobo,
                                 "paid_at": (row.paid_at or now).isoformat(),
                             },
                         )

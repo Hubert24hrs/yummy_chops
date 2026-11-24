@@ -129,7 +129,7 @@ class ProfileScreen extends ConsumerWidget {
                     ),
                     _tile(context, Icons.settings_outlined, 'App settings', onTap: () => _settings(context, ref)),
                     _tile(context, Icons.local_shipping_outlined, 'Track a package', onTap: () => context.push('/track')),
-                    _tile(context, Icons.storefront_outlined, 'Add your business', onTap: () => context.push('/partner-with-us')),
+                    _tile(context, Icons.storefront_outlined, 'Register your business', onTap: () => context.push('/partner-with-us')),
                     _tile(context, Icons.pedal_bike_rounded, 'Ride with Yummy Chops', onTap: () => context.push('/ride')),
                     _tile(context, Icons.quiz_outlined, 'FAQ, privacy and terms', onTap: () => context.push('/help')),
                     if (user != null) _tile(context, Icons.download_outlined, 'Download my data', onTap: () => showMyData(context, ref)),

@@ -10,7 +10,7 @@ export function Footer() {
           <p className="max-w-xs text-sm text-muted">Food, pharmacy, beauty & skin care, groceries, foodstuff and package delivery in Lagos and Enugu, with Yummy, an AI assistant that plans to your budget.</p>
         </div>
         <FooterCol title="Order" links={[["Order Food", "/food"], ["Pharmacy", "/pharmacy"], ["Beauty & Skin Care", "/beauty"], ["Shop & Groceries", "/groceries"], ["Buy Foodstuff", "/foodstuff"], ["Send a package", "/send"], ["Track a package", "/track"], ["Ask Yummy", "/assistant"], ["My orders", "/orders"]]} />
-        <FooterCol title="Partner" links={[["Add your business", "/partner-with-us"], ["Ride with Yummy Chops", "/ride"]]} />
+        <FooterCol title="Partner" links={[["Register your business", "/partner-with-us"], ["Ride with Yummy Chops", "/ride"]]} />
         <FooterCol title="Help" links={[["Support", "/support"], ["Help centre", "/help"], ["Privacy", "/help#privacy"], ["Terms", "/help#terms"]]} />
       </div>
       <div className="container-page border-t border-border py-4 text-xs text-muted">
