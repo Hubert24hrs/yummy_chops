@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from conftest import ADDRESS, auth, idem
+from conftest import ADDRESS, PRINCIPALS, auth, idem
 from gudmeal_api.services import dispatch as dispatch_mod
 
 
@@ -248,3 +248,49 @@ async def test_voucher_applies_once_per_customer(flow, client):
         },
     )
     assert r.status_code == 422 and r.json()["error"]["code"] == "voucher_invalid"
+
+
+async def test_the_rider_can_reach_the_customer_only_while_delivering(flow, client, container):
+    # After accepting, the rider sees how to reach the customer: the checkout number, else the account's number.
+    order = await flow.paid_order()
+    r = await client.post(
+        f"/v1/partner/restaurants/r-jollof-junction/orders/{order['id']}/accept",
+        json={"prep_minutes": 10},
+        headers=auth("kitchen"),
+    )
+    assert r.status_code == 200, r.text
+    offers = await container.repos.assignments.find(where=[("order_id", "==", order["id"])])
+    offer = next(o for o in offers if o.status == "offered")
+    rider = next(name for name, p in PRINCIPALS.items() if p.uid == offer.rider_id)
+    assert (await client.post(f"/v1/rider/offers/{offer.id}/accept", headers=auth(rider))).status_code == 200
+
+    async def rider_view(active: bool = True) -> dict:
+        r = await client.get(f"/v1/rider/deliveries?active={str(active).lower()}", headers=auth(rider))
+        assert r.status_code == 200, r.text
+        return next(o for o in r.json() if o["id"] == order["id"])
+
+    job = await rider_view()
+    assert job["customer_name"] == "Ada Obi"
+    assert job["delivery_address"]["line1"] == ADDRESS["line1"]
+    assert job["delivery_address"]["contact_phone"] == ADDRESS["contact_phone"]
+
+    # No number on the address: the account's own number is used.
+    await container.repos.orders.update(
+        order["id"],
+        {"delivery_address": {**ADDRESS, "contact_phone": None}, "customer_phone": "+2348099990000"},
+    )
+    assert (await rider_view())["delivery_address"]["contact_phone"] == "+2348099990000"
+
+    # Once delivered, the job in the rider's history no longer shows the customer's number.
+    await container.repos.orders.update(order["id"], {"delivery_address": ADDRESS})
+    assert (
+        await client.post(f"/v1/rider/deliveries/{order['id']}/pickup", headers=auth(rider))
+    ).status_code == 200
+    codes = (await client.get(f"/v1/orders/{order['id']}/codes", headers=auth("customer"))).json()
+    done = await client.post(
+        f"/v1/rider/deliveries/{order['id']}/deliver",
+        json={"code": codes["delivery_code"]},
+        headers=auth(rider),
+    )
+    assert done.status_code == 200, done.text
+    assert (await rider_view(active=False))["delivery_address"]["contact_phone"] is None

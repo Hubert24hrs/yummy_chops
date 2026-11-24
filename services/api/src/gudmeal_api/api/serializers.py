@@ -45,6 +45,17 @@ def order_view(order: Order, principal: Principal) -> dict[str, Any]:
         return data
     if order.rider_id == principal.uid:
         parcel = order.parcel
+        address = data["delivery_address"]
+        if address is not None:
+            # The rider reaches the customer on the way: the number given at checkout, else the account's own,
+            # and only while the job is in progress (finished jobs in the rider's history show no number).
+            on_the_job = order.status in (
+                OrderStatus.RIDER_ASSIGNED,
+                OrderStatus.PICKED_UP,
+                OrderStatus.IN_TRANSIT,
+            )
+            phone = (address.get("contact_phone") or order.customer_phone) if on_the_job else None
+            address = {**address, "contact_phone": phone}
         return {
             "id": order.id,
             "short_code": order.short_code,
@@ -56,7 +67,7 @@ def order_view(order: Order, principal: Principal) -> dict[str, Any]:
             "restaurant_address": order.restaurant_address,
             "restaurant_location": data["restaurant_location"],
             "customer_name": order.customer_name,
-            "delivery_address": data["delivery_address"],
+            "delivery_address": address,
             "items": [{"name": ln.name, "quantity": ln.quantity} for ln in order.lines],
             "rider_pay_kobo": order.settlement.rider_pay_kobo,
             # Cash to take at the door (pay on delivery and/or the sender's COD amount); 0 when prepaid.

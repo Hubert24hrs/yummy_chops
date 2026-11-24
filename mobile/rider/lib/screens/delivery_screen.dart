@@ -146,15 +146,12 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
                   ),
                 ),
               ),
-              if (o.deliveryAddress != null)
+              if (o.deliveryAddress != null && parcel == null) _CustomerCard(order: o),
+              if (o.deliveryAddress != null && parcel != null)
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.home_rounded),
-                    title: Text(
-                      parcel == null
-                          ? (o.customerName ?? 'Customer')
-                          : 'Drop-off: ${parcel.dropoff.name}',
-                    ),
+                    title: Text('Drop-off: ${parcel.dropoff.name}'),
                     subtitle: Text(
                       [
                         o.deliveryAddress!.line1,
@@ -165,11 +162,10 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (parcel != null)
-                          _CallButton(
-                            phone: parcel.dropoff.phone,
-                            who: parcel.dropoff.name,
-                          ),
+                        _CallButton(
+                          phone: parcel.dropoff.phone,
+                          who: parcel.dropoff.name,
+                        ),
                         IconButton(
                           tooltip: 'Navigate',
                           icon: const Icon(Icons.navigation_rounded),
@@ -276,7 +272,105 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
   }
 }
 
-/// Riders call senders and recipients of packages (numbers come from the booking).
+/// A WhatsApp chat with this number, written as +234…, 234… or a local 0… number.
+Uri whatsAppUri(String phone) {
+  var digits = phone.replaceAll(RegExp(r'\D'), '');
+  if (digits.startsWith('0')) digits = '234${digits.substring(1)}';
+  return Uri.parse('https://wa.me/$digits');
+}
+
+/// Who the order is for and how to reach them, shown once the rider has accepted the job. The API sends the
+/// customer's number only while the delivery is in progress.
+class _CustomerCard extends StatelessWidget {
+  const _CustomerCard({required this.order});
+  final Order order;
+
+  @override
+  Widget build(BuildContext context) {
+    final address = order.deliveryAddress!;
+    final phone = (address.contactPhone ?? '').trim();
+    final name = order.customerName ?? 'Customer';
+    final where = [address.label, address.line1, address.area, address.city]
+        .whereType<String>()
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toSet()
+        .join(', ');
+    final note = (address.instructions ?? '').trim();
+    return Card(
+      key: const ValueKey('customer-card'),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.person_rounded),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    name,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _Detail(icon: Icons.home_rounded, text: where),
+            if (note.isNotEmpty) _Detail(icon: Icons.sticky_note_2_rounded, text: 'Note: $note'),
+            if (phone.isNotEmpty) _Detail(icon: Icons.phone_rounded, text: phone),
+            _Detail(
+              icon: Icons.payments_rounded,
+              text: order.collectCashKobo > 0
+                  ? 'Pays ${formatNaira(order.collectCashKobo)} in cash on delivery'
+                  : 'Paid online: nothing to collect',
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                if (phone.isNotEmpty) ...[
+                  _CallButton(phone: phone, who: name),
+                  IconButton(
+                    tooltip: 'WhatsApp $name',
+                    icon: const Icon(Icons.chat_rounded),
+                    onPressed: () => launchUrl(whatsAppUri(phone), mode: LaunchMode.externalApplication),
+                  ),
+                ],
+                IconButton(
+                  tooltip: 'Navigate',
+                  icon: const Icon(Icons.navigation_rounded),
+                  onPressed: () => navigateTo(address.location),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Detail extends StatelessWidget {
+  const _Detail({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
+        const SizedBox(width: 10),
+        Expanded(child: Text(text)),
+      ],
+    ),
+  );
+}
+
+/// Riders call customers, senders and recipients of packages (numbers come from the order or the booking).
 class _CallButton extends StatelessWidget {
   const _CallButton({required this.phone, required this.who});
   final String phone;

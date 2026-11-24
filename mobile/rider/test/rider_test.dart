@@ -62,10 +62,83 @@ DeliveryOffer offer(DateTime expiresAt) => DeliveryOffer(
       expiresAt: expiresAt, pickup: const GeoPoint(lat: 6.43, lng: 3.42), dropoffArea: 'Lekki Phase 1',
     );
 
+class _CustomerApi extends GudMealApi {
+  _CustomerApi(this.job) : super(baseUrl: 'http://fake', token: () async => 'tok');
+  final Order job;
+
+  @override
+  Future<List<Order>> activeDeliveries() async => [job];
+}
+
+const _foodJob = Order(
+  id: 'f1',
+  shortCode: 'FOOD12',
+  status: 'rider_assigned',
+  restaurantName: 'Jollof Junction',
+  restaurantLocation: GeoPoint(lat: 6.44, lng: 3.46),
+  riderPayKobo: 90000,
+  customerName: 'Ada Obi',
+  items: [OrderItem(name: 'Party Jollof Rice', quantity: 2)],
+  paymentMethod: 'prepaid',
+  deliveryAddress: DeliveryAddress(
+    label: 'Home',
+    line1: '5 Admiralty Way',
+    area: 'Lekki Phase 1',
+    location: GeoPoint(lat: 6.44, lng: 3.47),
+    instructions: 'Blue gate, call on arrival',
+    contactPhone: '+234 801 111 1111',
+  ),
+);
+
+void customerTests() {
+  Widget screen(Order order) => ProviderScope(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(FakeAuthRepository(const GmUser(uid: 'demo-rider-1'))),
+          apiProvider.overrideWithValue(_CustomerApi(order)),
+        ],
+        child: const MaterialApp(home: DeliveryScreen(orderId: 'f1')),
+      );
+
+  testWidgets('an accepted job shows the customer, their address, note and number, with call and WhatsApp',
+      (tester) async {
+    await tester.pumpWidget(screen(_foodJob));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('customer-card')), findsOneWidget);
+    expect(find.text('Ada Obi'), findsOneWidget);
+    expect(find.text('Home, 5 Admiralty Way, Lekki Phase 1, Lagos'), findsOneWidget);
+    expect(find.text('Note: Blue gate, call on arrival'), findsOneWidget);
+    expect(find.text('+234 801 111 1111'), findsOneWidget);
+    expect(find.text('Paid online: nothing to collect'), findsOneWidget);
+    expect(find.byTooltip('Call Ada Obi'), findsOneWidget);
+    expect(find.byTooltip('WhatsApp Ada Obi'), findsOneWidget);
+  });
+
+  testWidgets('without a number there is nothing to call, and cash orders say what to collect', (tester) async {
+    final job = _foodJob.copyWith(
+      paymentMethod: 'cash',
+      collectCashKobo: 1136500,
+      deliveryAddress: _foodJob.deliveryAddress!.copyWith(contactPhone: null, instructions: null),
+    );
+    await tester.pumpWidget(screen(job));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Call Ada Obi'), findsNothing);
+    expect(find.byTooltip('WhatsApp Ada Obi'), findsNothing);
+    expect(find.textContaining('Note:'), findsNothing);
+    expect(find.text('Pays ₦11,365 in cash on delivery'), findsOneWidget);
+    expect(find.byTooltip('Navigate'), findsWidgets);
+  });
+
+  test('WhatsApp links use the international number', () {
+    expect(whatsAppUri('0803 123 4567').toString(), 'https://wa.me/2348031234567');
+    expect(whatsAppUri('+234 803 123 4567').toString(), 'https://wa.me/2348031234567');
+  });
+}
+
 void main() {
   parcelTests();
   cashTests();
   hubLegTests();
+  customerTests();
   testWidgets('offer shows countdown, payout and disables actions once expired', (tester) async {
     final now = DateTime.utc(2026, 11, 14, 20, 0, 0);
     await tester.pumpWidget(ProviderScope(
@@ -370,9 +443,13 @@ void cashTests() {
     final button = find.widgetWithText(FilledButton, 'Complete delivery');
     await tester.ensureVisible(button);
     expect(tester.widget<FilledButton>(button).onPressed, isNull); // cash not confirmed yet
+    await tester.ensureVisible(find.byKey(const ValueKey('cash-taken')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('cash-taken')));
     await tester.pump();
     expect(tester.widget<FilledButton>(button).onPressed, isNotNull);
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
     await tester.tap(button);
     await tester.pumpAndSettle();
     expect(api.delivered.single, ('4118', true));
