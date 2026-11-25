@@ -31,7 +31,7 @@ const orderStatusLabels = <String, (String, StatusTone)>{
   'draft': ('Draft', StatusTone.neutral),
   'pending_payment': ('Awaiting payment', StatusTone.warning),
   'paid': ('Paid', StatusTone.info),
-  'submitted_to_restaurant': ('Sent to restaurant', StatusTone.info),
+  'submitted_to_restaurant': ('Sent to the shop', StatusTone.info),
   'restaurant_accepted': ('Accepted', StatusTone.progress),
   'preparing': ('Preparing', StatusTone.progress),
   'ready_for_pickup': ('Ready', StatusTone.progress),
