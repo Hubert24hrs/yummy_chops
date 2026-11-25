@@ -2,7 +2,8 @@
 
 Live since 2026-11-20: the three websites on Vercel at yummy247.com, partner.yummy247.com and
 admin.yummy247.com, and the customercare@yummy247.com mailbox on Zoho Mail (sections 5a and 5b). The API and
-Yummy are not deployed yet, so the websites cannot list shops, sign anyone in or take orders. These are the steps
+Yummy run on the online test server (`yummy-chops-dev`, section 8) since 25 Nov 2026, and the three websites use it:
+demo shops, real sign-in and Paystack test mode. These are the steps
 to stand up each environment; every billable step is yours to run and approve.
 
 ## 0. Prerequisites (per environment: dev, staging, prod)
@@ -187,11 +188,11 @@ The owner chose Vercel for the three websites on 2026-11-20. The API and Yummy s
 
   | Variable | web | partner | admin | Value |
   |---|---|---|---|---|
-  | `NEXT_PUBLIC_API_URL` | ✓ | ✓ | ✓ | `https://api.yummy247.com` |
-  | `API_URL` (server-rendered pages) | ✓ | | | `https://api.yummy247.com` |
-  | `NEXT_PUBLIC_AGENTS_URL` | ✓ | | ✓ | `https://assistant.yummy247.com` |
+  | `NEXT_PUBLIC_API_URL` | ✓ | ✓ | ✓ | the online test server (25 Nov): `https://gudmeal-api-347413934838.europe-west1.run.app`; later `https://api.yummy247.com` |
+  | `API_URL` (server-rendered pages) | ✓ | | | the same as `NEXT_PUBLIC_API_URL` |
+  | `NEXT_PUBLIC_AGENTS_URL` | ✓ | | ✓ | `https://gudmeal-agents-347413934838.europe-west1.run.app`; later `https://assistant.yummy247.com` |
   | `NEXT_PUBLIC_SITE_URL` | ✓ | | | `https://yummy247.com` |
-  | `NEXT_PUBLIC_FIREBASE_API_KEY`, `_AUTH_DOMAIN`, `_PROJECT_ID`, `_APP_ID` | ✓ | ✓ | ✓ | **not set**: no Firebase project yet |
+  | `NEXT_PUBLIC_FIREBASE_API_KEY`, `_AUTH_DOMAIN`, `_PROJECT_ID`, `_APP_ID` | ✓ | ✓ | ✓ | the `yummy-chops-dev` web app "Yummy Chops websites" (25 Nov); the four domains are authorized for sign-in |
   | `NEXT_PUBLIC_APP_CHECK_SITE_KEY` | ✓ | ✓ | ✓ | **not set**: no reCAPTCHA Enterprise key yet |
   | `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY` | optional | optional | optional | **not set** (schematic maps until then) |
   | `NEXT_PUBLIC_USE_FIREBASE_EMULATORS` | | | | **never set on Vercel** |
