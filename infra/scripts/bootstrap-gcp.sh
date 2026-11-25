@@ -41,7 +41,7 @@ gcloud services enable run.googleapis.com artifactregistry.googleapis.com cloudb
   secretmanager.googleapis.com pubsub.googleapis.com cloudtasks.googleapis.com cloudscheduler.googleapis.com \
   firestore.googleapis.com iam.googleapis.com iamcredentials.googleapis.com sqladmin.googleapis.com \
   monitoring.googleapis.com logging.googleapis.com firebase.googleapis.com identitytoolkit.googleapis.com \
-  fcm.googleapis.com firebaseappcheck.googleapis.com
+  fcm.googleapis.com firebaseappcheck.googleapis.com aiplatform.googleapis.com
 
 say "Artifact Registry"
 exists gcloud artifacts repositories describe gudmeal --location "$REGION" ||
@@ -61,7 +61,8 @@ for role in roles/datastore.user roles/cloudsql.client roles/pubsub.publisher \
   bind gudmeal-api "$role"
 done
 # Yummy checks whether a sign-in was revoked (CHECK_TOKEN_REVOCATION), which reads Firebase Auth.
-for role in roles/cloudsql.client roles/firebaseauth.viewer roles/logging.logWriter roles/monitoring.metricWriter; do
+# aiplatform.user: Yummy calls Gemini on Vertex AI with its own identity.
+for role in roles/cloudsql.client roles/firebaseauth.viewer roles/aiplatform.user roles/logging.logWriter roles/monitoring.metricWriter; do
   bind gudmeal-agents "$role"
 done
 # secretmanager.viewer: deploy.sh checks which secrets have values (never their contents).
@@ -104,7 +105,7 @@ for s in api-database-url paystack-secret-key flutterwave-secret-key flutterwave
          google-maps-server-key channel-token-secret whatsapp-access-token whatsapp-app-secret whatsapp-verify-token; do
   grant_secret gudmeal-api "$s"
 done
-for s in agents-database-url agents-checkpoint-url gemini-api-key gemini-model channel-token-secret; do
+for s in agents-database-url agents-checkpoint-url gemini-model channel-token-secret; do
   grant_secret gudmeal-agents "$s"
 done
 

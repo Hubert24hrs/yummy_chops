@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     app_check_enforced: bool = False
 
     # Gemini — pin an explicit stable model id in staging/production (ADR-0011)
+    # Where Gemini runs: "vertex" (Vertex AI, billed to the Google Cloud project, the service's own identity, no key;
+    # chats are not used to improve Google's products) or "ai_studio" (an AI Studio key, for local experiments).
+    llm_backend: Literal["ai_studio", "vertex"] = "ai_studio"
+    vertex_project: str | None = None  # defaults to the Google Cloud project the service runs in
+    vertex_location: str = "global"
     google_api_key: SecretStr | None = None
     gemini_model: str = "gemini-flash-latest"
     gemini_fallback_model: str | None = None
@@ -79,6 +84,8 @@ class Settings(BaseSettings):
 
     @property
     def llm_configured(self) -> bool:
+        if self.llm_backend == "vertex":
+            return bool(self.vertex_project)
         return self.google_api_key is not None
 
     def validate_for_environment(self) -> None:
@@ -103,6 +110,10 @@ class Settings(BaseSettings):
                 problems.append("CHECK_TOKEN_REVOCATION must be true")
             if self.internal_auth_mode != "oidc":
                 problems.append("INTERNAL_AUTH_MODE must be 'oidc' (service-account identity for API calls)")
+        if self.environment == "production" and self.llm_backend != "vertex":
+            problems.append(
+                "LLM_BACKEND must be vertex in production (customers' chats stay out of AI Studio)"
+            )
         if self.environment == "production" and not self.app_check_enforced:
             problems.append("APP_CHECK_ENFORCED must be true in production")
         if problems:

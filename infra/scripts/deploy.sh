@@ -50,10 +50,13 @@ if has_secret google-maps-server-key; then
   MAPS_SECRET=",GOOGLE_MAPS_API_KEY=google-maps-server-key:latest"
 fi
 
-# Gemini (Yummy's AI): bound once gemini-api-key has a value; without it Yummy answers in its offline mode.
+# Gemini (Yummy's AI) runs on Vertex AI, billed to this project with the service's own identity: no API key.
+# The model id comes from the gemini-model secret; until it has a value, Yummy answers in its offline mode.
 GEMINI_SECRETS=""
-if has_secret gemini-api-key; then
-  GEMINI_SECRETS="GOOGLE_API_KEY=gemini-api-key:latest,GEMINI_MODEL=gemini-model:latest,"
+GEMINI_ENV=""
+if has_secret gemini-model; then
+  GEMINI_SECRETS="GEMINI_MODEL=gemini-model:latest,"
+  GEMINI_ENV=",LLM_BACKEND=vertex,VERTEX_PROJECT=$PROJECT"
 fi
 
 # The online test server (ENVIRONMENT=development, ADR-0026) runs the invented demo shops: Cloud Scheduler fills the
@@ -84,7 +87,7 @@ gcloud run deploy gudmeal-agents --project "$PROJECT" --region "$REGION" \
   --min-instances 0 --max-instances "$MAX" \
   --set-cloudsql-instances "$SQL" \
   --allow-unauthenticated \
-  --set-env-vars "ENVIRONMENT=$ENVIRONMENT,API_BASE_URL=$API_URL,FIREBASE_PROJECT_ID=$PROJECT,CHECKPOINTER=postgres,CHECK_TOKEN_REVOCATION=true,LANGSMITH_TRACING=false,INTERNAL_AUTH_MODE=oidc,APP_CHECK_ENFORCED=$([ "$ENVIRONMENT" = production ] && echo true || echo false)" \
+  --set-env-vars "ENVIRONMENT=$ENVIRONMENT,API_BASE_URL=$API_URL,FIREBASE_PROJECT_ID=$PROJECT,CHECKPOINTER=postgres,CHECK_TOKEN_REVOCATION=true,LANGSMITH_TRACING=false,INTERNAL_AUTH_MODE=oidc,APP_CHECK_ENFORCED=$([ "$ENVIRONMENT" = production ] && echo true || echo false)$GEMINI_ENV" \
   --set-env-vars "^;^CORS_ORIGINS=$SITES" \
   --set-secrets "${GEMINI_SECRETS}DATABASE_URL=agents-database-url:latest,CHECKPOINT_POSTGRES_URL=agents-checkpoint-url:latest,CHANNEL_TOKEN_SECRET=channel-token-secret:latest"
 

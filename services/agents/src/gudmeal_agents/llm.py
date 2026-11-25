@@ -26,18 +26,27 @@ class ModelFactory(Protocol):
     def for_structured(self, schema: type) -> Invocable: ...
 
 
+def gemini_access(settings: Settings) -> dict[str, Any]:
+    """How the Gemini client reaches Google: Vertex AI with the service's own identity, or an AI Studio key."""
+    if settings.llm_backend == "vertex":
+        if not settings.vertex_project:
+            raise RuntimeError("VERTEX_PROJECT is not set")
+        return {"vertexai": True, "project": settings.vertex_project, "location": settings.vertex_location}
+    if settings.google_api_key is None:
+        raise RuntimeError("GOOGLE_API_KEY is not set")
+    return {"google_api_key": settings.google_api_key.get_secret_value()}
+
+
 class GeminiFactory:
     def __init__(self, settings: Settings) -> None:
         from langchain_google_genai import ChatGoogleGenerativeAI
 
-        if settings.google_api_key is None:
-            raise RuntimeError("GOOGLE_API_KEY is not set")
-        common = {
+        common: dict[str, Any] = {
             "temperature": settings.llm_temperature,
             "max_retries": settings.llm_max_retries,
             "timeout": settings.llm_timeout_seconds,
             "max_output_tokens": settings.llm_max_output_tokens,
-            "google_api_key": settings.google_api_key.get_secret_value(),
+            **gemini_access(settings),
         }
         self.model_name = settings.gemini_model
         self._primary = ChatGoogleGenerativeAI(model=settings.gemini_model, **common)

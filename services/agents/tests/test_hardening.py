@@ -285,6 +285,8 @@ SERVER = {
     "check_token_revocation": True,
     "channel_token_secret": "from-secret-manager",
     "internal_auth_mode": "oidc",
+    "llm_backend": "vertex",
+    "vertex_project": "yummy-chops-prod",
 }
 
 
