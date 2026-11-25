@@ -2,7 +2,7 @@
   "name": "gud-meal",
   "private": true,
   "version": "0.1.0",
-  "description": "Yummy Chops — AI-native food delivery for Nigeria (web apps, shared packages, Firebase rules)",
+  "description": "Yummy Chops \u2014 AI-native food delivery for Nigeria (web apps, shared packages, Firebase rules)",
   "workspaces": [
     "packages/tokens",
     "packages/api-client",
@@ -24,5 +24,8 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:rules": "npm run test:emulated -w @gudmeal/firebase"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.13.7"
   }
 }
