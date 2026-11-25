@@ -46,6 +46,23 @@ class GeolocatorCustomerLocation implements CustomerLocation {
 
 final customerLocationProvider = Provider<CustomerLocation>((ref) => GeolocatorCustomerLocation());
 
+/// Where the phone is, only when the customer has already allowed location (this never asks): checkout uses it
+/// to say when the delivery address is far from them. Null when it is not known.
+final knownPositionProvider = FutureProvider.autoDispose<GeoPoint?>((ref) async {
+  try {
+    final permission = await Geolocator.checkPermission();
+    if (permission != LocationPermission.always && permission != LocationPermission.whileInUse) return null;
+    final last = await Geolocator.getLastKnownPosition().catchError((_) => null);
+    final p = last ??
+        await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium, timeLimit: Duration(seconds: 10)),
+        );
+    return GeoPoint(lat: p.latitude, lng: p.longitude);
+  } catch (_) {
+    return null; // no permission yet, no location services, no fix: nothing to compare with
+  }
+});
+
 /// What the picker returns: the address details plus the pin the customer confirmed.
 class PickedAddress {
   const PickedAddress({required this.address, required this.serviceable, this.precise = false, this.placeId});

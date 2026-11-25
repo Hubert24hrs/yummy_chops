@@ -74,7 +74,7 @@ Area? nearestArea(GeoPoint here, List<Area> areas, {double withinKm = 25}) {
   Area? nearest;
   var best = double.infinity;
   for (final area in areas) {
-    final km = _kmBetween(here, area.location);
+    final km = kmBetween(here, area.location);
     if (km < best) {
       best = km;
       nearest = area;
@@ -84,7 +84,7 @@ Area? nearestArea(GeoPoint here, List<Area> areas, {double withinKm = 25}) {
 }
 
 /// Great-circle distance in kilometres.
-double _kmBetween(GeoPoint a, GeoPoint b) {
+double kmBetween(GeoPoint a, GeoPoint b) {
   const toRad = math.pi / 180;
   final dLat = (b.lat - a.lat) * toRad;
   final dLng = (b.lng - a.lng) * toRad;

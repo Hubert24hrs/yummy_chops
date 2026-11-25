@@ -27,7 +27,8 @@ export function GudyFab() {
     };
   }, []);
 
-  if (!pos || path?.startsWith("/assistant")) return null;
+  // Not over the cart and checkout bars at the bottom either.
+  if (!pos || path?.startsWith("/assistant") || path === "/cart" || path?.startsWith("/checkout")) return null;
   const onRight = pos.x > window.innerWidth / 2;
 
   return (

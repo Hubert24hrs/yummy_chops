@@ -74,7 +74,7 @@ export function useLocation(): LocationState {
 }
 
 /** Distance in km between two points (haversine). */
-function kmBetween(a: GeoPoint, b: GeoPoint): number {
+export function kmBetween(a: GeoPoint, b: GeoPoint): number {
   const rad = (d: number) => (d * Math.PI) / 180;
   const dLat = rad(b.lat - a.lat);
   const dLng = rad(b.lng - a.lng);

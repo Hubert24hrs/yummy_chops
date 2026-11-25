@@ -1,6 +1,9 @@
 import type { MenuItem, RestaurantDetail } from "@gudmeal/api-client";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace: vi.fn() }), usePathname: () => "/restaurants/x" }));
 import { CartProvider, useCart } from "@/lib/cart";
 import { Menu } from "./menu";
 
@@ -27,15 +30,15 @@ beforeAll(() => {
 });
 afterEach(() => {
   cleanup();
+  push.mockClear();
   window.localStorage.clear();
 });
 
 function CartState() {
-  const { shops, drawerOpen } = useCart();
+  const { shops } = useCart();
   return (
     <>
       <output aria-label="shops">{shops.map((s) => `${s.restaurant_name}: ${s.count}`).join(" | ")}</output>
-      <output aria-label="drawer">{drawerOpen ? "open" : "closed"}</output>
     </>
   );
 }
@@ -67,7 +70,7 @@ describe("restaurant menu opened from the Discover carousel", () => {
 });
 
 describe("adding a dish", () => {
-  it("joins the cart next to another shop's items and opens the cart", async () => {
+  it("joins the cart next to another shop's items and takes the customer to the cart page", async () => {
     window.localStorage.setItem("gudmeal.cart.v2", JSON.stringify({ items: [{
       key: "p-medplus/para##", restaurant_id: "p-medplus", restaurant_name: "MedPlus", item_id: "para", name: "Paracetamol",
       unit_price_kobo: 80_000, quantity: 2, selections: [], selection_labels: [],
@@ -77,7 +80,7 @@ describe("adding a dish", () => {
     const dialog = document.querySelector("dialog")!;
     fireEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "Add to cart · ₦4,500" }));
     expect(screen.getByLabelText("shops").textContent).toBe("MedPlus: 2 | Suya Lane: 1");
-    expect(screen.getByLabelText("drawer").textContent).toBe("open");
+    expect(push).toHaveBeenCalledWith("/cart"); // the customer lands on their cart
     expect(screen.queryByText(/new cart/i)).toBeNull();
   });
 });

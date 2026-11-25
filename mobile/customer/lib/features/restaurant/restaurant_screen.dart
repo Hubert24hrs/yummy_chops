@@ -53,7 +53,7 @@ class _RestaurantScreenState extends ConsumerState<RestaurantScreen> {
     return Scaffold(
       floatingActionButton: !cart.isEmpty
           ? FloatingActionButton.extended(
-              onPressed: () => context.push('/checkout'),
+              onPressed: () => context.push('/cart'),
               icon: const Icon(Icons.shopping_bag_rounded),
               label: Text('View cart · ${formatNaira(cart.subtotalKobo)}'),
             )
@@ -144,6 +144,7 @@ class ItemSheet extends ConsumerStatefulWidget {
     required this.restaurantId,
     required this.restaurantName,
     this.onAdd,
+    this.goToCart = true,
   });
   final MenuItem item;
   final Map<String, OptionGroup> groups;
@@ -152,6 +153,9 @@ class ItemSheet extends ConsumerStatefulWidget {
 
   /// Group orders: hand the chosen line to the caller instead of adding it to this phone's cart.
   final void Function(CartLine line)? onAdd;
+
+  /// After adding, open the cart (false when the sheet was opened from the cart itself).
+  final bool goToCart;
 
   @override
   ConsumerState<ItemSheet> createState() => _ItemSheetState();
@@ -185,6 +189,7 @@ class _ItemSheetState extends ConsumerState<ItemSheet> {
         for (final g in groups)
           for (final cid in _chosen[g.id] ?? const <String>[]) '${g.name}: ${g.choices.firstWhere((c) => c.id == cid).name}',
       ],
+      emoji: item.emoji,
     );
     if (widget.onAdd != null) {
       Navigator.pop(context);
@@ -195,7 +200,7 @@ class _ItemSheetState extends ConsumerState<ItemSheet> {
     // One cart holds every shop's items: the customer goes straight to it.
     final router = GoRouter.maybeOf(context);
     Navigator.pop(context);
-    router?.push('/checkout');
+    if (widget.goToCart) router?.push('/cart');
   }
 
   @override

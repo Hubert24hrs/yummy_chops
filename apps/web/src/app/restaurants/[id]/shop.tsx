@@ -152,7 +152,7 @@ export function Shop({ detail, openItemId }: { detail: RestaurantDetail; openIte
       )}
       {count > 0 && (
         <div className="fixed inset-x-0 bottom-4 z-20 px-4 lg:hidden">
-          <a href="/checkout" className="block">
+          <a href="/cart" className="block">
             <Button block size="lg">View cart · {count} · <Price kobo={subtotalKobo} /></Button>
           </a>
         </div>

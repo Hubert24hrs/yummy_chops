@@ -60,7 +60,7 @@ function Orders() {
           {cart.items.length === 0 ? (
             <EmptyBlock icon={<ShoppingCart className="size-8" aria-hidden="true" />} title="No carts yet" body="Add items from stores to create new carts" />
           ) : (
-            <Link href="/checkout" className="flex items-center gap-3 rounded-2xl border border-border p-4 hover:border-primary">
+            <Link href="/cart" className="flex items-center gap-3 rounded-2xl border border-border p-4 hover:border-primary">
               <ShoppingCart className="size-6 text-primary" aria-hidden="true" />
               <span className="flex-1"><span className="block font-bold">{shops.map((sh) => sh.restaurant_name).join(", ")}</span><span className="text-sm text-muted">{count} item(s) · {formatNaira(subtotalKobo)}</span></span>
               <span className="rounded-full bg-primary px-4 py-2 text-sm font-bold text-on-primary">Checkout</span>

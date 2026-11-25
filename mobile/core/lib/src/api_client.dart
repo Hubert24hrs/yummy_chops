@@ -243,7 +243,15 @@ class GudMealApi {
       (d) => RestaurantDetail.fromJson(_map(d)));
 
   // ------------------------------------------------------------------- ordering
-  Future<Quote> quote({required String restaurantId, required List<CartLine> lines, required String fulfillment, DeliveryAddress? address, String? voucher}) =>
+  /// [scheduledFor]: a later delivery or pickup time (30 minutes to 7 days ahead); null = as soon as possible.
+  Future<Quote> quote({
+    required String restaurantId,
+    required List<CartLine> lines,
+    required String fulfillment,
+    DeliveryAddress? address,
+    String? voucher,
+    DateTime? scheduledFor,
+  }) =>
       _call(
           () => _dio.post('/v1/quotes', data: {
                 'restaurant_id': restaurantId,
@@ -251,6 +259,7 @@ class GudMealApi {
                 'fulfillment': fulfillment,
                 if (address != null) 'delivery_address': address.toJson(),
                 if (voucher != null && voucher.isNotEmpty) 'voucher_code': voucher,
+                if (scheduledFor != null) 'scheduled_for': scheduledFor.toUtc().toIso8601String(),
               }),
           (d) => Quote.fromJson(_map(d)));
 

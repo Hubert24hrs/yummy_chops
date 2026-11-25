@@ -65,7 +65,7 @@ class MapsApi extends GudMealApi {
   Future<List<DeliveryAddress>> addresses() async => const [];
 
   @override
-  Future<Quote> quote({required String restaurantId, required List<CartLine> lines, required String fulfillment, DeliveryAddress? address, String? voucher}) async {
+  Future<Quote> quote({required String restaurantId, required List<CartLine> lines, required String fulfillment, DeliveryAddress? address, String? voucher, DateTime? scheduledFor}) async {
     quoted.add(address);
     return Quote(
       id: 'q1', restaurantName: 'Suya Lane', fulfillment: fulfillment, etaMinutes: 35,
@@ -82,6 +82,9 @@ class MapsApi extends GudMealApi {
 
   @override
   Future<List<RewardVoucher>> myVouchers() async => const [];
+
+  @override
+  Future<PlusOverview> plus() async => const PlusOverview(plan: PlusPlan(priceKobo: 150000), member: true);
 
   @override
   Future<LiveTracking> liveTracking(String orderId) async {
@@ -126,6 +129,9 @@ Widget _app(ProviderContainer c, Widget home) =>
 
 void main() {
   testWidgets('checkout pins the exact address from search and quotes with that pin', (tester) async {
+    tester.view.physicalSize = const Size(1080, 5400); // the whole checkout on screen
+    tester.view.devicePixelRatio = 2.6;
+    addTearDown(tester.view.reset);
     final api = MapsApi();
     final c = _container(api);
     c.read(cartProvider.notifier).add('r-suya', 'Suya Lane', const CartItem(itemId: 'sl-beef', name: 'Beef Suya', unitPriceKobo: 450000, quantity: 2));
@@ -146,8 +152,8 @@ void main() {
     await tester.tap(find.text('Use this address'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Change'), findsOneWidget);
-    await tester.tap(find.text('Review total'));
+    // The new address is priced straight away: no button to press.
+    expect(find.byTooltip('Change address'), findsOneWidget);
     await tester.pumpAndSettle();
     final sent = api.quoted.single!;
     expect(sent.location, admiralty);

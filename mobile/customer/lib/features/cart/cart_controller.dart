@@ -14,6 +14,7 @@ class CartItem {
     this.notes,
     this.restaurantId = '',
     this.restaurantName = '',
+    this.emoji,
   });
 
   final String itemId;
@@ -27,6 +28,9 @@ class CartItem {
   /// The shop this item is bought from (set by [CartController.add]).
   final String restaurantId;
   final String restaurantName;
+
+  /// The product's picture placeholder (shops, pharmacies, markets), shown on the cart's thumbnail.
+  final String? emoji;
 
   /// Same shop, same item, same choices and notes = the same line.
   String get key {
@@ -44,6 +48,7 @@ class CartItem {
         notes: notes,
         restaurantId: restaurantId ?? this.restaurantId,
         restaurantName: restaurantName ?? this.restaurantName,
+        emoji: emoji,
       );
 }
 
@@ -85,6 +90,9 @@ class CartState {
     }
     return [for (final e in byShop.entries) CartShop(restaurantId: e.key, restaurantName: names[e.key]!, items: e.value)];
   }
+
+  /// Item ids already in the cart, per shop (for "You might also like").
+  Set<String> itemIdsOf(String restaurantId) => {for (final i in items) if (i.restaurantId == restaurantId) i.itemId};
 
   /// "Suya Lane" for one shop, "2 shops" for several.
   String get title {

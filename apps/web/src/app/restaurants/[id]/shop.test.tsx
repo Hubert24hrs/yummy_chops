@@ -1,6 +1,9 @@
 import type { MenuItem, OptionGroup, RestaurantDetail } from "@gudmeal/api-client";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace: vi.fn() }), usePathname: () => "/restaurants/x" }));
 import { CartProvider, useCart } from "@/lib/cart";
 import { listPrice, SERVICE_NAMES, SERVICES, serviceCopy } from "@/lib/services";
 import { popularProducts, searchProducts, Shop } from "./shop";
@@ -49,11 +52,10 @@ const market = (over: Partial<RestaurantDetail["restaurant"]> = {}): RestaurantD
 });
 
 function CartCount() {
-  const { count, shops, drawerOpen } = useCart();
+  const { count, shops } = useCart();
   return (
     <>
       <output aria-label="cart">{count} from {shops.map((s) => s.restaurant_name).join(" + ") || "nowhere"}</output>
-      <output aria-label="drawer">{drawerOpen ? "open" : "closed"}</output>
     </>
   );
 }
@@ -68,6 +70,7 @@ beforeAll(() => {
 });
 afterEach(() => {
   cleanup();
+  push.mockClear();
   window.localStorage.clear();
 });
 
@@ -177,11 +180,11 @@ describe("a shop browsed by the aisle", () => {
     expect(within(dialog).getByText("+₦3,800")).toBeTruthy();
     expect(within(dialog).getByText(/Notes for your shopper/)).toBeTruthy();
     expect((within(dialog).getByRole("button", { name: /Add to cart · / }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByLabelText("drawer").textContent).toBe("closed"); // one-tap adds keep the customer on the shelf
+    expect(push).not.toHaveBeenCalled(); // one-tap adds keep the customer on the shelf
     fireEvent.click(within(dialog).getByLabelText(/1 kg/));
     fireEvent.click(within(dialog).getByRole("button", { name: "Add to cart · ₦8,000" }));
     expect(screen.getByLabelText("cart").textContent).toBe("3 from Lekki Market Shopper");
-    expect(screen.getByLabelText("drawer").textContent).toBe("open"); // the customer lands on their cart
+    expect(push).toHaveBeenCalledWith("/cart"); // the customer lands on their cart page
   });
 
   it("adds to the same cart as another shop's items, without asking to start a new cart", () => {

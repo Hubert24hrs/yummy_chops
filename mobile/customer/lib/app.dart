@@ -7,6 +7,7 @@ import 'package:gud_meal_core/gud_meal_core.dart';
 
 import 'features/assistant/assistant_screen.dart';
 import 'features/auth/sign_in_screen.dart';
+import 'features/cart/cart_screen.dart';
 import 'features/cart/checkout_screen.dart';
 import 'features/discover/discover_screen.dart';
 import 'features/group/group_screens.dart';
@@ -114,6 +115,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/restaurants/:id',
         builder: (_, s) => RestaurantScreen(id: s.pathParameters['id']!, initialItemId: s.uri.queryParameters['item']),
       ),
+      // The cart needs no account (visitors can fill it); checkout asks to sign in.
+      GoRoute(path: '/cart', builder: (_, _) => const CartScreen()),
       GoRoute(path: '/checkout', builder: (_, _) => const CheckoutScreen()),
       GoRoute(path: '/wallet', builder: (_, _) => const WalletScreen()),
       GoRoute(path: '/receipts', builder: (_, _) => const ReceiptsScreen()),

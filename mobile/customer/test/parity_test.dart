@@ -34,6 +34,9 @@ class _Api extends GudMealApi {
   Future<FoodPreferences> foodPreferences() async => preferences;
 
   @override
+  Future<PlusOverview> plus() async => const PlusOverview(plan: PlusPlan(priceKobo: 150000), member: true);
+
+  @override
   Future<FoodPreferences> saveFoodPreferences(FoodPreferences p) async => preferences = p;
 
   @override
@@ -212,8 +215,9 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('checkout-use-my-location')));
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(TextField, '12 Admiralty Way'), findsOneWidget); // the street is filled in
+    expect(find.text('12 Admiralty Way'), findsOneWidget); // the street is the delivery address
     expect(find.text('Pin your exact address'), findsNothing);
+    expect(find.text('Far from current location'), findsNothing, reason: 'the address is where the phone is');
 
     api.serviceable = false;
     await tester.tap(find.byKey(const ValueKey('checkout-use-my-location')));

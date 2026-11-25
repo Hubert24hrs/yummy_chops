@@ -70,8 +70,10 @@ interface CashRules {
  * Card / Yummy Chops wallet / pay on delivery. The hints here (balance, first order, limits) come from the API so
  * customers see why an option is off, but the server re-checks everything at checkout.
  */
-export function PaymentMethodPicker({ totalKobo, value, onChange, cash }: {
+export function PaymentMethodPicker({ totalKobo, value, onChange, cash, variant = "cards" }: {
   totalKobo: number | null; value: PayMethod; onChange: (m: PayMethod) => void; cash: CashRules;
+  /** "rows": a plain list with a radio dot on the right (checkout), "cards": bordered tiles. */
+  variant?: "cards" | "rows";
 }) {
   const api = useApi();
   const wallet = useQuery({ queryKey: ["wallet"], queryFn: () => api.wallet.get() });
@@ -118,8 +120,21 @@ export function PaymentMethodPicker({ totalKobo, value, onChange, cash }: {
 
   return (
     <div className="space-y-2">
-      <div role="radiogroup" aria-label="Payment method" className="space-y-2">
-        {options.map(({ id, Icon, title, note, ok }) => (
+      <div role="radiogroup" aria-label="Payment method" className={variant === "rows" ? "divide-y divide-border" : "space-y-2"}>
+        {options.map(({ id, Icon, title, note, ok }) => variant === "rows" ? (
+          <button key={id} type="button" role="radio" aria-checked={value === id} disabled={!ok} onClick={() => onChange(id)}
+            className={cn("flex w-full items-center gap-4 py-4 text-left", !ok && "cursor-not-allowed opacity-60")}>
+            <Icon className="size-6 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">{title}</span>
+              <span className="block text-sm text-muted">{note}</span>
+            </span>
+            <span aria-hidden="true" className={cn("grid size-6 shrink-0 place-items-center rounded-full border-2",
+              value === id ? "border-primary" : "border-border")}>
+              {value === id && <span className="size-3 rounded-full bg-primary" />}
+            </span>
+          </button>
+        ) : (
           <button key={id} type="button" role="radio" aria-checked={value === id} disabled={!ok} onClick={() => onChange(id)}
             className={cn("flex w-full items-center gap-3 rounded-xl border-2 p-3 text-left transition",
               value === id ? "border-primary bg-primary-soft" : "border-border hover:border-primary/40",

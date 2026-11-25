@@ -282,7 +282,7 @@ class AisleScreen extends ConsumerWidget {
       ),
       floatingActionButton: !cart.isEmpty
           ? FloatingActionButton.extended(
-              onPressed: () => context.push('/checkout'),
+              onPressed: () => context.push('/cart'),
               icon: const Icon(Icons.shopping_bag_rounded),
               label: Text('View cart · ${formatNaira(cart.subtotalKobo)}'),
             )

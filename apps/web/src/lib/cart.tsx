@@ -133,19 +133,26 @@ export function toCartLines(items: CartItem[]): CartLine[] {
   return items.map((i) => ({ item_id: i.item_id, quantity: i.quantity, selections: i.selections, notes: i.notes || null }));
 }
 
+/** The allergy note rides on each shop's first line, so every shop sees it with the order. */
+export function withAllergies(lines: CartLine[], allergies: string): CartLine[] {
+  const note = allergies.trim();
+  if (!note || !lines.length) return lines;
+  const [first, ...rest] = lines;
+  const text = first!.notes ? `${first!.notes} · Allergies: ${note}` : `Allergies: ${note}`;
+  return [{ ...first!, notes: text.slice(0, 200) }, ...rest];
+}
+
 interface CartContextValue {
   cart: CartState;
   shops: CartShop[];
   count: number;
   subtotalKobo: number;
+  /** False until the saved cart has been read: pages wait for it instead of flashing "Your cart is empty". */
+  ready: boolean;
   add: (restaurantId: string, restaurantName: string, item: NewCartItem) => void;
   setQuantity: (key: string, quantity: number) => void;
   remove: (key: string) => void;
   clear: () => void;
-  /** The cart drawer (in the header): opened after something is added, so the customer sees their cart. */
-  drawerOpen: boolean;
-  openCart: () => void;
-  closeCart: () => void;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -165,7 +172,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, dispatch] = useReducer(cartReducer, EMPTY);
   // Persist only after the saved cart has been loaded; otherwise the first (empty) render would overwrite it.
   const [hydrated, setHydrated] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -199,15 +205,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "clear" });
   }, []);
 
-  const openCart = useCallback(() => setDrawerOpen(true), []);
-  const closeCart = useCallback(() => setDrawerOpen(false), []);
-
   const value = useMemo(() => ({
-    cart, add, setQuantity, remove, clear, drawerOpen, openCart, closeCart,
+    cart, add, setQuantity, remove, clear, ready: hydrated,
     shops: cartShops(cart),
     count: cart.items.reduce((n, i) => n + i.quantity, 0),
     subtotalKobo: subtotal(cart.items),
-  }), [cart, add, setQuantity, remove, clear, drawerOpen, openCart, closeCart]);
+  }), [cart, add, setQuantity, remove, clear, hydrated]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

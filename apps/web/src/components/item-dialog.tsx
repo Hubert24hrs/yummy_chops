@@ -4,6 +4,7 @@ import type { CartLine, MenuItem, OptionGroup, OptionSelection } from "@gudmeal/
 import { formatNaira } from "@gudmeal/api-client";
 import { Button, Dialog, Textarea, cn } from "@gudmeal/ui";
 import { Minus, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { cartKey, useCart } from "@/lib/cart";
 
@@ -20,14 +21,17 @@ export function validateSelections(item: MenuItem, groups: Record<string, Option
   return null;
 }
 
-export function ItemDialog({ item, groups, restaurantId, restaurantName, onClose, onAdd, notesFor = "the kitchen", notesHint = "e.g. less pepper, no onions" }: {
+export function ItemDialog({ item, groups, restaurantId, restaurantName, onClose, onAdd, goToCart = true, notesFor = "the kitchen", notesHint = "e.g. less pepper, no onions" }: {
   item: MenuItem; groups: Record<string, OptionGroup>; restaurantId: string; restaurantName: string; onClose: () => void;
   /** Who reads the note ("the kitchen", "your shopper") and an example of one. */
   notesFor?: string; notesHint?: string;
   /** Group orders: hand the chosen line to the caller instead of adding it to this device's cart. */
   onAdd?: (line: CartLine) => void;
+  /** After "Add to cart" the customer lands on the cart page (false: stay where they are, e.g. on the cart itself). */
+  goToCart?: boolean;
 }) {
-  const { add, openCart } = useCart();
+  const { add } = useCart();
+  const router = useRouter();
   const [chosen, setChosen] = useState<Record<string, string[]>>({});
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState("");
@@ -64,7 +68,7 @@ export function ItemDialog({ item, groups, restaurantId, restaurantName, onClose
       quantity, selections, selection_labels: labels, notes: notes.trim() || undefined,
     });
     onClose();
-    openCart();
+    if (goToCart) router.push("/cart");
   }
 
   return (
