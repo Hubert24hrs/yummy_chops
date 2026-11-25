@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gud_meal_core/gud_meal_core.dart';
@@ -140,7 +142,24 @@ final restaurantDetailProvider =FutureProvider.family<RestaurantDetail, String>(
 });
 
 // ------------------------------------------------------------------------------------------ me
-final myOrdersProvider = FutureProvider<List<Order>>((ref) => ref.watch(apiProvider).myOrders());
+/// Statuses of an order that is still on its way (the Orders tab's "In progress").
+const activeOrderStatuses = {
+  'pending_payment', 'paid', 'submitted_to_restaurant', 'restaurant_accepted', 'preparing',
+  'ready_for_pickup', 'rider_assigned', 'picked_up', 'in_transit', 'delivered', 'disputed', 'refund_pending',
+};
+
+/// How often the orders list looks again while an order is in progress: its status moves on without the customer
+/// doing anything (paid, accepted, picked up...), so a list read once would go stale.
+const ordersRefreshInterval = Duration(seconds: 15);
+
+final myOrdersProvider = FutureProvider<List<Order>>((ref) async {
+  final orders = await ref.watch(apiProvider).myOrders();
+  if (orders.any((o) => activeOrderStatuses.contains(o.status))) {
+    final timer = Timer(ordersRefreshInterval, ref.invalidateSelf);
+    ref.onDispose(timer.cancel);
+  }
+  return orders;
+});
 final orderProvider = FutureProvider.family<Order, String>((ref, id) => ref.watch(apiProvider).order(id));
 final addressesProvider = FutureProvider<List<DeliveryAddress>>((ref) => ref.watch(apiProvider).addresses());
 final orderSummaryProvider = FutureProvider<OrderSummary>((ref) => ref.watch(apiProvider).orderSummary());

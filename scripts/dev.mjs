@@ -24,8 +24,9 @@ const WEB_APP_PORTS = ["5050", "5051"];
 const webPort = process.argv.find((arg) => arg.startsWith("--port="))?.slice("--port=".length) ?? WEB_APP_PORTS[0];
 // Web pages that may call the local services: the three websites (3010: the customer website when other
 // projects hold 3000-3002, preview server `web-3010`) and the web build of the customer app.
+// 5070: the rider app's browser build (preview server rider-app-web; 5060 is a port browsers refuse).
 const corsOrigins = process.env.CORS_ORIGINS
-  ?? JSON.stringify(["3000", "3001", "3002", "3010", ...WEB_APP_PORTS].map((port) => `http://localhost:${port}`));
+  ?? JSON.stringify(["3000", "3001", "3002", "3010", "5070", ...WEB_APP_PORTS].map((port) => `http://localhost:${port}`));
 
 // The Auth emulator reads its listen address from firebase.json; --lan uses a copy that listens on every interface.
 function lanFirebaseConfig() {

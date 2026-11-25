@@ -8,10 +8,7 @@ import '../../ui/components.dart';
 import '../../widgets.dart';
 import '../cart/cart_controller.dart';
 
-const _active = {
-  'pending_payment', 'paid', 'submitted_to_restaurant', 'restaurant_accepted', 'preparing',
-  'ready_for_pickup', 'rider_assigned', 'picked_up', 'in_transit', 'delivered', 'disputed', 'refund_pending',
-};
+const _active = activeOrderStatuses;
 
 /// Orders: in-progress tracking, the cart you haven't finished, history and what you've spent.
 class OrdersScreen extends ConsumerWidget {
