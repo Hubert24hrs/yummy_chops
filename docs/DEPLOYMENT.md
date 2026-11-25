@@ -32,7 +32,7 @@ printf '%s' 'postgresql+asyncpg://gudmeal_api:<password>@/gudmeal?host=/cloudsql
 ```
 
 Required secrets: `api-database-url`, `agents-database-url`, `agents-checkpoint-url`, `paystack-secret-key`,
-`api-code-pepper`, `gemini-api-key`, `gemini-model` (a pinned stable Flash id — verify with
+`api-code-pepper`, `gemini-model` (Yummy runs Gemini on Vertex AI with its own identity, no key: a pinned stable Flash id — verify with
 `services/agents/scripts/check_gemini_models.py`), `channel-token-secret` (a long random value, read by both
 the API and the agents service). Optional: `flutterwave-*`, `google-maps-server-key` (bound by `deploy.sh` as soon
 as it has a value; see [GOOGLE_MAPS.md](GOOGLE_MAPS.md)), and the `whatsapp-*` secrets when Yummy on WhatsApp is

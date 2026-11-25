@@ -29,9 +29,10 @@ Saved on 17 Nov 2026 to do later. Tick each one off as you go.
   staging version that works anywhere, not just on your Wi-Fi.
 - [x] **Gemini key for Yummy (22 Nov).** A Google AI Studio key, for testing only. It lives in the git-ignored
   `services/agents/.env`.
-- [ ] **Before real customers use Yummy, move it to Vertex AI** (your choice, 22 Nov). The AI Studio key is only for
-  experimenting. Vertex is billed to the Google Cloud project, keeps customers' chats out of Google's product
-  improvement and needs no key in a file. After the move, delete the AI Studio key.
+- [x] **Yummy runs on Vertex AI (25 Nov).** On the online test server Gemini (`gemini-3.5-flash`) is billed to the
+  Google Cloud project, keeps customers' chats out of Google's product improvement and needs no key; production
+  refuses an AI Studio key. The AI Studio key's prepaid credit ran out on 25 Nov, so Yummy on this computer answers in
+  its rule-based mode until it is topped up (or deleted, if you no longer need AI answers in the phone test).
 - [ ] **Add a Google Maps key** for real addresses and routes.
 - [ ] **Line up a pilot:** 3–5 restaurants and 5 riders in one area, for example Lekki. Simulated on 22 Nov with
   pretend shops, riders and customers: 30 of 30 orders delivered, no server errors and the money balanced
