@@ -6,6 +6,10 @@
 	<string>Yummy Chops Rider uses the camera for your KYC: photos of your vehicle papers and guarantor forms, and your selfie.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Yummy Chops Rider lets you choose photos of your vehicle papers and guarantor forms for your KYC.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Yummy Chops Rider shares your location while you are online so we can offer nearby deliveries and show customers live tracking.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>

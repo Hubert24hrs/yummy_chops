@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:gud_meal_core/gud_meal_core.dart';
 
@@ -32,6 +33,41 @@ abstract class LocationSource {
   Future<(GeoPoint, double)?> current();
 }
 
+/// How the rider's position is followed while they are online. Battery-aware: an update when the rider moves 25 m
+/// (the API rate-limits pings too). The stream runs only while the rider is online, so tracking keeps going when
+/// Google Maps is in front and stops the moment they go offline or sign out:
+/// - Android: a foreground service with an ongoing notification for as long as the rider is online;
+/// - iOS: background location updates (the blue location bar shows while they run).
+LocationSettings onlineLocationSettings(TargetPlatform platform) {
+  const accuracy = LocationAccuracy.high;
+  const distanceFilter = 25;
+  switch (platform) {
+    case TargetPlatform.android:
+      return AndroidSettings(
+        accuracy: accuracy,
+        distanceFilter: distanceFilter,
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: "You're online for deliveries",
+          notificationText: 'Yummy Chops shares your location for jobs until you go offline.',
+          notificationChannelName: 'Online for deliveries',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
+      );
+    case TargetPlatform.iOS:
+      return AppleSettings(
+        accuracy: accuracy,
+        distanceFilter: distanceFilter,
+        activityType: ActivityType.otherNavigation,
+        pauseLocationUpdatesAutomatically: false,
+        allowBackgroundLocationUpdates: true,
+        showBackgroundLocationIndicator: true,
+      );
+    default:
+      return const LocationSettings(accuracy: accuracy, distanceFilter: distanceFilter);
+  }
+}
+
 class GeolocatorSource implements LocationSource {
   @override
   Future<bool> ensurePermission() async {
@@ -43,8 +79,7 @@ class GeolocatorSource implements LocationSource {
 
   @override
   Stream<(GeoPoint, double)> positions() => Geolocator.getPositionStream(
-        // Battery-aware: update when the rider moves 25 m; the API rate-limits pings server-side too.
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 25),
+        locationSettings: onlineLocationSettings(defaultTargetPlatform),
       ).map((p) => (GeoPoint(lat: p.latitude, lng: p.longitude), p.accuracy));
 
   @override

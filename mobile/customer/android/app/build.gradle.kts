@@ -27,7 +27,7 @@ plugins {
 }
 
 android {
-    namespace = "ng.gudmeal.gud_meal_customer"
+    namespace = "com.yummy247.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -37,8 +37,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "ng.gudmeal.gud_meal_customer"
+        // The store identity: permanent after the first Play Store upload (owner's choice, 25 Nov 2026).
+        applicationId = "com.yummy247.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

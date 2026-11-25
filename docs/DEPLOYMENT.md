@@ -11,7 +11,7 @@ to stand up each environment; every billable step is yours to run and approve.
 2. Link billing and create a **budget alert** (the bootstrap script prints the command).
 3. In Firebase Console:
    - enable Authentication providers (Phone, Email/Password, Google)
-   - register the Android and iOS apps (bundle `ng.gudmeal.gud_meal_customer` / `ng.gudmeal.gud_meal_rider`)
+   - register the Android and iOS apps (bundle `com.yummy247.app` / `com.yummy247.rider`)
    - register **one Web app** for the three websites; its `apiKey` and `appId` become GitHub Environment
      variables (section 3)
    - set up App Check: Play Integrity, App Attest, and a **reCAPTCHA Enterprise** key for the website domains

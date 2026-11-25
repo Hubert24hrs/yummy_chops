@@ -1,4 +1,4 @@
-package ng.gudmeal.gud_meal_customer
+package com.yummy247.app
 
 import io.flutter.embedding.android.FlutterActivity
 

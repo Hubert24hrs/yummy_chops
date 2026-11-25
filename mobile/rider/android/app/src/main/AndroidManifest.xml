@@ -3,6 +3,10 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Online riders keep sharing their location with Google Maps in front: a location foreground service with an
+         ongoing notification, only while online (lib/providers.dart onlineLocationSettings). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <!-- allowBackup off: nothing here is worth restoring, and a signed-in session must not travel in a backup. -->
     <application
         android:label="Yummy Chops Rider"

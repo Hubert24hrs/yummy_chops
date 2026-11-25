@@ -60,7 +60,7 @@ gcloud services enable maps-android-backend.googleapis.com maps-ios-backend.goog
 | Key | API restrictions | Application restriction | Where it lives |
 |---|---|---|---|
 | **Server** | Places API (New), Geocoding API, Routes API | None on Cloud Run (no fixed outbound IP). If you add Cloud NAT with a static IP, restrict to that IP | Secret Manager `google-maps-server-key` → env `GOOGLE_MAPS_API_KEY` on gudmeal-api only |
-| **Android** (customer app) | Maps SDK for Android | Package `ng.gudmeal.gud_meal_customer` + SHA-1 of the release and debug signing certificates | `mobile/customer/android/local.properties` (`MAPS_API_KEY=…`, git-ignored) or env `MAPS_API_KEY` in CI |
+| **Android** (customer app) | Maps SDK for Android | Package `com.yummy247.app` + SHA-1 of the release and debug signing certificates | `mobile/customer/android/local.properties` (`MAPS_API_KEY=…`, git-ignored) or env `MAPS_API_KEY` in CI |
 | **iOS** (customer app) | Maps SDK for iOS | The customer app's bundle ID | `mobile/customer/ios/Flutter/Secrets.xcconfig` (copy `Secrets.xcconfig.example`; git-ignored) or CI secret |
 | **Browser** | Maps JavaScript API | Website referrers: `https://yummy247.com/*`, `https://*.yummy247.com/*`, `http://localhost:*/*` (dev key only) | Websites: `NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY` at build time. App web build: `--dart-define=MAPS_BROWSER_KEY=…` |
 

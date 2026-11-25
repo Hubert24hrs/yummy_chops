@@ -1,4 +1,4 @@
-package ng.gudmeal.gud_meal_rider
+package com.yummy247.rider
 
 import io.flutter.embedding.android.FlutterActivity
 
