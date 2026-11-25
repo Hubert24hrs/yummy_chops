@@ -549,6 +549,8 @@ class Order(Model):
     # Internal rider job that moves a waybill between an address and a hub (no payment of its own).
     leg_of: str | None = None
     group_order_id: str | None = None  # placed by the host of a group order (split bill)
+    # Orders of one mixed cart paid together (ADR-0030): one rider collects them all and delivers them in one trip.
+    trip_id: str | None = None
     leg_kind: WaybillLegKind | None = None
     created_at: datetime
     updated_at: datetime
@@ -719,6 +721,9 @@ class DeliveryAssignment(Model):
     expires_at: datetime
     responded_at: datetime | None = None
     decline_reason: str | None = None
+    # A mixed cart's trip (ADR-0031): every order the offer covers and the places to collect them from, in order.
+    trip_order_ids: list[str] = Field(default_factory=list)
+    pickups: list[dict[str, Any]] = Field(default_factory=list)
 
 
 # ----------------------------------------------------------------------------------------------

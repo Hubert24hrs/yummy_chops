@@ -434,6 +434,8 @@ _Order _$OrderFromJson(Map<String, dynamic> json) => _Order(
   legKind: json['leg_kind'] as String?,
   hubHandover: json['hub_handover'] as bool? ?? false,
   groupOrderId: json['group_order_id'] as String?,
+  restaurantPhone: json['restaurant_phone'] as String?,
+  tripId: json['trip_id'] as String?,
 );
 
 Map<String, dynamic> _$OrderToJson(_Order instance) => <String, dynamic>{
@@ -467,6 +469,8 @@ Map<String, dynamic> _$OrderToJson(_Order instance) => <String, dynamic>{
   'leg_kind': ?instance.legKind,
   'hub_handover': instance.hubHandover,
   'group_order_id': ?instance.groupOrderId,
+  'restaurant_phone': ?instance.restaurantPhone,
+  'trip_id': ?instance.tripId,
 };
 
 _OrderPayment _$OrderPaymentFromJson(Map<String, dynamic> json) =>
@@ -1392,6 +1396,16 @@ _DeliveryOffer _$DeliveryOfferFromJson(Map<String, dynamic> json) =>
           ? null
           : GeoPoint.fromJson(json['dropoff'] as Map<String, dynamic>),
       dropoffArea: json['dropoff_area'] as String?,
+      tripOrderIds:
+          (json['trip_order_ids'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const <String>[],
+      pickups:
+          (json['pickups'] as List<dynamic>?)
+              ?.map((e) => OfferPickup.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const <OfferPickup>[],
     );
 
 Map<String, dynamic> _$DeliveryOfferToJson(_DeliveryOffer instance) =>
@@ -1405,6 +1419,118 @@ Map<String, dynamic> _$DeliveryOfferToJson(_DeliveryOffer instance) =>
       'pickup': instance.pickup.toJson(),
       'dropoff': ?instance.dropoff?.toJson(),
       'dropoff_area': ?instance.dropoffArea,
+      'trip_order_ids': instance.tripOrderIds,
+      'pickups': instance.pickups.map((e) => e.toJson()).toList(),
+    };
+
+_OfferPickup _$OfferPickupFromJson(Map<String, dynamic> json) => _OfferPickup(
+  orderId: json['order_id'] as String,
+  name: json['name'] as String? ?? '',
+  address: json['address'] as String?,
+  location: json['location'] == null
+      ? null
+      : GeoPoint.fromJson(json['location'] as Map<String, dynamic>),
+);
+
+Map<String, dynamic> _$OfferPickupToJson(_OfferPickup instance) =>
+    <String, dynamic>{
+      'order_id': instance.orderId,
+      'name': instance.name,
+      'address': ?instance.address,
+      'location': ?instance.location?.toJson(),
+    };
+
+_TripItem _$TripItemFromJson(Map<String, dynamic> json) => _TripItem(
+  name: json['name'] as String,
+  quantity: (json['quantity'] as num?)?.toInt() ?? 1,
+  options:
+      (json['options'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+      const <String>[],
+);
+
+Map<String, dynamic> _$TripItemToJson(_TripItem instance) => <String, dynamic>{
+  'name': instance.name,
+  'quantity': instance.quantity,
+  'options': instance.options,
+};
+
+_TripStop _$TripStopFromJson(Map<String, dynamic> json) => _TripStop(
+  kind: json['kind'] as String,
+  orderId: json['order_id'] as String?,
+  orderIds:
+      (json['order_ids'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+      const <String>[],
+  shortCode: json['short_code'] as String?,
+  name: json['name'] as String? ?? '',
+  vertical: json['vertical'] as String?,
+  address: json['address'] as String?,
+  location: json['location'] == null
+      ? null
+      : GeoPoint.fromJson(json['location'] as Map<String, dynamic>),
+  phone: json['phone'] as String?,
+  items:
+      (json['items'] as List<dynamic>?)
+          ?.map((e) => TripItem.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+      const <TripItem>[],
+  status: json['status'] as String?,
+  ready: json['ready'] as bool? ?? false,
+  done: json['done'] as bool? ?? false,
+  instructions: json['instructions'] as String?,
+  cashToCollectKobo: (json['cash_to_collect_kobo'] as num?)?.toInt() ?? 0,
+  legKm: (json['leg_km'] as num?)?.toDouble(),
+  legMinutes: (json['leg_minutes'] as num?)?.toInt(),
+);
+
+Map<String, dynamic> _$TripStopToJson(_TripStop instance) => <String, dynamic>{
+  'kind': instance.kind,
+  'order_id': ?instance.orderId,
+  'order_ids': instance.orderIds,
+  'short_code': ?instance.shortCode,
+  'name': instance.name,
+  'vertical': ?instance.vertical,
+  'address': ?instance.address,
+  'location': ?instance.location?.toJson(),
+  'phone': ?instance.phone,
+  'items': instance.items.map((e) => e.toJson()).toList(),
+  'status': ?instance.status,
+  'ready': instance.ready,
+  'done': instance.done,
+  'instructions': ?instance.instructions,
+  'cash_to_collect_kobo': instance.cashToCollectKobo,
+  'leg_km': ?instance.legKm,
+  'leg_minutes': ?instance.legMinutes,
+};
+
+_RiderTrip _$RiderTripFromJson(Map<String, dynamic> json) => _RiderTrip(
+  tripId: json['trip_id'] as String,
+  orderIds:
+      (json['order_ids'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+      const <String>[],
+  stops:
+      (json['stops'] as List<dynamic>?)
+          ?.map((e) => TripStop.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+      const <TripStop>[],
+  nextStop: (json['next_stop'] as num?)?.toInt() ?? 0,
+  totalKm: (json['total_km'] as num?)?.toDouble(),
+  totalMinutes: (json['total_minutes'] as num?)?.toInt(),
+  routeSource: json['route_source'] as String?,
+  navigationUrl: json['navigation_url'] as String?,
+  payoutKobo: (json['payout_kobo'] as num?)?.toInt(),
+);
+
+Map<String, dynamic> _$RiderTripToJson(_RiderTrip instance) =>
+    <String, dynamic>{
+      'trip_id': instance.tripId,
+      'order_ids': instance.orderIds,
+      'stops': instance.stops.map((e) => e.toJson()).toList(),
+      'next_stop': instance.nextStop,
+      'total_km': ?instance.totalKm,
+      'total_minutes': ?instance.totalMinutes,
+      'route_source': ?instance.routeSource,
+      'navigation_url': ?instance.navigationUrl,
+      'payout_kobo': ?instance.payoutKobo,
     };
 
 _RiderProfile _$RiderProfileFromJson(Map<String, dynamic> json) =>

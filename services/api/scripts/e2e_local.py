@@ -928,7 +928,7 @@ def pharmacy_order() -> None:
 @flow
 def mixed_cart_one_payment() -> None:
     """Mixed cart (ADR-0030): a meal, a pharmacy item and a beauty item in one cart; the beauty item is removed;
-    one payment pays an order per shop, and each order is prepared and delivered on its own"""
+    one payment pays an order per shop, and ONE rider collects them all by the planned route (ADR-0031)"""
     riders_online()
     beauty = items_of(call("GET", "/v1/restaurants", params={"city": "lagos", "vertical": "beauty"}))[0]["id"]
     pharmacy = "p-carefirst"
@@ -981,9 +981,74 @@ def mixed_cart_one_payment() -> None:
         )
     mine = {o["id"] for o in items_of(call("GET", "/v1/orders", "customer"))}
     check("the customer sees each order in Orders", all(o["id"] in mine for o in orders.values()))
-    deliver(orders[JJ]["id"])
-    deliver(orders[pharmacy]["id"], shop=pharmacy, staff="beauty", owner="beauty")
+    deliver_trip(orders, {JJ: ("kitchen", "owner"), pharmacy: ("beauty", "beauty")})
     ledger_balanced()
+
+
+def deliver_trip(orders: dict[str, dict], staff: dict[str, tuple[str, str]], who: str = "customer") -> None:
+    """ADR-0031: one rider collects every shop's order of a mixed cart, by the planned route, then delivers them
+    all with the customer's one code."""
+    for shop, order in orders.items():
+        base = f"/v1/partner/restaurants/{shop}/orders/{order['id']}"
+        r = shop_step(base, "accept", staff[shop][0], {"prep_minutes": 10})
+        check(f"{shop} accepts its order", r["status"] in ACCEPTED, r["status"])
+    ids = [o["id"] for o in orders.values()]
+    deadline, found = time.time() + 20, None
+    while found is None and time.time() < deadline:
+        for rider in RIDERS:
+            for offer in items_of(call("GET", "/v1/rider/offers", rider)):
+                if offer.get("order_id") in ids:
+                    found = (rider, offer)
+        if found is None:
+            time.sleep(1)
+    if found is None:
+        raise Fail("no rider was offered the trip")
+    rider, offer = found
+    check(
+        f"ONE offer for the whole trip: {len(offer.get('pickups', []))} pickups for {RIDERS[rider]}",
+        sorted(offer.get("trip_order_ids", [])) == sorted(ids) and len(offer.get("pickups", [])) == len(ids),
+        offer,
+    )
+    call("POST", f"/v1/rider/offers/{offer['id']}/accept", rider)
+    for oid in ids:
+        check(f"order {oid[:6]} is on {RIDERS[rider]}'s trip", get_order(oid, who).get("rider_name"), oid)
+    trip = call("GET", "/v1/rider/trip", rider)["trips"][0]
+    stops = trip["stops"]
+    print(
+        "    planned route: "
+        + " -> ".join(s["name"] or "customer" for s in stops)
+        + f" ({trip['total_km']} km, ~{trip['total_minutes']} min, {trip['route_source']})",
+        flush=True,
+    )
+    check(
+        "the trip lists every shop to collect from (with its phone), then the customer",
+        [s["kind"] for s in stops] == ["pickup"] * len(ids) + ["dropoff"]
+        and all(s["phone"] for s in stops[:-1]),
+        stops,
+    )
+    check(
+        "the rider gets a Google Maps link for the whole route",
+        "google.com/maps/dir" in trip["navigation_url"],
+    )
+    for stop in stops[:-1]:
+        shop = next(k for k, o in orders.items() if o["id"] == stop["order_id"])
+        shop_step(f"/v1/partner/restaurants/{shop}/orders/{stop['order_id']}", "ready", staff[shop][1])
+        r = call("POST", f"/v1/rider/deliveries/{stop['order_id']}/pickup", rider)
+        check(f"collected at {stop['name']}", r.get("status") == "picked_up", r.get("status"))
+    codes = {call("GET", f"/v1/orders/{oid}/codes", who)["delivery_code"] for oid in ids}
+    check("one delivery code for the whole trip", len(codes) == 1, len(codes))
+    for oid in ids:
+        call("POST", f"/v1/rider/deliveries/{oid}/in-transit", rider)
+        call("POST", f"/v1/rider/deliveries/{oid}/deliver", rider, {"code": next(iter(codes))})
+    for oid in ids:
+        final = get_order(oid, who)
+        for _ in range(20):
+            if final["status"] == "completed":
+                break
+            time.sleep(0.5)
+            final = get_order(oid, who)
+        check(f"order {oid[:6]} delivered and completed", final["status"] == "completed", final["status"])
+    check("the trip is finished", call("GET", "/v1/rider/trip", rider)["trips"] == [])
 
 
 @flow

@@ -91,11 +91,27 @@ async def decline_offer(assignment_id: str, data: ReasonInput, c: Ctr, principal
     await c.dispatch.decline_offer(principal, assignment_id, data.reason)
 
 
+ON_THE_JOB = ("rider_assigned", "picked_up", "in_transit")
+
+
 @router.get("/deliveries")
 async def deliveries(c: Ctr, principal: CurrentPrincipal, active: bool = True) -> list[dict[str, Any]]:
     require_rider(principal)
     orders = await c.orders.list_for_rider(principal.uid, ACTIVE if active else None)
-    return [order_view(o, principal) for o in orders]
+    views = [order_view(o, principal) for o in orders]
+    phones: dict[str, str | None] = {}
+    for o, view in zip(orders, views, strict=True):  # the number to call at each place to collect from
+        if o.restaurant_id not in phones:
+            phones[o.restaurant_id] = await c.dispatch.shop_phone(o.restaurant_id)
+        view["restaurant_phone"] = phones[o.restaurant_id] if o.status.value in ON_THE_JOB else None
+    return views
+
+
+@router.get("/trip")
+async def trip(c: Ctr, principal: CurrentPrincipal) -> dict[str, Any]:
+    """The rider's current work as planned trips: every place to collect from in the quickest order, then the
+    customer, with phone numbers, what to collect and a Google Maps link for the whole route (ADR-0031)."""
+    return {"trips": await c.dispatch.rider_trips(principal)}
 
 
 @router.post("/deliveries/{order_id}/pickup")

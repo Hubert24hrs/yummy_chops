@@ -66,6 +66,7 @@ def order_view(order: Order, principal: Principal) -> dict[str, Any]:
             "restaurant_name": order.restaurant_name,
             "restaurant_address": order.restaurant_address,
             "restaurant_location": data["restaurant_location"],
+            "trip_id": order.trip_id,  # orders of one mixed cart collected in one trip (ADR-0031)
             "customer_name": order.customer_name,
             "delivery_address": address,
             "items": [{"name": ln.name, "quantity": ln.quantity} for ln in order.lines],

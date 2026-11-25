@@ -8,6 +8,7 @@ import 'package:gud_meal_core/gud_meal_core.dart';
 
 import '../providers.dart';
 import 'kyc_screen.dart';
+import 'trip_screen.dart';
 
 /// The rider's dashboard: online switch with location status, today's numbers, new offers (with a buzz), the
 /// deliveries in hand, and what to do while waiting.
@@ -31,6 +32,7 @@ class _RiderHomeScreenState extends ConsumerState<RiderHomeScreen> {
     _poll = Timer.periodic(const Duration(seconds: 5), (_) {
       ref.invalidate(offersProvider);
       ref.invalidate(activeDeliveriesProvider);
+      ref.invalidate(riderTripsProvider);
     });
     // App reopened while still online (e.g. mid-delivery): resume sharing the position.
     ref.listenManual(riderProfileProvider, (_, next) {
@@ -89,6 +91,7 @@ class _RiderHomeScreenState extends ConsumerState<RiderHomeScreen> {
     final p = profile.value;
     final offerList = offers.value ?? const <DeliveryOffer>[];
     final activeList = active.value ?? const <Order>[];
+    final jobs = activeJobs(activeList, ref.watch(riderTripsProvider).value ?? const <RiderTrip>[]);
 
     return Scaffold(
       appBar: AppBar(
@@ -118,6 +121,7 @@ class _RiderHomeScreenState extends ConsumerState<RiderHomeScreen> {
           ref.invalidate(earningsProvider);
           ref.invalidate(offersProvider);
           ref.invalidate(activeDeliveriesProvider);
+          ref.invalidate(riderTripsProvider);
         },
         child: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 96), children: [
           // New riders: their KYC comes first; the team's verification lets them go online (the Verified badge).
@@ -159,21 +163,24 @@ class _RiderHomeScreenState extends ConsumerState<RiderHomeScreen> {
           ],
           if (offers.hasError) Text('${offers.error}', style: TextStyle(color: theme.colorScheme.error)),
           const SizedBox(height: 20),
-          _SectionTitle('Active deliveries', count: activeList.length),
+          _SectionTitle('Active deliveries', count: jobs.length),
           if (active.hasError) Text('${active.error}', style: TextStyle(color: theme.colorScheme.error)),
-          if (activeList.isEmpty)
+          if (jobs.isEmpty)
             const Padding(padding: EdgeInsets.symmetric(vertical: 6), child: Text('No active deliveries'))
           else
-            for (final o in activeList)
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.delivery_dining_rounded),
-                  title: Text('${o.restaurantName} · #${o.shortCode}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: Text('${statusLabel(o.status)} · earn ${formatNaira(o.riderPayKobo)}'),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => context.push('/deliveries/${o.id}'),
+            for (final job in jobs)
+              if (job.trip != null)
+                TripCard(trip: job.trip!)
+              else
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.delivery_dining_rounded),
+                    title: Text('${job.order!.restaurantName} · #${job.order!.shortCode}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text('${statusLabel(job.order!.status)} · earn ${formatNaira(job.order!.riderPayKobo)}'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => context.push('/deliveries/${job.order!.id}'),
+                  ),
                 ),
-              ),
           if (offerList.isEmpty) ...[
             const SizedBox(height: 16),
             _WaitingCard(online: p?.isOnline ?? false, busy: activeList.isNotEmpty),
@@ -247,16 +254,38 @@ class _OfferCardState extends ConsumerState<OfferCard> {
     final o = widget.offer;
     final remaining = o.expiresAt.toUtc().difference(_now()).inSeconds;
     final expired = remaining <= 0;
+    final multi = o.pickups.length > 1;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Expanded(child: Text(o.restaurantName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+            Expanded(
+              child: Text(multi ? '${o.pickups.length} pickups' : o.restaurantName,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            ),
             Text(expired ? 'Expired' : '${remaining}s', style: TextStyle(fontWeight: FontWeight.w800, color: Theme.of(context).colorScheme.primary)),
           ]),
-          Text('${o.distanceToRestaurantKm.toStringAsFixed(1)} km to pickup${o.dropoffArea != null ? ' · drop-off in ${o.dropoffArea}' : ''}'),
-          Text('You earn ${formatNaira(o.payoutKobo)}', style: const TextStyle(fontWeight: FontWeight.w700)),
+          if (multi)
+            // A mixed cart: every place to collect from, then one customer.
+            for (final p in o.pickups)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Icon(Icons.storefront_rounded, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text.rich(TextSpan(children: [
+                      TextSpan(text: p.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      if ((p.address ?? '').isNotEmpty) TextSpan(text: ' · ${p.address}'),
+                    ])),
+                  ),
+                ]),
+              ),
+          if (multi) const SizedBox(height: 4),
+          Text('${o.distanceToRestaurantKm.toStringAsFixed(1)} km to ${multi ? 'the first pickup' : 'pickup'}'
+              '${o.dropoffArea != null ? ' · drop-off in ${o.dropoffArea}' : ''}'),
+          Text('You earn ${formatNaira(o.payoutKobo)}${multi ? ' for the whole trip' : ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
           Row(children: [
             Expanded(
@@ -301,6 +330,55 @@ class _OfferCardState extends ConsumerState<OfferCard> {
             ),
           ]),
         ]),
+      ),
+    );
+  }
+}
+
+/// One line of the dashboard's active work: a planned trip, or an order the trips do not cover (packages,
+/// interstate legs, or a server without trips yet).
+typedef ActiveJob = ({RiderTrip? trip, Order? order});
+
+List<ActiveJob> activeJobs(List<Order> orders, List<RiderTrip> trips) {
+  final byId = {for (final o in orders) o.id: o};
+  final shown = trips
+      .where((t) => t.orderIds.isNotEmpty && !t.orderIds.any((id) => byId[id] != null && isParcelJob(byId[id]!)))
+      .toList();
+  final covered = {for (final t in shown) ...t.orderIds};
+  return [
+    for (final t in shown) (trip: t, order: null),
+    for (final o in orders)
+      if (!covered.contains(o.id)) (trip: null, order: o),
+  ];
+}
+
+/// A trip on the dashboard: where to go next, how many stops and how long it takes. Opens the trip screen.
+class TripCard extends StatelessWidget {
+  const TripCard({super.key, required this.trip});
+  final RiderTrip trip;
+
+  @override
+  Widget build(BuildContext context) {
+    final next = trip.nextStop < trip.stops.length ? trip.stops[trip.nextStop] : null;
+    final title = next == null
+        ? 'Trip ${trip.tripId}'
+        : next.isPickup
+            ? 'Next: pick up at ${next.name}'
+            : 'Next: deliver to ${next.name}';
+    final left = trip.stops.where((s) => !s.done).length;
+    return Card(
+      key: ValueKey('trip-${trip.tripId}'),
+      child: ListTile(
+        leading: const Icon(Icons.route_rounded),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Text([
+          '$left of ${trip.stops.length} stops left',
+          if (trip.totalMinutes != null) '${trip.totalMinutes} min',
+          if (trip.totalKm != null) '${trip.totalKm!.toStringAsFixed(1)} km',
+          if (trip.payoutKobo != null) 'earn ${formatNaira(trip.payoutKobo)}',
+        ].join(' · ')),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () => context.push('/trips/${Uri.encodeComponent(trip.tripId)}'),
       ),
     );
   }

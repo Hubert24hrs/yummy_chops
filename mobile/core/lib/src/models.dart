@@ -246,6 +246,10 @@ abstract class Order with _$Order {
     @Default(false) bool hubHandover,
     /// Placed by the host of a group order.
     String? groupOrderId,
+    /// Rider view: the number to call at the shop (branch manager, else the shop, else the business).
+    String? restaurantPhone,
+    /// Orders paid together from one mixed cart share a trip: one rider, one delivery code (ADR-0030).
+    String? tripId,
   }) = _Order;
   factory Order.fromJson(Map<String, dynamic> json) => _$OrderFromJson(json);
 }
@@ -783,8 +787,81 @@ abstract class DeliveryOffer with _$DeliveryOffer {
     required GeoPoint pickup,
     GeoPoint? dropoff,
     String? dropoffArea,
+    /// Every order this offer covers: one for a normal job, several for a mixed cart (one trip, one rider).
+    @Default(<String>[]) List<String> tripOrderIds,
+    /// The places to collect from (one per order of the trip).
+    @Default(<OfferPickup>[]) List<OfferPickup> pickups,
   }) = _DeliveryOffer;
   factory DeliveryOffer.fromJson(Map<String, dynamic> json) => _$DeliveryOfferFromJson(json);
+}
+
+/// One place an offer collects from.
+@freezed
+abstract class OfferPickup with _$OfferPickup {
+  const factory OfferPickup({
+    required String orderId,
+    @Default('') String name,
+    String? address,
+    GeoPoint? location,
+  }) = _OfferPickup;
+  factory OfferPickup.fromJson(Map<String, dynamic> json) => _$OfferPickupFromJson(json);
+}
+
+/// Something the rider collects at a shop: quantity × name, with the options chosen.
+@freezed
+abstract class TripItem with _$TripItem {
+  const factory TripItem({
+    required String name,
+    @Default(1) int quantity,
+    @Default(<String>[]) List<String> options,
+  }) = _TripItem;
+  factory TripItem.fromJson(Map<String, dynamic> json) => _$TripItemFromJson(json);
+}
+
+/// A stop of the rider's planned trip: a shop to collect from (`kind: 'pickup'`, one order) or the customer
+/// (`kind: 'dropoff'`, every order of the trip).
+@freezed
+abstract class TripStop with _$TripStop {
+  const TripStop._();
+  const factory TripStop({
+    required String kind,
+    String? orderId,
+    @Default(<String>[]) List<String> orderIds,
+    String? shortCode,
+    @Default('') String name,
+    String? vertical,
+    String? address,
+    GeoPoint? location,
+    String? phone,
+    @Default(<TripItem>[]) List<TripItem> items,
+    String? status,
+    @Default(false) bool ready,
+    @Default(false) bool done,
+    String? instructions,
+    @Default(0) int cashToCollectKobo,
+    double? legKm,
+    int? legMinutes,
+  }) = _TripStop;
+  factory TripStop.fromJson(Map<String, dynamic> json) => _$TripStopFromJson(json);
+
+  bool get isPickup => kind == 'pickup';
+}
+
+/// The rider's current work as one trip: shops in the planned (fastest) order, then the customer.
+@freezed
+abstract class RiderTrip with _$RiderTrip {
+  const factory RiderTrip({
+    required String tripId,
+    @Default(<String>[]) List<String> orderIds,
+    @Default(<TripStop>[]) List<TripStop> stops,
+    @Default(0) int nextStop,
+    double? totalKm,
+    int? totalMinutes,
+    String? routeSource,
+    String? navigationUrl,
+    int? payoutKobo,
+  }) = _RiderTrip;
+  factory RiderTrip.fromJson(Map<String, dynamic> json) => _$RiderTripFromJson(json);
 }
 
 @freezed

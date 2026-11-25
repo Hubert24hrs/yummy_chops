@@ -400,11 +400,13 @@ class DeliveryCodeForm extends StatefulWidget {
     required this.onSubmit,
     this.busy = false,
     this.cashToCollectKobo = 0,
+    this.label = 'Complete delivery',
   });
   final TextEditingController controller;
   final ValueChanged<String> onSubmit;
   final bool busy;
   final int cashToCollectKobo;
+  final String label;
 
   @override
   State<DeliveryCodeForm> createState() => _DeliveryCodeFormState();
@@ -453,7 +455,7 @@ class _DeliveryCodeFormState extends State<DeliveryCodeForm> {
               onPressed: widget.busy || value.text.length != 4 || (needsCash && !_cashTaken)
                   ? null
                   : () => widget.onSubmit(value.text),
-              child: const Text('Complete delivery'),
+              child: Text(widget.label),
             ),
           ],
         ),

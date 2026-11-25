@@ -522,6 +522,9 @@ class GudMealApi {
   Future<Order> acceptOffer(String id) => _call(() => _dio.post('/v1/rider/offers/$id/accept'), (d) => Order.fromJson(_map(d)));
   Future<void> declineOffer(String id, String reason) => _call(() => _dio.post('/v1/rider/offers/$id/decline', data: {'reason': reason}), (_) {});
   Future<List<Order>> activeDeliveries() => _call(() => _dio.get('/v1/rider/deliveries'), (d) => _list(d).map(Order.fromJson).toList());
+  /// The rider's planned trips (shops in the fastest order, then the customer); empty when nothing is active.
+  Future<List<RiderTrip>> riderTrips() => _call(
+      () => _dio.get('/v1/rider/trip'), (d) => _list(_map(d)['trips'] ?? const []).map(RiderTrip.fromJson).toList());
   Future<Order> pickup(String orderId) => _call(() => _dio.post('/v1/rider/deliveries/$orderId/pickup'), (d) => Order.fromJson(_map(d)));
   Future<Order> inTransit(String orderId) => _call(() => _dio.post('/v1/rider/deliveries/$orderId/in-transit'), (d) => Order.fromJson(_map(d)));
   /// [cashCollected] must be true when the order has cash to collect; the amount always comes from the server.

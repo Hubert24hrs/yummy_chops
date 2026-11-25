@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:gud_meal_core/gud_meal_core.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 final configProvider = Provider<AppConfig>((ref) => AppConfig.fromEnvironment());
 final authRepositoryProvider = Provider<AuthRepository>((ref) => throw UnimplementedError('override in main'));
@@ -123,6 +124,20 @@ final riderProfileProvider = FutureProvider<RiderProfile>((ref) => ref.watch(api
 final offersProvider = FutureProvider<List<DeliveryOffer>>((ref) => ref.watch(apiProvider).offers());
 final activeDeliveriesProvider = FutureProvider<List<Order>>((ref) => ref.watch(apiProvider).activeDeliveries());
 final earningsProvider = FutureProvider<Earnings>((ref) => ref.watch(apiProvider).earnings());
+
+/// The rider's planned trips (shops in the fastest order, then the customer). A server without trips yet (404) has none.
+final riderTripsProvider = FutureProvider<List<RiderTrip>>((ref) async {
+  try {
+    return await ref.watch(apiProvider).riderTrips();
+  } on ApiException catch (e) {
+    if (e.status == 404) return const <RiderTrip>[];
+    rethrow;
+  }
+});
+
+/// Opens a link outside the app (Google Maps, the dialer, WhatsApp). Replaced in tests.
+typedef UrlOpener = Future<bool> Function(Uri uri);
+final urlOpenerProvider = Provider<UrlOpener>((ref) => (uri) => launchUrl(uri, mode: LaunchMode.externalApplication));
 
 /// Streams the rider's GPS position to the API while online. Poor connectivity: failed pings are dropped
 /// (the next position supersedes them) rather than queued, so the server never receives stale bursts.

@@ -6,12 +6,12 @@ import 'package:go_router/go_router.dart';
 import 'package:gud_meal_core/gud_meal_core.dart';
 
 import 'providers.dart';
-import 'screens/delivery_screen.dart';
 import 'screens/earnings_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/kyc_screen.dart';
 import 'screens/sign_in_screen.dart';
 import 'screens/sign_up_screen.dart';
+import 'screens/trip_screen.dart';
 
 class _AuthListenable extends ChangeNotifier {
   _AuthListenable(Stream<GmUser?> stream) {
@@ -44,7 +44,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/sign-in', builder: (_, _) => const RiderSignInScreen()),
       GoRoute(path: '/sign-up', builder: (_, _) => const RiderSignUpScreen()),
       GoRoute(path: '/kyc', builder: (_, _) => const KycScreen()),
-      GoRoute(path: '/deliveries/:id', builder: (_, s) => DeliveryScreen(orderId: s.pathParameters['id']!)),
+      // An order opens the trip it belongs to (packages and interstate legs keep the delivery screen).
+      GoRoute(path: '/deliveries/:id', builder: (_, s) => TripScreen(orderId: s.pathParameters['id']!)),
+      GoRoute(path: '/trips/:id', builder: (_, s) => TripScreen(tripId: s.pathParameters['id']!)),
       GoRoute(path: '/earnings', builder: (_, _) => const EarningsScreen()),
     ],
   );

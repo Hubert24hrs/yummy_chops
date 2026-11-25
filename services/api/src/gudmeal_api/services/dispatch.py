@@ -20,6 +20,7 @@ from ..domain.models import (
     RiderStatus,
 )
 from ..domain.order_state import ActorType, OrderStatus
+from ..domain.trips import navigation_url, quickest_order
 from ..errors import InvalidTransition, NotFound, PermissionDenied, ValidationFailed
 from ..logging_setup import log_event
 from ..maps import MapsService
@@ -34,6 +35,11 @@ TASK_OFFER_TIMEOUT = "/internal/tasks/dispatch-offer-timeout"
 TASK_DISPATCH_RETRY = "/internal/tasks/dispatch-retry"
 DISPATCHABLE = {S.RESTAURANT_ACCEPTED, S.PREPARING, S.READY_FOR_PICKUP}
 ACTIVE_DELIVERY = {S.RIDER_ASSIGNED, S.PICKED_UP, S.IN_TRANSIT}
+#: Orders of a trip that a rider taking the trip's offer will collect (some shops may still have to accept theirs).
+TRIP_JOINABLE = {S.PAID, S.SUBMITTED_TO_RESTAURANT, *DISPATCHABLE}
+#: For ordering a trip's stops: road distance is about this much longer than straight, at this average speed.
+ROAD_FACTOR = 1.35
+AVG_KMH = 22.0
 #: After this many rounds with nobody to ask, ops are alerted; dispatch keeps trying, just less often.
 MAX_ATTEMPTS = 8
 RETRY_SECONDS = 60
@@ -100,7 +106,7 @@ class DispatchService:
     async def _active_deliveries(self, profile: RiderProfile) -> list[Order]:
         """The rider's deliveries in progress (each id on the profile is checked against its order)."""
         active: list[Order] = []
-        for order_id in profile.active_order_ids[:3]:
+        for order_id in profile.active_order_ids[:12]:
             order = await self.repos.orders.get(order_id)
             if order and order.status in ACTIVE_DELIVERY and order.rider_id == profile.uid:
                 active.append(order)
@@ -227,9 +233,18 @@ class DispatchService:
             return None
         if order.rider_id:
             return None
-        open_offers = await self.repos.assignments.find(
-            where=[("order_id", "==", order_id), ("status", "==", AssignmentStatus.OFFERED.value)]
-        )
+        trip = await self.orders.trip_orders(order)
+        if len(trip) > 1:
+            # One rider collects a mixed cart's orders (ADR-0031): the rider already on this trip takes this one too.
+            on_trip = next((o for o in trip if o.rider_id and o.status in ACTIVE_DELIVERY), None)
+            if on_trip is not None:
+                await self.join_trip(order, str(on_trip.rider_id))
+                return None
+        open_offers = []
+        for o in trip:  # an open offer for any order of the trip stands for the whole trip
+            open_offers += await self.repos.assignments.find(
+                where=[("order_id", "==", o.id), ("status", "==", AssignmentStatus.OFFERED.value)]
+            )
         now = utcnow()
         if any(o.expires_at > now for o in open_offers):
             return None  # an offer is already outstanding
@@ -282,6 +297,16 @@ class DispatchService:
             await self.tasks.enqueue(TASK_DISPATCH_RETRY, {"order_id": order_id}, delay_seconds=delay)
             return None
         best = ranked[0]
+        rider = next(r for r in riders if r.uid == best.rider_id)
+        # The whole trip: this order and the others of the cart still waiting for a rider (some shops may not have
+        # accepted theirs yet; those join the rider's trip when they do).
+        jobs = [order] + [
+            o for o in trip if o.id != order.id and o.rider_id is None and o.status in TRIP_JOINABLE
+        ]
+        dropoff = order.delivery_address.location if order.delivery_address else order.restaurant_location
+        planned = quickest_order(
+            rider.last_location, jobs, dropoff, lambda o: o.restaurant_location, self._leg_cost
+        )
         assignment = DeliveryAssignment(
             id=uuid.uuid4().hex,
             order_id=order_id,
@@ -294,12 +319,23 @@ class DispatchService:
             pickup=order.restaurant_location,
             dropoff=order.delivery_address.location if order.delivery_address else None,
             dropoff_area=order.delivery_address.area if order.delivery_address else None,
-            payout_kobo=order.settlement.rider_pay_kobo,
+            payout_kobo=sum(o.settlement.rider_pay_kobo for o in jobs),
             offered_at=now,
             expires_at=now + timedelta(seconds=self.offer_timeout),
+            trip_order_ids=[o.id for o in jobs] if len(jobs) > 1 else [],
+            pickups=[
+                {
+                    "order_id": o.id,
+                    "name": o.restaurant_name,
+                    "address": o.restaurant_address,
+                    "location": to_doc(o.restaurant_location),
+                }
+                for o in planned
+            ]
+            if len(jobs) > 1
+            else [],
         )
         await self.repos.assignments.create(assignment)
-        rider = next(r for r in riders if r.uid == best.rider_id)
         await self.repos.riders.update(rider.uid, {"offers_received": rider.offers_received + 1})
         await self.tasks.enqueue(
             TASK_OFFER_TIMEOUT, {"assignment_id": assignment.id}, delay_seconds=self.offer_timeout
@@ -307,7 +343,9 @@ class DispatchService:
         await self.notifier.notify_user(
             best.rider_id,
             "New delivery offer",
-            f"Pickup at {order.restaurant_name} · {best.distance_to_restaurant_km} km away",
+            f"Pickup at {order.restaurant_name} · {best.distance_to_restaurant_km} km away"
+            if len(jobs) == 1
+            else f"{len(jobs)} pickups ({', '.join(o.restaurant_name for o in planned)}) · one customer",
             {"assignment_id": assignment.id, "order_id": order_id},
         )
         return assignment
@@ -341,7 +379,8 @@ class DispatchService:
                 raise InvalidTransition("This offer is no longer available")
             if order.rider_id:
                 raise InvalidTransition("This order already has a rider")
-            if len(rider.active_order_ids) >= self.cfg.max_active_deliveries:
+            others = [o for o in rider.active_order_ids if o not in assignment.trip_order_ids]
+            if len(others) >= self.cfg.max_active_deliveries:
                 raise InvalidTransition("You have reached the maximum number of active deliveries")
             updates, event = OrderService.build_transition(
                 order,
@@ -366,7 +405,11 @@ class DispatchService:
                     "acceptance_rate": round(accepted / max(1, rider.offers_received), 3),
                 },
             )
-            captured.update(previous=order.status, event=event)
+            captured.update(
+                previous=order.status,
+                event=event,
+                trip=[i for i in assignment.trip_order_ids if i != order.id],
+            )
             return Order.model_validate({**order.model_dump(), **updates})
 
         order = await self.repos.store.run_transaction(fn)
@@ -377,6 +420,12 @@ class DispatchService:
             f"{order.rider_name} is coming for order {order.short_code}",
             {"order_id": order.id},
         )
+        # The offer was for the whole trip: the trip's other orders that are ready for a rider are theirs now
+        # (the rest join when their shops accept them).
+        for other_id in captured["trip"]:
+            other = await self.repos.orders.get(other_id)
+            if other is not None and other.rider_id is None and other.status in DISPATCHABLE:
+                await self.join_trip(other, principal.uid, notify=False)
         return order
 
     async def decline_offer(self, principal: Principal, assignment_id: str, reason: str | None) -> None:
@@ -437,6 +486,182 @@ class DispatchService:
             ):
                 offers += 1
         return offers
+
+    async def shop_phone(self, restaurant_id: str) -> str | None:
+        """The number a rider calls at a shop: the branch manager's, else the shop's, else its business's."""
+        shop = await self.repos.restaurants.get(restaurant_id)
+        if shop is None:
+            return None
+        if shop.manager_phone or shop.phone:
+            return shop.manager_phone or shop.phone
+        business = await self.repos.businesses.get(shop.business_id) if shop.business_id else None
+        return business.phone if business else None
+
+    async def rider_trips(self, principal: Principal) -> list[dict[str, Any]]:
+        """The rider's work as planned trips (ADR-0031): the shops still to visit in the quickest order (measured
+        road times when the server has them), then the customer, with each place's phone and what to collect."""
+        profile = await self.rider_profile(principal)
+        active = await self._active_deliveries(profile)
+        if not active:
+            return []
+        cfg = await self.repos.get_pricing_config()
+        groups: dict[str, list[Order]] = {}
+        for o in sorted(active, key=lambda o: o.created_at):
+            groups.setdefault(o.trip_id or o.id, []).append(o)
+        here = profile.last_location
+        trips = []
+        for trip_id, orders in groups.items():
+            first = orders[0]
+            dropoff = first.delivery_address.location if first.delivery_address else first.restaurant_location
+            done = [o for o in orders if o.status != S.RIDER_ASSIGNED]
+            todo = quickest_order(
+                here,
+                [o for o in orders if o.status == S.RIDER_ASSIGNED],
+                dropoff,
+                lambda o: o.restaurant_location,
+                self._leg_cost,
+            )
+            stops: list[dict[str, Any]] = []
+            for o in [*done, *todo]:
+                stops.append(
+                    {
+                        "kind": "pickup",
+                        "order_id": o.id,
+                        "short_code": o.short_code,
+                        "name": o.restaurant_name,
+                        "vertical": o.vertical.value,
+                        "address": o.restaurant_address,
+                        "location": to_doc(o.restaurant_location),
+                        "phone": await self.shop_phone(o.restaurant_id),
+                        "items": [
+                            {"name": ln.name, "quantity": ln.quantity, "options": ln.selection_labels}
+                            for ln in o.lines
+                        ],
+                        "status": o.status.value,
+                        "ready": o.ready_at is not None,
+                        "done": o.status != S.RIDER_ASSIGNED,
+                    }
+                )
+            address = first.delivery_address
+            stops.append(
+                {
+                    "kind": "dropoff",
+                    "order_ids": [o.id for o in orders],
+                    "name": first.customer_name,
+                    "address": ", ".join(p for p in (address.line1, address.area) if p) if address else "",
+                    "location": to_doc(dropoff),
+                    "phone": (address.contact_phone if address else None) or first.customer_phone,
+                    "instructions": address.instructions if address else None,
+                    "cash_to_collect_kobo": sum(o.cash_to_collect_kobo for o in orders),
+                    "done": False,
+                }
+            )
+            # How long each remaining leg takes, from where the rider is now (measured by Google when available).
+            remaining = [s for s in stops if not s["done"]]
+            total_km = total_min = 0.0
+            source = "estimate"
+            prev = here
+            for stop in remaining:
+                point = GeoPoint.model_validate(stop["location"])
+                if prev is not None:
+                    leg = await self.maps.route(prev, point, cfg)
+                    stop["leg_km"] = round(leg.distance_km, 1)
+                    stop["leg_minutes"] = leg.duration_minutes
+                    total_km += leg.distance_km
+                    total_min += leg.duration_minutes
+                    if leg.source != "estimate":
+                        source = str(leg.source)
+                prev = point
+            trips.append(
+                {
+                    "trip_id": trip_id,
+                    "order_ids": [o.id for o in orders],
+                    "stops": stops,
+                    "next_stop": next((i for i, s in enumerate(stops) if not s["done"]), len(stops) - 1),
+                    "total_km": round(total_km, 1),
+                    "total_minutes": round(total_min),
+                    "route_source": source,
+                    "navigation_url": navigation_url(
+                        [GeoPoint.model_validate(s["location"]) for s in remaining],
+                        vehicle=profile.vehicle.value,
+                    ),
+                    "payout_kobo": sum(o.settlement.rider_pay_kobo for o in orders),
+                }
+            )
+        return trips
+
+    def _leg_cost(self, a: GeoPoint, b: GeoPoint) -> float:
+        """Minutes for a leg by road estimate (to put a trip's stops in order)."""
+        return haversine_km(a, b) * ROAD_FACTOR / AVG_KMH * 60
+
+    async def join_trip(self, order: Order, rider_uid: str, *, notify: bool = True) -> Order | None:
+        """Give an order of a mixed cart to the rider already doing its trip (ADR-0031): they agreed to every shop
+        of the trip when they took the offer. Nothing happens if the rider can no longer take it."""
+        rider = await self.repos.riders.get(rider_uid)
+        if (
+            rider is None
+            or rider.status != RiderStatus.ACTIVE
+            or order.rider_id
+            or order.status not in DISPATCHABLE
+        ):
+            return None
+        now = utcnow()
+        assignment = DeliveryAssignment(
+            id=uuid.uuid4().hex,
+            order_id=order.id,
+            rider_id=rider_uid,
+            status=AssignmentStatus.ACCEPTED,
+            attempt=0,
+            score=0.0,
+            distance_to_restaurant_km=round(haversine_km(rider.last_location, order.restaurant_location), 2)
+            if rider.last_location
+            else 0.0,
+            restaurant_name=order.restaurant_name,
+            pickup=order.restaurant_location,
+            dropoff=order.delivery_address.location if order.delivery_address else None,
+            dropoff_area=order.delivery_address.area if order.delivery_address else None,
+            payout_kobo=order.settlement.rider_pay_kobo,
+            offered_at=now,
+            expires_at=now,
+            responded_at=now,
+        )
+        await self.repos.assignments.create(assignment)
+
+        def still_free(current: Order) -> None:
+            if current.rider_id:
+                raise InvalidTransition("This order already has a rider")
+
+        try:
+            updated = await self.orders.transition(
+                order.id,
+                S.RIDER_ASSIGNED,
+                actor_type=ActorType.SYSTEM,
+                actor_id="dispatch",
+                patch={"rider_id": rider_uid, "rider_name": rider.name, "assignment_id": assignment.id},
+                metadata={"rider_id": rider_uid, "trip_id": order.trip_id},
+                check=still_free,
+            )
+        except InvalidTransition:
+            await self.repos.assignments.update(assignment.id, {"status": AssignmentStatus.CANCELLED.value})
+            return None
+        fresh = await self.repos.riders.get(rider_uid)
+        active = fresh.active_order_ids if fresh else rider.active_order_ids
+        if order.id not in active:
+            await self.repos.riders.update(rider_uid, {"active_order_ids": [*active, order.id]})
+        await self.notifier.notify_restaurant(
+            order.restaurant_id,
+            "Rider assigned",
+            f"{rider.name} is coming for order {order.short_code}",
+            {"order_id": order.id},
+        )
+        if notify:
+            await self.notifier.notify_user(
+                rider_uid,
+                "Another pickup on your trip",
+                f"Collect order {order.short_code} at {order.restaurant_name} too",
+                {"order_id": order.id},
+            )
+        return updated
 
     async def manual_assign(self, principal: Principal, order_id: str, rider_uid: str, reason: str) -> Order:
         require(principal, Permission.DISPATCH_MANUAL)

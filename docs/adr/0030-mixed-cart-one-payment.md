@@ -38,7 +38,8 @@ shares (ADR-0009) are several payments for one order — the opposite of what a 
 
 ## Consequences
 
-- A cart from three shops brings three riders and three delivery fees; the cart shows them before the customer pays.
+- A cart from three shops has three delivery fees; the cart shows them before the customer pays. One rider collects
+  all three in one trip (ADR-0031).
 - Orders list shows each shop's order on its own; the receipt is per order.
 - A mixed-cart card payment is never split to a business's subaccount (ADR-0028): those shops are paid in their
   settlement, as before splits existed. Single-shop carts still split.

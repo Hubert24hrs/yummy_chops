@@ -463,6 +463,8 @@ class OrderService:
         ids = list(dict.fromkeys(order_ids))
         if not ids or len(ids) > MAX_ORDERS_PER_CHECKOUT:
             raise ValidationFailed(f"Pay for 1 to {MAX_ORDERS_PER_CHECKOUT} orders at once")
+        if len(ids) > 1:
+            await self._join_trip(principal, ids)
         if len(ids) == 1 or provider == "cash":
             placed = [
                 await self.checkout(
@@ -523,6 +525,33 @@ class OrderService:
             ],
         }
 
+    async def _join_trip(self, principal: Principal, ids: list[str]) -> None:
+        """Orders paid together go to the same door: they become one trip for one rider (ADR-0031). Only the
+        customer's own orders still waiting for payment; one that is already in a trip keeps it."""
+        orders = [await self.get(oid) for oid in ids]
+        if any(o.customer_id != principal.uid for o in orders):
+            raise NotFound("Order not found")
+        waiting = [
+            o
+            for o in orders
+            if o.status in (S.DRAFT, S.PENDING_PAYMENT)
+            and o.fulfillment == Fulfillment.DELIVERY
+            and not (o.is_leg or o.is_waybill or o.is_parcel or o.group_order_id)
+        ]
+        if len(waiting) < 2:
+            return
+        trip_id = next((o.trip_id for o in waiting if o.trip_id), None) or f"T-{uuid.uuid4().hex[:12]}"
+        for o in waiting:
+            if o.trip_id != trip_id:
+                await self.repos.orders.update(o.id, {"trip_id": trip_id})
+
+    async def trip_orders(self, order: Order) -> list[Order]:
+        """The orders of this order's trip (just this order when it has none), oldest first."""
+        if not order.trip_id:
+            return [order]
+        found = await self.repos.orders.find(where=[("trip_id", "==", order.trip_id)], limit=20)
+        return sorted(found, key=lambda o: (o.created_at, o.id)) or [order]
+
     async def _submit_pay_on_delivery(self, order: Order, idempotency_key: str) -> dict[str, Any]:
         """Eligible cash order: record the cash due and send it to the merchant without online payment."""
         payment = await self.payments.start_cash_payment(order, idempotency_key)
@@ -541,12 +570,21 @@ class OrderService:
         return {"order_id": order.id, "status": order.status.value, **payment}
 
     async def _issue_codes(self, order: Order) -> None:
+        # A trip's orders reach the customer together: one delivery code for all of them (ADR-0031).
+        delivery_code = None
+        if order.trip_id:
+            for sibling in await self.trip_orders(order):
+                if sibling.id != order.id:
+                    doc = await self.repos.store.get(self.repos.codes_path(sibling.id))
+                    if doc and doc.get("delivery_code"):
+                        delivery_code = doc["delivery_code"]
+                        break
         await self.repos.store.set(
             self.repos.codes_path(order.id),
             {
                 "order_id": order.id,
                 "customer_id": order.customer_id,
-                "delivery_code": new_code(),
+                "delivery_code": delivery_code or new_code(),
                 "pickup_code": new_code(),
                 "attempts": 0,
                 "locked": False,
