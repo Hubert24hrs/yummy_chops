@@ -509,6 +509,51 @@ Map<String, dynamic> _$CheckoutResultToJson(_CheckoutResult instance) =>
       'failover_from': ?instance.failoverFrom,
     };
 
+_MultiCheckoutResult _$MultiCheckoutResultFromJson(Map<String, dynamic> json) =>
+    _MultiCheckoutResult(
+      orderIds: (json['order_ids'] as List<dynamic>)
+          .map((e) => e as String)
+          .toList(),
+      provider: json['provider'] as String,
+      reference: json['reference'] as String?,
+      authorizationUrl: json['authorization_url'] as String?,
+      amountKobo: (json['amount_kobo'] as num).toInt(),
+      paymentStatus: json['payment_status'] as String? ?? '',
+      orders:
+          (json['orders'] as List<dynamic>?)
+              ?.map(
+                (e) => MultiCheckoutOrder.fromJson(e as Map<String, dynamic>),
+              )
+              .toList() ??
+          const [],
+    );
+
+Map<String, dynamic> _$MultiCheckoutResultToJson(
+  _MultiCheckoutResult instance,
+) => <String, dynamic>{
+  'order_ids': instance.orderIds,
+  'provider': instance.provider,
+  'reference': ?instance.reference,
+  'authorization_url': ?instance.authorizationUrl,
+  'amount_kobo': instance.amountKobo,
+  'payment_status': instance.paymentStatus,
+  'orders': instance.orders.map((e) => e.toJson()).toList(),
+};
+
+_MultiCheckoutOrder _$MultiCheckoutOrderFromJson(Map<String, dynamic> json) =>
+    _MultiCheckoutOrder(
+      orderId: json['order_id'] as String,
+      status: json['status'] as String? ?? '',
+      amountKobo: (json['amount_kobo'] as num?)?.toInt() ?? 0,
+    );
+
+Map<String, dynamic> _$MultiCheckoutOrderToJson(_MultiCheckoutOrder instance) =>
+    <String, dynamic>{
+      'order_id': instance.orderId,
+      'status': instance.status,
+      'amount_kobo': instance.amountKobo,
+    };
+
 _PaymentMethodOption _$PaymentMethodOptionFromJson(Map<String, dynamic> json) =>
     _PaymentMethodOption(
       id: json['id'] as String,

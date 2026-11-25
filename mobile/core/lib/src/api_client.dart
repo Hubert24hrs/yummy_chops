@@ -266,6 +266,12 @@ class GudMealApi {
           data: {'provider': ?provider}, options: Options(headers: {'Idempotency-Key': idempotencyKey})),
       (d) => CheckoutResult.fromJson(_map(d)));
 
+  /// One payment for several orders (a mixed cart: one order per shop). Same [provider] values as [checkout].
+  Future<MultiCheckoutResult> checkoutMany(List<String> orderIds, String idempotencyKey, {String? provider}) => _call(
+      () => _dio.post('/v1/checkouts',
+          data: {'order_ids': orderIds, 'provider': ?provider}, options: Options(headers: {'Idempotency-Key': idempotencyKey})),
+      (d) => MultiCheckoutResult.fromJson(_map(d)));
+
   Future<PaymentOptions> paymentOptions(String orderId) =>
       _call(() => _dio.get('/v1/orders/$orderId/payment-options'), (d) => PaymentOptions.fromJson(_map(d)));
 

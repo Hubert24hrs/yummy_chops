@@ -26,7 +26,7 @@ function Orders() {
   const [tab, setTab] = useState<"progress" | "history">("progress");
   const orders = useQuery({ queryKey: ["orders"], queryFn: () => api.orders.list(50) });
   const summary = useQuery({ queryKey: ["order-summary"], queryFn: () => api.orders.summary() });
-  const { cart, count, subtotalKobo } = useCart();
+  const { cart, shops, count, subtotalKobo } = useCart();
   const list = (orders.data ?? []).filter((o) => (tab === "progress" ? ACTIVE.has(o.status) : !ACTIVE.has(o.status)));
 
   return (
@@ -62,7 +62,7 @@ function Orders() {
           ) : (
             <Link href="/checkout" className="flex items-center gap-3 rounded-2xl border border-border p-4 hover:border-primary">
               <ShoppingCart className="size-6 text-primary" aria-hidden="true" />
-              <span className="flex-1"><span className="block font-bold">{cart.restaurant_name}</span><span className="text-sm text-muted">{count} item(s) · {formatNaira(subtotalKobo)}</span></span>
+              <span className="flex-1"><span className="block font-bold">{shops.map((sh) => sh.restaurant_name).join(", ")}</span><span className="text-sm text-muted">{count} item(s) · {formatNaira(subtotalKobo)}</span></span>
               <span className="rounded-full bg-primary px-4 py-2 text-sm font-bold text-on-primary">Checkout</span>
             </Link>
           )}

@@ -51,11 +51,11 @@ class _RestaurantScreenState extends ConsumerState<RestaurantScreen> {
     final detail = ref.watch(restaurantDetailProvider(id));
     final cart = ref.watch(cartProvider);
     return Scaffold(
-      floatingActionButton: cart.restaurantId == id && !cart.isEmpty
+      floatingActionButton: !cart.isEmpty
           ? FloatingActionButton.extended(
               onPressed: () => context.push('/checkout'),
               icon: const Icon(Icons.shopping_bag_rounded),
-              label: Text('View order · ${formatNaira(cart.subtotalKobo)}'),
+              label: Text('View cart · ${formatNaira(cart.subtotalKobo)}'),
             )
           : null,
       body: detail.when(
@@ -191,29 +191,11 @@ class _ItemSheetState extends ConsumerState<ItemSheet> {
       widget.onAdd!(CartLine(itemId: item.id, quantity: _qty, selections: cartItem.selections));
       return;
     }
-    final cart = ref.read(cartProvider.notifier);
-    if (!cart.add(widget.restaurantId, widget.restaurantName, cartItem)) {
-      showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Start a new cart?'),
-          content: Text('Your cart has items from ${ref.read(cartProvider).restaurantName}.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Keep cart')),
-            FilledButton(
-              onPressed: () {
-                cart.add(widget.restaurantId, widget.restaurantName, cartItem, replace: true);
-                Navigator.pop(dialogContext);
-                Navigator.pop(context);
-              },
-              child: const Text('New cart'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
+    ref.read(cartProvider.notifier).add(widget.restaurantId, widget.restaurantName, cartItem);
+    // One cart holds every shop's items: the customer goes straight to it.
+    final router = GoRouter.maybeOf(context);
     Navigator.pop(context);
+    router?.push('/checkout');
   }
 
   @override
@@ -248,7 +230,7 @@ class _ItemSheetState extends ConsumerState<ItemSheet> {
               Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: Text('$_qty', style: Theme.of(context).textTheme.titleLarge)),
               IconButton.outlined(tooltip: 'More', onPressed: _qty < 20 ? () => setState(() => _qty++) : null, icon: const Icon(Icons.add)),
               const SizedBox(width: 12),
-              Expanded(child: FilledButton(onPressed: error == null ? _add : null, child: Text('Add · ${formatNaira(unit * _qty)}'))),
+              Expanded(child: FilledButton(onPressed: error == null ? _add : null, child: Text('Add to cart · ${formatNaira(unit * _qty)}'))),
             ]),
             if (error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(error, style: Theme.of(context).textTheme.bodySmall)),
           ]),

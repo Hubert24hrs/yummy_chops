@@ -129,6 +129,39 @@ void main() {
       expect(req.headers['Idempotency-Key'], 'app-key-12345678');
     });
 
+    test('checkoutMany posts every order id once, with the key and the provider', () async {
+      final adapter = FakeAdapter(200, {
+        'order_ids': ['o1', 'o2'],
+        'provider': 'local_sandbox',
+        'reference': 'YC-B-1A2B3C4D',
+        'authorization_url': 'https://pay.test/YC-B-1A2B3C4D',
+        'amount_kobo': 1234500,
+        'currency': 'NGN',
+        'payment_status': 'pending',
+        'orders': [
+          {'order_id': 'o1', 'status': 'pending_payment', 'amount_kobo': 600000},
+          {'order_id': 'o2', 'status': 'pending_payment', 'amount_kobo': 634500},
+        ],
+      });
+      final dio = Dio(BaseOptions(baseUrl: 'http://api.test'))..httpClientAdapter = adapter;
+      final api = GudMealApi(baseUrl: 'http://api.test', token: () async => 'tok-123', dio: dio);
+      final result = await api.checkoutMany(['o1', 'o2'], 'checkout-key-1', provider: 'wallet');
+      final req = adapter.requests.single;
+      expect(req.path, '/v1/checkouts');
+      expect(req.method, 'POST');
+      expect(req.headers['Idempotency-Key'], 'checkout-key-1');
+      expect(req.data, {'order_ids': ['o1', 'o2'], 'provider': 'wallet'});
+      expect(result.orderIds, ['o1', 'o2']);
+      expect(result.reference, 'YC-B-1A2B3C4D');
+      expect(result.authorizationUrl, 'https://pay.test/YC-B-1A2B3C4D');
+      expect(result.amountKobo, 1234500);
+      expect(result.paymentStatus, 'pending');
+      expect(result.orders.map((o) => o.amountKobo), [600000, 634500]);
+
+      await api.checkoutMany(['o1'], 'checkout-key-2');
+      expect(adapter.requests.last.data, {'order_ids': ['o1']}, reason: 'no provider: the server picks the gateway');
+    });
+
     test('maps API errors to ApiException', () async {
       final adapter = FakeAdapter(409, {
         'error': {'code': 'price_changed', 'message': 'Prices changed', 'details': {'new_total_kobo': 1}}

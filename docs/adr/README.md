@@ -31,3 +31,4 @@
 | [0027](0027-rider-kyc.md) | Rider sign-up and KYC (documents, NIN, two guarantors, a selfie) checked by hand by the team, with a Verified badge | Accepted |
 | [0028](0028-business-branches-and-split-payments.md) | Businesses with a unique ID (YCB-…), branches that sell one menu (customers order from the nearest), and card payments split by Paystack so the business's share goes straight to its bank account | Accepted (subaccounts wait for Paystack activation) |
 | [0029](0029-new-logo-and-app-icon.md) | The owner's new logo (the chef under her arch, Yummy247) and app icon (a white chef's hat with a green "yc" on red; the rider app's on chocolate brown) across the apps and websites | Accepted |
+| [0030](0030-mixed-cart-one-payment.md) | One cart for items from every shop and service, one order per shop (each with its own delivery fee and rider), all paid with one payment (`POST /v1/checkouts`); items removable in the cart; "Phone number" label | Accepted |

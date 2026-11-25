@@ -273,6 +273,32 @@ abstract class CheckoutResult with _$CheckoutResult {
   factory CheckoutResult.fromJson(Map<String, dynamic> json) => _$CheckoutResultFromJson(json);
 }
 
+/// One payment covering several orders (`POST /v1/checkouts`). [reference] is null for cash,
+/// [authorizationUrl] is null for wallet and cash.
+@freezed
+abstract class MultiCheckoutResult with _$MultiCheckoutResult {
+  const factory MultiCheckoutResult({
+    required List<String> orderIds,
+    required String provider,
+    String? reference,
+    String? authorizationUrl,
+    required int amountKobo,
+    @Default('') String paymentStatus,
+    @Default([]) List<MultiCheckoutOrder> orders,
+  }) = _MultiCheckoutResult;
+  factory MultiCheckoutResult.fromJson(Map<String, dynamic> json) => _$MultiCheckoutResultFromJson(json);
+}
+
+@freezed
+abstract class MultiCheckoutOrder with _$MultiCheckoutOrder {
+  const factory MultiCheckoutOrder({
+    required String orderId,
+    @Default('') String status,
+    @Default(0) int amountKobo,
+  }) = _MultiCheckoutOrder;
+  factory MultiCheckoutOrder.fromJson(Map<String, dynamic> json) => _$MultiCheckoutOrderFromJson(json);
+}
+
 @freezed
 abstract class PaymentMethodOption with _$PaymentMethodOption {
   const factory PaymentMethodOption({

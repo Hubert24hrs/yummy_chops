@@ -10,9 +10,10 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from ..domain.models import Order
 from ..domain.money import allocate, format_naira
@@ -509,7 +510,7 @@ class PaymentService:
         self,
         names: list[str],
         *,
-        purpose: Literal["order", "wallet_topup", "plus", "group_share"],
+        purpose: Literal["order", "wallet_topup", "plus", "group_share", "basket"],
         order_id: str | None,
         customer_id: str,
         amount_kobo: int,
@@ -520,6 +521,7 @@ class PaymentService:
         metadata: dict[str, Any],
         split: SplitInstruction | None = None,
         guard: CheckoutGuard | None = None,
+        covers: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Start a gateway checkout, failing over to the next gateway when one cannot start it. A `split` is used only
         by gateways that can split (the backup gateway takes the whole payment; the business is paid out later).
@@ -552,6 +554,7 @@ class PaymentService:
                     idempotency_key=key,
                     split_subaccount=use_split.subaccount if use_split else None,
                     split_amount_kobo=amount_kobo - use_split.platform_kobo if use_split else 0,
+                    covers=covers,
                     created_at=now,
                     updated_at=now,
                 )
@@ -613,6 +616,153 @@ class PaymentService:
             "currency": rec.currency,
             "payment_status": rec.status,
         }
+
+    # ============================================================================ mixed cart (ADR-0030)
+    @staticmethod
+    def _covers(orders: list[Order]) -> list[dict[str, Any]]:
+        return [
+            {"order_id": o.id, "short_code": o.short_code, "amount_kobo": o.breakdown.total_kobo}
+            for o in orders
+        ]
+
+    @staticmethod
+    async def _refuse_if_paid(s: AsyncSession, order_ids: list[str]) -> None:
+        paid = await s.scalar(
+            select(func.count())
+            .select_from(PaymentRecord)
+            .where(PaymentRecord.order_id.in_(order_ids), PaymentRecord.status == "succeeded")
+        )
+        if paid:
+            raise ValidationFailed("One of these orders is already paid")
+
+    async def initiate_basket(
+        self, orders: list[Order], principal: Principal, provider_name: str | None, idempotency_key: str
+    ) -> dict[str, Any]:
+        """One gateway checkout for several orders of one customer (a mixed cart: one order per shop). Not split:
+        each shop is paid in its settlement. When the payment succeeds every order gets its own share of it."""
+        ids = [o.id for o in orders]
+
+        async def none_paid(s: AsyncSession) -> None:
+            await self._refuse_if_paid(s, ids)
+
+        covers = self._covers(orders)
+        return await self._hosted_checkout(
+            self.gateways(provider_name),
+            purpose="basket",
+            order_id=None,
+            customer_id=principal.uid,
+            amount_kobo=sum(c["amount_kobo"] for c in covers),
+            reference_stem=f"YC-{orders[0].short_code}-B",
+            idempotency_key=f"basket:{principal.uid}:{idempotency_key}",
+            principal=principal,
+            callback_url=self._return_to(f"order_id={ids[0]}"),
+            metadata={"purpose": "basket", "order_ids": ids, "customer_id": principal.uid},
+            guard=none_paid,
+            covers=covers,
+        )
+
+    async def pay_basket_with_wallet(
+        self, orders: list[Order], principal: Principal, idempotency_key: str
+    ) -> dict[str, Any]:
+        """Pay several orders from the wallet at once: the balance must cover them all (one account lock)."""
+        if not self.wallet_enabled:
+            raise ValidationFailed("The Yummy Chops wallet is not available right now")
+        now = utcnow()
+        uid = principal.uid
+        key = f"basket:{uid}:{idempotency_key}"
+        account = postings.wallet_account(uid)
+        covers = self._covers(orders)
+        total = sum(c["amount_kobo"] for c in covers)
+        async with self.db.transaction() as s:
+            prior = await s.scalar(select(PaymentRecord).where(PaymentRecord.idempotency_key == key))
+            if prior is not None:
+                return self._init_view(prior)
+            await self.ledger.lock_account(s, account)
+            await self._refuse_if_paid(s, [o.id for o in orders])
+            balance = await self.ledger.balance(s, account)
+            if balance < total:
+                raise ValidationFailed(
+                    "Your Yummy Chops wallet balance is too low for these orders",
+                    details={"balance_kobo": balance, "needed_kobo": total, "short_by_kobo": total - balance},
+                )
+            basket = PaymentRecord(
+                id=new_id(),
+                order_id=None,
+                customer_id=uid,
+                purpose="basket",
+                provider="wallet",
+                reference=f"YC-{orders[0].short_code}-BW{secrets.token_hex(3).upper()}",
+                amount_kobo=total,
+                currency="NGN",
+                status="succeeded",
+                channel="wallet",
+                paid_at=now,
+                idempotency_key=key,
+                covers=covers,
+                created_at=now,
+                updated_at=now,
+            )
+            s.add(basket)
+            await s.flush()
+            await self._pay_basket_shares(s, basket, source="wallet")
+            view = self._init_view(basket)
+        await self.relay.relay_pending()
+        return view
+
+    async def _pay_basket_shares(self, s: AsyncSession, basket: PaymentRecord, *, source: str) -> None:
+        """A basket payment succeeded: each order it covers gets its own succeeded payment (its share), with the
+        money recorded against that order, and is told it is paid, exactly as if it had been paid on its own.
+        Refunds, settlement and the receipt then work per order; the shares add up to the basket."""
+        paid_at = basket.paid_at or utcnow()
+        from_wallet = basket.provider == "wallet"
+        for n, cover in enumerate(basket.covers or [], start=1):
+            amount = int(cover["amount_kobo"])
+            share = PaymentRecord(
+                id=new_id(),
+                order_id=str(cover["order_id"]),
+                customer_id=basket.customer_id,
+                purpose="order",
+                provider=basket.provider,
+                reference=f"{basket.reference}-{n}",
+                amount_kobo=amount,
+                currency=basket.currency,
+                status="succeeded",
+                channel=basket.channel,
+                provider_transaction_id=basket.provider_transaction_id,
+                paid_at=paid_at,
+                idempotency_key=f"basket-share:{basket.id}:{cover['order_id']}",
+                parent_id=basket.id,
+                created_at=utcnow(),
+                updated_at=utcnow(),
+            )
+            s.add(share)
+            await s.flush()
+            short = cover.get("short_code") or share.order_id
+            await self.ledger.post(
+                s,
+                kind="wallet_payment" if from_wallet else "payment_captured",
+                idempotency_key=f"payment:{share.id}:captured",
+                postings=postings.wallet_payment(basket.customer_id, amount)
+                if from_wallet
+                else postings.payment_captured(basket.provider, amount),
+                created_by=f"payments:{source}",
+                reference=share.reference,
+                order_id=share.order_id,
+                description=f"Paid for order {short} (one payment for several orders)",
+            )
+            add_outbox_event(
+                s,
+                "payment.succeeded",
+                {
+                    "order_id": share.order_id,
+                    "payment_id": share.id,
+                    "provider": share.provider,
+                    "reference": share.reference,
+                    "amount_kobo": amount,
+                    "split_amount_kobo": 0,
+                    "paid_at": paid_at.isoformat(),
+                },
+            )
 
     # ============================================================================ wallet & cash
     async def wallet_balance(self, uid: str) -> int:
@@ -927,6 +1077,8 @@ class PaymentService:
                                 "paid_at": (row.paid_at or now).isoformat(),
                             },
                         )
+                    elif row.purpose == "basket":
+                        await self._pay_basket_shares(s, row, source=source)
                     elif row.purpose == "plus":
                         cfg = await self.repos.get_pricing_config()
                         _, vat = vat_inclusive_split(row.amount_kobo, cfg.vat_bps)
@@ -1358,6 +1510,10 @@ class PaymentService:
                 payment.provider,
                 rec.amount_kobo,
             )
+            if payment.parent_id:  # a share of a mixed-cart payment: the gateway knows only the one charge
+                basket = await s.get(PaymentRecord, payment.parent_id)
+                if basket is not None:
+                    ref, txid = basket.reference, basket.provider_transaction_id or txid
         if to_wallet:
             return await self.complete_refund(refund_id)  # instant: no gateway involved
         try:
@@ -1526,11 +1682,13 @@ class PaymentService:
                 return None
             if not reference or not amount.is_finite() or amount != amount.to_integral_value():
                 return None
+            basket = aliased(PaymentRecord)
+            baskets = select(basket.id).where(basket.reference == str(reference), basket.purpose == "basket")
             return await s.scalar(
                 select(RefundRecord)
                 .join(PaymentRecord, PaymentRecord.id == RefundRecord.payment_id)
                 .where(
-                    PaymentRecord.reference == str(reference),
+                    or_(PaymentRecord.reference == str(reference), PaymentRecord.parent_id.in_(baskets)),
                     RefundRecord.status == "processing",
                     RefundRecord.amount_kobo == int(amount),
                 )

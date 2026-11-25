@@ -93,7 +93,12 @@ INTERNAL_PROVIDERS = ("wallet", "cash")
 
 class PaymentRecord(Base):
     """Money a customer pays: for an order (gateway, wallet or cash on delivery), a share of a group order,
-    a Yummy Chops Plus membership, or to top up their wallet."""
+    a Yummy Chops Plus membership, to top up their wallet, or for several orders at once (a mixed cart).
+
+    A mixed-cart payment (purpose `basket`, ADR-0030) is one gateway charge for several orders, one per shop; its
+    `covers` lists each order and its amount. When it succeeds, each order gets its own `order` payment with
+    `parent_id` pointing at it, so each order is paid, refunded and settled on its own; the basket itself posts
+    nothing to the ledger."""
 
     __tablename__ = "payment_records"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
@@ -114,6 +119,9 @@ class PaymentRecord(Base):
     # Split card payments (migration 0004): the share sent straight to a business's Paystack subaccount.
     split_subaccount: Mapped[str | None] = mapped_column(String(40))
     split_amount_kobo: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0", nullable=False)
+    # Mixed-cart payments (migration 0005): the basket's orders, and an order's share of a basket.
+    covers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONType)
+    parent_id: Mapped[str | None] = mapped_column(String(36), index=True)
     idempotency_key: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
@@ -125,7 +133,7 @@ class PaymentRecord(Base):
             name="ck_payment_status",
         ),
         CheckConstraint(
-            "purpose IN ('order','wallet_topup','plus','group_share')", name="ck_payment_purpose"
+            "purpose IN ('order','wallet_topup','plus','group_share','basket')", name="ck_payment_purpose"
         ),
         CheckConstraint(
             "purpose NOT IN ('order','group_share') OR order_id IS NOT NULL", name="ck_payment_order_ref"

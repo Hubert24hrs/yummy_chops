@@ -71,7 +71,7 @@ class _InProgress extends ConsumerWidget {
             margin: const EdgeInsets.symmetric(horizontal: 16),
             child: ListTile(
               leading: const CircleAvatar(child: Icon(Icons.shopping_cart_rounded)),
-              title: Text(cart.restaurantName ?? 'Your cart', style: const TextStyle(fontWeight: FontWeight.w700)),
+              title: Text(cart.shops.length > 1 ? 'Your cart · ${cart.shops.length} shops' : cart.title, style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text('${cart.count} item(s) · ${formatNaira(cart.subtotalKobo)}'),
               trailing: FilledButton(onPressed: () => context.push('/checkout'), child: const Text('Checkout')),
             ),

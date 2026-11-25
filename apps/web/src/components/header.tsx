@@ -3,7 +3,6 @@
 import { Button, Logo, Select, cn } from "@gudmeal/ui";
 import { MapPin, ShoppingBag, User } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { AREAS, CITY_NAMES, useLocation } from "@/lib/location";
@@ -22,9 +21,8 @@ const LINKS = [
 
 export function Header() {
   const { user } = useAuth();
-  const { count } = useCart();
+  const { count, drawerOpen, openCart, closeCart } = useCart();
   const { area, setArea } = useLocation();
-  const [cartOpen, setCartOpen] = useState(false);
 
   return (
     <header className="sticky top-0 z-30 border-b border-border/70 bg-background/90 backdrop-blur">
@@ -59,13 +57,13 @@ export function Header() {
           ) : (
             <Link href="/login" className="rounded-full px-3 py-2 text-sm font-semibold hover:bg-surface-muted">Sign in</Link>
           )}
-          <Button size="sm" onClick={() => setCartOpen(true)} aria-label={`Cart, ${count} items`}>
+          <Button size="sm" onClick={openCart} aria-label={`Cart, ${count} items`}>
             <ShoppingBag className="size-4" aria-hidden="true" />
             <span className="tabular-nums">{count}</span>
           </Button>
         </nav>
       </div>
-      <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
+      <CartDrawer open={drawerOpen} onClose={closeCart} />
     </header>
   );
 }

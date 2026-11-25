@@ -49,6 +49,11 @@ class CheckoutInput(BaseModel):
     provider: Literal["paystack", "flutterwave", "local_sandbox", "wallet", "cash"] | None = None
 
 
+class MultiCheckoutInput(CheckoutInput):
+    # A mixed cart: the customer's orders, one per shop, paid with one payment (ADR-0030).
+    order_ids: list[str] = Field(min_length=1, max_length=10)
+
+
 class ReasonInput(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
@@ -282,6 +287,26 @@ async def checkout(
 
     return await run_idempotent(
         c, scope=f"orders.checkout:{order_id}", key=idempotency_key, payload=data.model_dump(), fn=run
+    )
+
+
+@router.post("/checkouts", dependencies=[Depends(limit("checkout"))])
+async def checkout_many(
+    data: MultiCheckoutInput, c: Ctr, principal: CurrentPrincipal, idempotency_key: IdemKey = None
+) -> JSONResponse:
+    """Pay for several orders (a mixed cart, one order per shop) with one payment."""
+
+    async def run() -> dict[str, Any]:
+        return await c.orders.checkout_many(
+            principal, data.order_ids, provider=data.provider, idempotency_key=str(idempotency_key)
+        )
+
+    return await run_idempotent(
+        c,
+        scope=f"orders.checkout_many:{principal.uid}",
+        key=idempotency_key,
+        payload=data.model_dump(),
+        fn=run,
     )
 
 

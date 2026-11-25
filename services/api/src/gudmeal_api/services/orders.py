@@ -47,6 +47,7 @@ TASK_UNPAID_EXPIRY = "/internal/tasks/unpaid-order-expiry"
 TASK_PARCEL_RELEASE = "/internal/tasks/parcel-release"
 PARCEL_DISPATCH_LEAD = timedelta(minutes=30)  # start finding a rider this long before a scheduled pickup
 PARCEL_MERCHANT_ID = "gm-send"  # pseudo-merchant id for courier jobs (no partner owns it)
+MAX_ORDERS_PER_CHECKOUT = 10  # a mixed cart: one order per shop, paid at once (ADR-0030)
 REPAIR_WINDOW = timedelta(days=3)  # how far back the sweep looks for money paid on cancelled orders
 
 # Per-service wording; falls back to CUSTOMER_NOTIFY.
@@ -450,6 +451,77 @@ class OrderService:
 
         await self.repos.store.run_transaction(fn)
         return {"order_id": order_id, "status": S.PENDING_PAYMENT.value, **payment}
+
+    async def checkout_many(
+        self, principal: Principal, order_ids: list[str], *, provider: str | None, idempotency_key: str
+    ) -> dict[str, Any]:
+        """Pay for a mixed cart: several orders of this customer, one per shop, with ONE payment (ADR-0030).
+
+        Card: one gateway checkout for the sum; when it is verified every order gets its share and goes to its
+        shop. Wallet: one debit of the sum. Cash: each order is placed as pay on delivery (checked one by one).
+        Each order is then prepared, dispatched, delivered, refunded and settled on its own."""
+        ids = list(dict.fromkeys(order_ids))
+        if not ids or len(ids) > MAX_ORDERS_PER_CHECKOUT:
+            raise ValidationFailed(f"Pay for 1 to {MAX_ORDERS_PER_CHECKOUT} orders at once")
+        if len(ids) == 1 or provider == "cash":
+            placed = [
+                await self.checkout(
+                    principal, oid, provider=provider, idempotency_key=f"{idempotency_key}:{oid}"
+                )
+                for oid in ids
+            ]
+            first = placed[0]
+            return {
+                **first,
+                "order_ids": ids,
+                "reference": first.get("reference") if len(ids) == 1 else None,
+                "amount_kobo": sum(int(p.get("amount_kobo") or 0) for p in placed),
+                "orders": [
+                    {"order_id": p["order_id"], "status": p["status"], "amount_kobo": p.get("amount_kobo")}
+                    for p in placed
+                ],
+            }
+        orders = [await self.get(oid) for oid in ids]
+        for order in orders:
+            if order.customer_id != principal.uid:
+                raise NotFound("Order not found")
+            if order.is_leg or order.is_waybill or order.is_parcel or order.group_order_id:
+                raise InvalidTransition(f"Order {order.short_code} is paid on its own")
+            if order.status not in (S.DRAFT, S.PENDING_PAYMENT):
+                raise InvalidTransition(f"Order {order.short_code} is already {order.status.value}")
+        orders = [
+            await self.transition(o.id, S.PENDING_PAYMENT, actor_type=A.CUSTOMER, actor_id=principal.uid)
+            if o.status == S.DRAFT
+            else o
+            for o in orders
+        ]
+        if provider == "wallet":
+            payment = await self.payments.pay_basket_with_wallet(orders, principal, idempotency_key)
+        else:
+            payment = await self.payments.initiate_basket(orders, principal, provider, idempotency_key)
+            summary = to_doc(
+                PaymentSummary(provider=payment["provider"], reference=payment["reference"], status="pending")
+            )
+            for oid in ids:
+
+                async def fn(tx: Transaction, oid: str = oid) -> None:
+                    # As for one order: "pending" is never written over "paid".
+                    doc = await tx.get(f"orders/{oid}")
+                    if doc is not None and doc.get("status") in (S.DRAFT.value, S.PENDING_PAYMENT.value):
+                        tx.update(f"orders/{oid}", {"payment": summary, "updated_at": utcnow()})
+
+                await self.repos.store.run_transaction(fn)
+        now = [await self.get(oid) for oid in ids]
+        return {
+            **payment,
+            "order_id": ids[0],
+            "order_ids": ids,
+            "status": now[0].status.value,
+            "orders": [
+                {"order_id": o.id, "status": o.status.value, "amount_kobo": o.breakdown.total_kobo}
+                for o in now
+            ],
+        }
 
     async def _submit_pay_on_delivery(self, order: Order, idempotency_key: str) -> dict[str, Any]:
         """Eligible cash order: record the cash due and send it to the merchant without online payment."""

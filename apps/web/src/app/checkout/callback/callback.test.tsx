@@ -52,6 +52,19 @@ describe("payment return page", () => {
     expect(screen.getByRole("link", { name: "Print my receipt" }).getAttribute("href")).toBe("/orders/o1/receipt");
   });
 
+  it("after one card payment for several shops' orders, verifies the one reference and opens Orders", async () => {
+    auth.user = { uid: "cust-1" };
+    window.sessionStorage.setItem("gudmeal.checkout.orders.v1", JSON.stringify({ reference: "YC-ABC123", orderIds: ["o1", "o2"] }));
+    verify.mockResolvedValue({ status: "succeeded", order_id: "o1", purpose: "order" });
+    show();
+    await waitFor(() => expect(screen.getByText(/Your 2 orders have been sent/)).toBeTruthy());
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect(verify).toHaveBeenCalledWith("YC-ABC123");
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/orders"));
+    expect(replace).not.toHaveBeenCalledWith("/orders/o1/receipt");
+    window.sessionStorage.clear();
+  });
+
   it("does not open the receipt printer for a membership payment or while a payment is unconfirmed", async () => {
     auth.user = { uid: "cust-1" };
     verify.mockResolvedValue({ status: "succeeded", order_id: null, purpose: "plus" });

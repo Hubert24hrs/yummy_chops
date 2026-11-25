@@ -280,11 +280,11 @@ class AisleScreen extends ConsumerWidget {
           Text(shop.name, style: Theme.of(context).textTheme.bodySmall),
         ]),
       ),
-      floatingActionButton: cart.restaurantId == shop.id && !cart.isEmpty
+      floatingActionButton: !cart.isEmpty
           ? FloatingActionButton.extended(
               onPressed: () => context.push('/checkout'),
               icon: const Icon(Icons.shopping_bag_rounded),
-              label: Text('View order · ${formatNaira(cart.subtotalKobo)}'),
+              label: Text('View cart · ${formatNaira(cart.subtotalKobo)}'),
             )
           : null,
       body: CustomScrollView(slivers: [

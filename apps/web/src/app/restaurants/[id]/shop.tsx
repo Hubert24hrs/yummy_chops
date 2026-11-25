@@ -51,21 +51,23 @@ export function Shop({ detail, openItemId }: { detail: RestaurantDetail; openIte
   const query = useDeferredValue(q.trim());
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const { cart, add, count, subtotalKobo } = useCart();
-  const inThisCart = cart.restaurant_id === shop.id;
-  const otherShop = cart.restaurant_id !== null && !inThisCart && cart.items.length > 0;
 
   const popular = useMemo(() => popularProducts(sections), [sections]);
   const hits = useMemo(() => searchProducts(sections, query), [sections, query]);
-  const inCart = (item: MenuItem) => (inThisCart ? cart.items.filter((l) => l.item_id === item.id).reduce((n, l) => n + l.quantity, 0) : 0);
+  const inCart = (item: MenuItem) =>
+    cart.items.filter((l) => l.restaurant_id === shop.id && l.item_id === item.id).reduce((n, l) => n + l.quantity, 0);
 
-  /** One tap adds a product that needs no choice; anything else opens its options. */
+  /**
+   * One tap adds a product that needs no choice (it joins the cart, whichever shops are already in it; the card
+   * shows how many are in the cart, so people can keep filling the basket); anything else opens its options.
+   */
   function quickAdd(item: MenuItem) {
-    if (item.option_group_ids.length > 0 || otherShop) {
+    if (item.option_group_ids.length > 0) {
       setSelected(item);
       return;
     }
     add(shop.id, shop.name, {
-      key: cartKey(item.id, []), item_id: item.id, name: item.name, unit_price_kobo: item.price_kobo, quantity: 1,
+      key: cartKey(shop.id, item.id, []), item_id: item.id, name: item.name, unit_price_kobo: item.price_kobo, quantity: 1,
       selections: [], selection_labels: [],
     });
   }
@@ -148,10 +150,10 @@ export function Shop({ detail, openItemId }: { detail: RestaurantDetail; openIte
         <ItemDialog item={selected} groups={detail.option_groups} restaurantId={shop.id} restaurantName={shop.name}
           notesFor={service.notesFor} notesHint={service.notesHint} onClose={() => setSelected(null)} />
       )}
-      {inThisCart && count > 0 && (
+      {count > 0 && (
         <div className="fixed inset-x-0 bottom-4 z-20 px-4 lg:hidden">
           <a href="/checkout" className="block">
-            <Button block size="lg">View order · {count} · <Price kobo={subtotalKobo} /></Button>
+            <Button block size="lg">View cart · {count} · <Price kobo={subtotalKobo} /></Button>
           </a>
         </div>
       )}

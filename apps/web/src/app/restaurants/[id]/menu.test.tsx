@@ -1,7 +1,7 @@
 import type { MenuItem, RestaurantDetail } from "@gudmeal/api-client";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { CartProvider } from "@/lib/cart";
+import { CartProvider, useCart } from "@/lib/cart";
 import { Menu } from "./menu";
 
 const item = (over: Partial<MenuItem> = {}): MenuItem => ({
@@ -25,10 +25,23 @@ beforeAll(() => {
   HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) { this.setAttribute("open", ""); };
   HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) { this.removeAttribute("open"); };
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
+
+function CartState() {
+  const { shops, drawerOpen } = useCart();
+  return (
+    <>
+      <output aria-label="shops">{shops.map((s) => `${s.restaurant_name}: ${s.count}`).join(" | ")}</output>
+      <output aria-label="drawer">{drawerOpen ? "open" : "closed"}</output>
+    </>
+  );
+}
 
 const renderMenu = (d: RestaurantDetail, openItemId?: string) =>
-  render(<CartProvider><Menu detail={d} openItemId={openItemId} /></CartProvider>);
+  render(<CartProvider><Menu detail={d} openItemId={openItemId} /><CartState /></CartProvider>);
 
 describe("restaurant menu opened from the Discover carousel", () => {
   it("opens the dish straight away when it can be ordered", () => {
@@ -50,5 +63,21 @@ describe("restaurant menu opened from the Discover carousel", () => {
     cleanup();
     renderMenu(detail());
     expect(document.querySelector("dialog")).toBeNull();
+  });
+});
+
+describe("adding a dish", () => {
+  it("joins the cart next to another shop's items and opens the cart", async () => {
+    window.localStorage.setItem("gudmeal.cart.v2", JSON.stringify({ items: [{
+      key: "p-medplus/para##", restaurant_id: "p-medplus", restaurant_name: "MedPlus", item_id: "para", name: "Paracetamol",
+      unit_price_kobo: 80_000, quantity: 2, selections: [], selection_labels: [],
+    }] }));
+    renderMenu(detail(), "sl-beef-suya");
+    expect(await screen.findByText("MedPlus: 2")).toBeTruthy();
+    const dialog = document.querySelector("dialog")!;
+    fireEvent.click(within(dialog as HTMLElement).getByRole("button", { name: "Add to cart · ₦4,500" }));
+    expect(screen.getByLabelText("shops").textContent).toBe("MedPlus: 2 | Suya Lane: 1");
+    expect(screen.getByLabelText("drawer").textContent).toBe("open");
+    expect(screen.queryByText(/new cart/i)).toBeNull();
   });
 });

@@ -204,6 +204,9 @@ export function createApi(opts: ClientOptions) {
         post<T.Order>("/v1/orders", { quote_id: quoteId, channel, contact_phone }, key),
       checkout: (orderId: string, key: string, provider?: string) =>
         post<T.CheckoutResult>(`/v1/orders/${orderId}/checkout`, provider ? { provider } : {}, key),
+      /** One payment for several orders (a cart with items from several shops: one order per shop). */
+      checkoutMany: (orderIds: string[], key: string, provider?: string) =>
+        post<T.MultiCheckoutResult>("/v1/checkouts", provider ? { order_ids: orderIds, provider } : { order_ids: orderIds }, key),
       list: (limit = 20) => get<T.Order[]>("/v1/orders", { limit }),
       get: (id: string) => get<T.Order>(`/v1/orders/${id}`),
       /** The receipt of a paid order; 409 `order_not_paid` until it is paid. */

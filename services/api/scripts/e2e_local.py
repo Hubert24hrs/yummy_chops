@@ -926,6 +926,67 @@ def pharmacy_order() -> None:
 
 
 @flow
+def mixed_cart_one_payment() -> None:
+    """Mixed cart (ADR-0030): a meal, a pharmacy item and a beauty item in one cart; the beauty item is removed;
+    one payment pays an order per shop, and each order is prepared and delivered on its own"""
+    riders_online()
+    beauty = items_of(call("GET", "/v1/restaurants", params={"city": "lagos", "vertical": "beauty"}))[0]["id"]
+    pharmacy = "p-carefirst"
+    ensure_accounts(beauty_shop=pharmacy)
+    ensure_accounts(beauty_shop=beauty)  # the demo shop-owner account works both shops
+    for shop in (pharmacy, beauty):
+        open_all_day(shop, "beauty")
+    cart = {
+        JJ: JJ_LINES,
+        pharmacy: [line_for(call("GET", f"/v1/restaurants/{pharmacy}"), "cf-vitamin-c-20", 2)],
+        beauty: [first_orderable_line(call("GET", f"/v1/restaurants/{beauty}"))],
+    }
+    quotes = {shop: quote(restaurant_id=shop, lines=lines) for shop, lines in cart.items()}
+    check(
+        "one quote per shop in the cart, each with its own delivery fee",
+        all(q["breakdown"]["delivery_fee_kobo"] > 0 for q in quotes.values()),
+        {s: q["breakdown"]["delivery_fee_kobo"] for s, q in quotes.items()},
+    )
+    del quotes[beauty]  # the customer removes the beauty item in the cart and reviews the total again
+    orders = {
+        shop: call(
+            "POST", "/v1/orders", "customer", {"quote_id": q["id"], "channel": "app"}, expect=201, idem=True
+        )
+        for shop, q in quotes.items()
+    }
+    total = sum(q["breakdown"]["total_kobo"] for q in quotes.values())
+    co = call(
+        "POST", "/v1/checkouts", "customer", {"order_ids": [o["id"] for o in orders.values()]}, idem=True
+    )
+    check(
+        f"ONE checkout of {naira(total)} for the {len(orders)} shops' orders",
+        co["amount_kobo"] == total and co["authorization_url"] and len(co["orders"]) == len(orders),
+        co,
+    )
+    complete_sandbox(co)
+    call("POST", "/v1/payments/verify", "customer", {"reference": co["reference"]})
+    for shop, order in orders.items():
+        o = get_order(order["id"])
+        check(
+            f"{shop}: paid by the one payment and sent to the shop",
+            o["status"] == "submitted_to_restaurant",
+            o,
+        )
+        payments = items_of(call("GET", f"/v1/orders/{order['id']}/payments", "customer"))
+        check(
+            f"{shop}: its own share of the payment ({naira(quotes[shop]['breakdown']['total_kobo'])})",
+            [(p["amount_kobo"], p["status"]) for p in payments]
+            == [(quotes[shop]["breakdown"]["total_kobo"], "succeeded")],
+            payments,
+        )
+    mine = {o["id"] for o in items_of(call("GET", "/v1/orders", "customer"))}
+    check("the customer sees each order in Orders", all(o["id"] in mine for o in orders.values()))
+    deliver(orders[JJ]["id"])
+    deliver(orders[pharmacy]["id"], shop=pharmacy, staff="beauty", owner="beauty")
+    ledger_balanced()
+
+
+@flow
 def market_order() -> None:
     """Buy Foodstuff: a shopper buys foodstuff by market measures (beef by weight, a soup combo, yam)"""
     shops = items_of(call("GET", "/v1/restaurants", params={"city": "lagos", "vertical": "market"}))

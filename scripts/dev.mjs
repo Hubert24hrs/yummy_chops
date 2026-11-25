@@ -65,8 +65,8 @@ const targets = {
     cwd: join(root, "services/api"),
     env: {
       // Local dev creates tables directly (no migrations): bump the file name when the money schema changes
-      // (v4: split card payments, ADR-0028).
-      DATA_BACKEND: "memory", SEED_DEMO_DATA: "true", DATABASE_URL: "sqlite+aiosqlite:///./gudmeal_local_v4.db",
+      // (v4: split card payments, ADR-0028; v5: one payment for a mixed cart, ADR-0030).
+      DATA_BACKEND: "memory", SEED_DEMO_DATA: "true", DATABASE_URL: "sqlite+aiosqlite:///./gudmeal_local_v5.db",
       // With --lan the payment sandbox page is opened by the phone, so its links use the Wi-Fi address.
       PUBLIC_BASE_URL: `http://${ip ?? "localhost"}:8000`, PAYMENT_CALLBACK_URL: "http://localhost:3000/checkout/callback",
       // ...and they follow this computer when it joins another Wi-Fi and gets a new address.

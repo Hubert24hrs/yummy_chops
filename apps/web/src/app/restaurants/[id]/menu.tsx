@@ -16,8 +16,7 @@ export function Menu({ detail, openItemId }: { detail: RestaurantDetail; openIte
     const item = detail.sections.flatMap((s) => s.items).find((i) => i.id === openItemId);
     return item?.is_available ? item : null;
   });
-  const { cart, count, subtotalKobo } = useCart();
-  const inThisCart = cart.restaurant_id === detail.restaurant.id;
+  const { count, subtotalKobo } = useCart();
   const service = serviceCopy(detail.restaurant.vertical);
 
   return (
@@ -64,10 +63,10 @@ export function Menu({ detail, openItemId }: { detail: RestaurantDetail; openIte
         <ItemDialog item={selected} groups={detail.option_groups} restaurantId={detail.restaurant.id}
           restaurantName={detail.restaurant.name} notesFor={service.notesFor} notesHint={service.notesHint} onClose={() => setSelected(null)} />
       )}
-      {inThisCart && count > 0 && (
+      {count > 0 && (
         <div className="fixed inset-x-0 bottom-4 z-20 px-4 lg:hidden">
           <a href="/checkout" className="block">
-            <Button block size="lg">View order · {count} · <Price kobo={subtotalKobo} /></Button>
+            <Button block size="lg">View cart · {count} · <Price kobo={subtotalKobo} /></Button>
           </a>
         </div>
       )}

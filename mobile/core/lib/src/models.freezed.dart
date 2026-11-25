@@ -5866,6 +5866,582 @@ as String?,
 
 
 /// @nodoc
+mixin _$MultiCheckoutResult {
+
+ List<String> get orderIds; String get provider; String? get reference; String? get authorizationUrl; int get amountKobo; String get paymentStatus; List<MultiCheckoutOrder> get orders;
+/// Create a copy of MultiCheckoutResult
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$MultiCheckoutResultCopyWith<MultiCheckoutResult> get copyWith => _$MultiCheckoutResultCopyWithImpl<MultiCheckoutResult>(this as MultiCheckoutResult, _$identity);
+
+  /// Serializes this MultiCheckoutResult to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as MultiCheckoutResult;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is MultiCheckoutResult&&const DeepCollectionEquality().equals(other.orderIds, _this.orderIds)&&(identical(other.provider, _this.provider) || other.provider == _this.provider)&&(identical(other.reference, _this.reference) || other.reference == _this.reference)&&(identical(other.authorizationUrl, _this.authorizationUrl) || other.authorizationUrl == _this.authorizationUrl)&&(identical(other.amountKobo, _this.amountKobo) || other.amountKobo == _this.amountKobo)&&(identical(other.paymentStatus, _this.paymentStatus) || other.paymentStatus == _this.paymentStatus)&&const DeepCollectionEquality().equals(other.orders, _this.orders));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as MultiCheckoutResult;
+  return Object.hash(runtimeType,const DeepCollectionEquality().hash(_this.orderIds),_this.provider,_this.reference,_this.authorizationUrl,_this.amountKobo,_this.paymentStatus,const DeepCollectionEquality().hash(_this.orders));
+}
+
+@override
+String toString() {
+  final _this = this as MultiCheckoutResult;
+  return 'MultiCheckoutResult(orderIds: ${_this.orderIds}, provider: ${_this.provider}, reference: ${_this.reference}, authorizationUrl: ${_this.authorizationUrl}, amountKobo: ${_this.amountKobo}, paymentStatus: ${_this.paymentStatus}, orders: ${_this.orders})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $MultiCheckoutResultCopyWith<$Res>  {
+  factory $MultiCheckoutResultCopyWith(MultiCheckoutResult value, $Res Function(MultiCheckoutResult) _then) = _$MultiCheckoutResultCopyWithImpl;
+@useResult
+$Res call({
+ List<String> orderIds, String provider, String? reference, String? authorizationUrl, int amountKobo, String paymentStatus, List<MultiCheckoutOrder> orders
+});
+
+
+
+
+}
+/// @nodoc
+class _$MultiCheckoutResultCopyWithImpl<$Res>
+    implements $MultiCheckoutResultCopyWith<$Res> {
+  _$MultiCheckoutResultCopyWithImpl(this._self, this._then);
+
+  final MultiCheckoutResult _self;
+  final $Res Function(MultiCheckoutResult) _then;
+
+/// Create a copy of MultiCheckoutResult
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? orderIds = null,Object? provider = null,Object? reference = freezed,Object? authorizationUrl = freezed,Object? amountKobo = null,Object? paymentStatus = null,Object? orders = null,}) {
+  return _then(MultiCheckoutResult(
+orderIds: null == orderIds ? _self.orderIds : orderIds // ignore: cast_nullable_to_non_nullable
+as List<String>,provider: null == provider ? _self.provider : provider // ignore: cast_nullable_to_non_nullable
+as String,reference: freezed == reference ? _self.reference : reference // ignore: cast_nullable_to_non_nullable
+as String?,authorizationUrl: freezed == authorizationUrl ? _self.authorizationUrl : authorizationUrl // ignore: cast_nullable_to_non_nullable
+as String?,amountKobo: null == amountKobo ? _self.amountKobo : amountKobo // ignore: cast_nullable_to_non_nullable
+as int,paymentStatus: null == paymentStatus ? _self.paymentStatus : paymentStatus // ignore: cast_nullable_to_non_nullable
+as String,orders: null == orders ? _self.orders : orders // ignore: cast_nullable_to_non_nullable
+as List<MultiCheckoutOrder>,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [MultiCheckoutResult].
+extension MultiCheckoutResultPatterns on MultiCheckoutResult {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _MultiCheckoutResult value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _MultiCheckoutResult() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _MultiCheckoutResult value)  $default,){
+final _that = this;
+switch (_that) {
+case _MultiCheckoutResult():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _MultiCheckoutResult value)?  $default,){
+final _that = this;
+switch (_that) {
+case _MultiCheckoutResult() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<String> orderIds,  String provider,  String? reference,  String? authorizationUrl,  int amountKobo,  String paymentStatus,  List<MultiCheckoutOrder> orders)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _MultiCheckoutResult() when $default != null:
+return $default(_that.orderIds,_that.provider,_that.reference,_that.authorizationUrl,_that.amountKobo,_that.paymentStatus,_that.orders);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<String> orderIds,  String provider,  String? reference,  String? authorizationUrl,  int amountKobo,  String paymentStatus,  List<MultiCheckoutOrder> orders)  $default,) {final _that = this;
+switch (_that) {
+case _MultiCheckoutResult():
+return $default(_that.orderIds,_that.provider,_that.reference,_that.authorizationUrl,_that.amountKobo,_that.paymentStatus,_that.orders);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<String> orderIds,  String provider,  String? reference,  String? authorizationUrl,  int amountKobo,  String paymentStatus,  List<MultiCheckoutOrder> orders)?  $default,) {final _that = this;
+switch (_that) {
+case _MultiCheckoutResult() when $default != null:
+return $default(_that.orderIds,_that.provider,_that.reference,_that.authorizationUrl,_that.amountKobo,_that.paymentStatus,_that.orders);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _MultiCheckoutResult implements MultiCheckoutResult {
+  const _MultiCheckoutResult({required  List<String> orderIds, required this.provider, this.reference, this.authorizationUrl, required this.amountKobo, this.paymentStatus = '',  List<MultiCheckoutOrder> orders = const []}): _orderIds = orderIds,_orders = orders;
+  factory _MultiCheckoutResult.fromJson(Map<String, dynamic> json) => _$MultiCheckoutResultFromJson(json);
+
+ final  List<String> _orderIds;
+@override List<String> get orderIds {
+  if (_orderIds is EqualUnmodifiableListView) return _orderIds;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_orderIds);
+}
+
+@override final  String provider;
+@override final  String? reference;
+@override final  String? authorizationUrl;
+@override final  int amountKobo;
+@override@JsonKey() final  String paymentStatus;
+ final  List<MultiCheckoutOrder> _orders;
+@override@JsonKey() List<MultiCheckoutOrder> get orders {
+  if (_orders is EqualUnmodifiableListView) return _orders;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_orders);
+}
+
+
+/// Create a copy of MultiCheckoutResult
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$MultiCheckoutResultCopyWith<_MultiCheckoutResult> get copyWith => __$MultiCheckoutResultCopyWithImpl<_MultiCheckoutResult>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$MultiCheckoutResultToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _MultiCheckoutResult&&const DeepCollectionEquality().equals(other.orderIds, _orderIds)&&(identical(other.provider, provider) || other.provider == provider)&&(identical(other.reference, reference) || other.reference == reference)&&(identical(other.authorizationUrl, authorizationUrl) || other.authorizationUrl == authorizationUrl)&&(identical(other.amountKobo, amountKobo) || other.amountKobo == amountKobo)&&(identical(other.paymentStatus, paymentStatus) || other.paymentStatus == paymentStatus)&&const DeepCollectionEquality().equals(other.orders, _orders));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,const DeepCollectionEquality().hash(_orderIds),provider,reference,authorizationUrl,amountKobo,paymentStatus,const DeepCollectionEquality().hash(_orders));
+}
+
+@override
+String toString() {
+    return 'MultiCheckoutResult(orderIds: $orderIds, provider: $provider, reference: $reference, authorizationUrl: $authorizationUrl, amountKobo: $amountKobo, paymentStatus: $paymentStatus, orders: $orders)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$MultiCheckoutResultCopyWith<$Res> implements $MultiCheckoutResultCopyWith<$Res> {
+  factory _$MultiCheckoutResultCopyWith(_MultiCheckoutResult value, $Res Function(_MultiCheckoutResult) _then) = __$MultiCheckoutResultCopyWithImpl;
+@override @useResult
+$Res call({
+ List<String> orderIds, String provider, String? reference, String? authorizationUrl, int amountKobo, String paymentStatus, List<MultiCheckoutOrder> orders
+});
+
+
+
+
+}
+/// @nodoc
+class __$MultiCheckoutResultCopyWithImpl<$Res>
+    implements _$MultiCheckoutResultCopyWith<$Res> {
+  __$MultiCheckoutResultCopyWithImpl(this._self, this._then);
+
+  final _MultiCheckoutResult _self;
+  final $Res Function(_MultiCheckoutResult) _then;
+
+/// Create a copy of MultiCheckoutResult
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? orderIds = null,Object? provider = null,Object? reference = freezed,Object? authorizationUrl = freezed,Object? amountKobo = null,Object? paymentStatus = null,Object? orders = null,}) {
+  return _then(_MultiCheckoutResult(
+orderIds: null == orderIds ? _self._orderIds : orderIds // ignore: cast_nullable_to_non_nullable
+as List<String>,provider: null == provider ? _self.provider : provider // ignore: cast_nullable_to_non_nullable
+as String,reference: freezed == reference ? _self.reference : reference // ignore: cast_nullable_to_non_nullable
+as String?,authorizationUrl: freezed == authorizationUrl ? _self.authorizationUrl : authorizationUrl // ignore: cast_nullable_to_non_nullable
+as String?,amountKobo: null == amountKobo ? _self.amountKobo : amountKobo // ignore: cast_nullable_to_non_nullable
+as int,paymentStatus: null == paymentStatus ? _self.paymentStatus : paymentStatus // ignore: cast_nullable_to_non_nullable
+as String,orders: null == orders ? _self._orders : orders // ignore: cast_nullable_to_non_nullable
+as List<MultiCheckoutOrder>,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
+mixin _$MultiCheckoutOrder {
+
+ String get orderId; String get status; int get amountKobo;
+/// Create a copy of MultiCheckoutOrder
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$MultiCheckoutOrderCopyWith<MultiCheckoutOrder> get copyWith => _$MultiCheckoutOrderCopyWithImpl<MultiCheckoutOrder>(this as MultiCheckoutOrder, _$identity);
+
+  /// Serializes this MultiCheckoutOrder to a JSON map.
+  Map<String, dynamic> toJson();
+
+
+@override
+bool operator ==(Object other) {
+  final _this = this as MultiCheckoutOrder;
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is MultiCheckoutOrder&&(identical(other.orderId, _this.orderId) || other.orderId == _this.orderId)&&(identical(other.status, _this.status) || other.status == _this.status)&&(identical(other.amountKobo, _this.amountKobo) || other.amountKobo == _this.amountKobo));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+  final _this = this as MultiCheckoutOrder;
+  return Object.hash(runtimeType,_this.orderId,_this.status,_this.amountKobo);
+}
+
+@override
+String toString() {
+  final _this = this as MultiCheckoutOrder;
+  return 'MultiCheckoutOrder(orderId: ${_this.orderId}, status: ${_this.status}, amountKobo: ${_this.amountKobo})';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $MultiCheckoutOrderCopyWith<$Res>  {
+  factory $MultiCheckoutOrderCopyWith(MultiCheckoutOrder value, $Res Function(MultiCheckoutOrder) _then) = _$MultiCheckoutOrderCopyWithImpl;
+@useResult
+$Res call({
+ String orderId, String status, int amountKobo
+});
+
+
+
+
+}
+/// @nodoc
+class _$MultiCheckoutOrderCopyWithImpl<$Res>
+    implements $MultiCheckoutOrderCopyWith<$Res> {
+  _$MultiCheckoutOrderCopyWithImpl(this._self, this._then);
+
+  final MultiCheckoutOrder _self;
+  final $Res Function(MultiCheckoutOrder) _then;
+
+/// Create a copy of MultiCheckoutOrder
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') @override $Res call({Object? orderId = null,Object? status = null,Object? amountKobo = null,}) {
+  return _then(MultiCheckoutOrder(
+orderId: null == orderId ? _self.orderId : orderId // ignore: cast_nullable_to_non_nullable
+as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
+as String,amountKobo: null == amountKobo ? _self.amountKobo : amountKobo // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+}
+
+
+/// Adds pattern-matching-related methods to [MultiCheckoutOrder].
+extension MultiCheckoutOrderPatterns on MultiCheckoutOrder {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _MultiCheckoutOrder value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _MultiCheckoutOrder() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _MultiCheckoutOrder value)  $default,){
+final _that = this;
+switch (_that) {
+case _MultiCheckoutOrder():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _MultiCheckoutOrder value)?  $default,){
+final _that = this;
+switch (_that) {
+case _MultiCheckoutOrder() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String orderId,  String status,  int amountKobo)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _MultiCheckoutOrder() when $default != null:
+return $default(_that.orderId,_that.status,_that.amountKobo);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String orderId,  String status,  int amountKobo)  $default,) {final _that = this;
+switch (_that) {
+case _MultiCheckoutOrder():
+return $default(_that.orderId,_that.status,_that.amountKobo);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String orderId,  String status,  int amountKobo)?  $default,) {final _that = this;
+switch (_that) {
+case _MultiCheckoutOrder() when $default != null:
+return $default(_that.orderId,_that.status,_that.amountKobo);case _:
+  return null;
+
+}
+}
+
+}
+
+/// @nodoc
+@JsonSerializable()
+
+class _MultiCheckoutOrder implements MultiCheckoutOrder {
+  const _MultiCheckoutOrder({required this.orderId, this.status = '', this.amountKobo = 0});
+  factory _MultiCheckoutOrder.fromJson(Map<String, dynamic> json) => _$MultiCheckoutOrderFromJson(json);
+
+@override final  String orderId;
+@override@JsonKey() final  String status;
+@override@JsonKey() final  int amountKobo;
+
+/// Create a copy of MultiCheckoutOrder
+/// with the given fields replaced by the non-null parameter values.
+@override @JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+_$MultiCheckoutOrderCopyWith<_MultiCheckoutOrder> get copyWith => __$MultiCheckoutOrderCopyWithImpl<_MultiCheckoutOrder>(this, _$identity);
+
+@override
+Map<String, dynamic> toJson() {
+  return _$MultiCheckoutOrderToJson(this, );
+}
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _MultiCheckoutOrder&&(identical(other.orderId, orderId) || other.orderId == orderId)&&(identical(other.status, status) || other.status == status)&&(identical(other.amountKobo, amountKobo) || other.amountKobo == amountKobo));
+}
+
+@JsonKey(includeFromJson: false, includeToJson: false)
+@override
+int get hashCode {
+    return Object.hash(runtimeType,orderId,status,amountKobo);
+}
+
+@override
+String toString() {
+    return 'MultiCheckoutOrder(orderId: $orderId, status: $status, amountKobo: $amountKobo)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class _$MultiCheckoutOrderCopyWith<$Res> implements $MultiCheckoutOrderCopyWith<$Res> {
+  factory _$MultiCheckoutOrderCopyWith(_MultiCheckoutOrder value, $Res Function(_MultiCheckoutOrder) _then) = __$MultiCheckoutOrderCopyWithImpl;
+@override @useResult
+$Res call({
+ String orderId, String status, int amountKobo
+});
+
+
+
+
+}
+/// @nodoc
+class __$MultiCheckoutOrderCopyWithImpl<$Res>
+    implements _$MultiCheckoutOrderCopyWith<$Res> {
+  __$MultiCheckoutOrderCopyWithImpl(this._self, this._then);
+
+  final _MultiCheckoutOrder _self;
+  final $Res Function(_MultiCheckoutOrder) _then;
+
+/// Create a copy of MultiCheckoutOrder
+/// with the given fields replaced by the non-null parameter values.
+@override @pragma('vm:prefer-inline') $Res call({Object? orderId = null,Object? status = null,Object? amountKobo = null,}) {
+  return _then(_MultiCheckoutOrder(
+orderId: null == orderId ? _self.orderId : orderId // ignore: cast_nullable_to_non_nullable
+as String,status: null == status ? _self.status : status // ignore: cast_nullable_to_non_nullable
+as String,amountKobo: null == amountKobo ? _self.amountKobo : amountKobo // ignore: cast_nullable_to_non_nullable
+as int,
+  ));
+}
+
+
+}
+
+
+/// @nodoc
 mixin _$PaymentMethodOption {
 
  String get id; String get label; bool get available; String? get reason; int? get balanceKobo; int? get shortByKobo;

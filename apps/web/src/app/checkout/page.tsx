@@ -1,18 +1,22 @@
 "use client";
 
-import { ApiError, formatNaira, formatTime, idempotentCalls, isMeasured, type DeliveryAddress, type Fulfillment, type PlaceLookup, type Quote } from "@gudmeal/api-client";
+import { ApiError, formatNaira, formatTime, idempotentCalls, isMeasured, type CheckoutResult, type DeliveryAddress, type MultiCheckoutResult, type Fulfillment, type PlaceLookup, type Quote } from "@gudmeal/api-client";
 import { AddressSearch, Button, Card, EmptyState, ErrorState, Field, Input, MapView, Price, Select, Skeleton, cn } from "@gudmeal/ui";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { Bike, ShieldCheck, Store } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { CartLineRow } from "@/components/cart-drawer";
 import { checkoutProvider, continueAfterCheckout, PaymentMethodPicker, type PayMethod } from "@/components/payment-method";
 import { RequireAuth } from "@/components/require-auth";
 import { useApi } from "@/lib/api";
 import { toCartLines, useCart } from "@/lib/cart";
 import { AREAS, CITY_NAMES, useLocation } from "@/lib/location";
 import { GOOGLE_MAPS_BROWSER_KEY } from "@/lib/maps";
+
+/** The most orders (shops) one payment can cover (`POST /v1/checkouts`). */
+const MAX_SHOPS_PER_PAYMENT = 10;
 
 /** `value` once it has stopped changing for `ms`: typing asks for one price, not one for every letter. */
 function useSettled<T>(value: T, ms = 500): T {
@@ -36,7 +40,7 @@ export default function CheckoutPage() {
 
 function Checkout() {
   const api = useApi();
-  const { cart, clear } = useCart();
+  const { shops, setQuantity, remove, clear } = useCart();
   const { area } = useLocation();
   const [fulfillment, setFulfillment] = useState<Fulfillment>("delivery");
   const [addressId, setAddressId] = useState<string>("new");
@@ -52,12 +56,20 @@ function Checkout() {
   const [appliedVoucher, setAppliedVoucher] = useState<string | null>(null);
   const [method, setMethod] = useState<PayMethod>("card");
   const router = useRouter();
-  const [sendOrder] = useState(() => idempotentCalls("order"));
+  // One sender per quote: each shop's order is its own request with its own key (see `idempotentCalls`).
+  const [orderSenders] = useState(() => new Map<string, ReturnType<typeof idempotentCalls>>());
+  const sendOrder = (quoteId: string) => {
+    let send = orderSenders.get(quoteId);
+    if (!send) orderSenders.set(quoteId, (send = idempotentCalls("order")));
+    return send;
+  };
   const [sendCheckout] = useState(() => idempotentCalls("checkout"));
   // The street and the instructions are part of the quote (the order takes its address from it), so the price is
   // asked for again when they change: once typing stops, because the API allows about one quote every two seconds.
-  const { street, notes } = useSettled({ street: line1.trim(), notes: instructions.trim() });
-  const typing = street !== line1.trim() || notes !== instructions.trim();
+  // Quantities changed with - / + are settled the same way: a few taps ask for one price per shop, not one per tap.
+  const basket = shops.map((sh) => ({ restaurant_id: sh.restaurant_id, lines: toCartLines(sh.items) }));
+  const { street, notes, priced } = useSettled({ street: line1.trim(), notes: instructions.trim(), priced: basket });
+  const typing = street !== line1.trim() || notes !== instructions.trim() || JSON.stringify(priced) !== JSON.stringify(basket);
 
   const addresses = useQuery({ queryKey: ["addresses"], queryFn: () => api.me.addresses() });
   const myVouchers = useQuery({ queryKey: ["my-vouchers"], queryFn: () => api.rewards.vouchers() });
@@ -89,40 +101,56 @@ function Checkout() {
     if (found.place.area && AREAS.some((a) => a.name === found.place.area)) setAreaChoice(found.place.area);
   }
 
-  const quoteReady = cart.items.length > 0 && cart.restaurant_id && (fulfillment === "pickup" || address);
-  const quote = useQuery({
-    queryKey: ["quote", cart, fulfillment, address, appliedVoucher],
-    enabled: Boolean(quoteReady),
-    queryFn: () => api.orders.quote({
-      restaurant_id: cart.restaurant_id!, lines: toCartLines(cart), fulfillment,
-      delivery_address: address, voucher_code: appliedVoucher,
+  const quoteReady = priced.length > 0 && (fulfillment === "pickup" || Boolean(address));
+  // One quote per shop, same fulfilment and address. The voucher goes with the first shop's quote only. The API allows
+  // a burst of about 30 quotes, then one every two seconds: a shop is asked again only when its own items change.
+  const quotes = useQueries({
+    queries: priced.map((shop, i) => {
+      const voucher = i === 0 ? appliedVoucher : null;
+      return {
+        queryKey: ["quote", shop.restaurant_id, shop.lines, fulfillment, address, voucher],
+        enabled: quoteReady,
+        queryFn: () => api.orders.quote({
+          restaurant_id: shop.restaurant_id, lines: shop.lines, fulfillment, delivery_address: address, voucher_code: voucher,
+        }),
+        retry: false,
+      };
     }),
-    retry: false,
   });
+  const allQuotes = quotes.length > 0 && quotes.every((q) => q.data) ? quotes.map((q) => q.data!) : null;
+  const totalKobo = allQuotes ? allQuotes.reduce((sum, q) => sum + q.breakdown.total_kobo, 0) : null;
+  const refetchQuotes = () => quotes.forEach((q) => void q.refetch());
+  const tooManyShops = shops.length > MAX_SHOPS_PER_PAYMENT;
 
   const placeOrder = useMutation({
-    mutationFn: async (q: Quote) => {
+    mutationFn: async (qs: Quote[]) => {
       const contact = phone || undefined;
       if (addressId === "new" && address && fulfillment === "delivery") {
         await api.me.addAddress({ ...address, contact_phone: contact ?? null, label: "Saved at checkout" }).catch(() => undefined);
       }
       // Each request keeps its key only until the API answers it: a new quote, phone number or payment method is a
       // new request, and so is trying again after a refusal. Asking twice for one quote gives the same order.
-      const order = await sendOrder({ quote: q.id, contact }, (key) => api.orders.create(q.id, key, "web", contact));
+      const ids: string[] = [];
+      for (const q of qs) {
+        const order = await sendOrder(q.id)({ quote: q.id, contact }, (key) => api.orders.create(q.id, key, "web", contact));
+        ids.push(order.id);
+      }
       const provider = checkoutProvider(method);
-      return sendCheckout({ order: order.id, provider }, (key) => api.orders.checkout(order.id, key, provider));
+      // Several shops: one payment for all their orders. One shop: that order's own checkout (the same answer).
+      return sendCheckout({ orders: ids, provider }, (key): Promise<CheckoutResult | MultiCheckoutResult> =>
+        ids.length === 1 ? api.orders.checkout(ids[0]!, key, provider) : api.orders.checkoutMany(ids, key, provider));
     },
     onSuccess: (res) => {
       clear();
       continueAfterCheckout(res, router.push);
     },
     onError: (e) => {
-      // The price is no longer valid: get a new one, so the next press of the button can go through.
-      if (e instanceof ApiError && (e.code === "quote_expired" || e.code === "price_changed")) void quote.refetch();
+      // The price is no longer valid: get new ones, so the next press of the button can go through.
+      if (e instanceof ApiError && (e.code === "quote_expired" || e.code === "price_changed")) refetchQuotes();
     },
   });
 
-  if (!cart.items.length) {
+  if (!shops.length) {
     return (
       <div className="container-page py-16">
         <EmptyState title="Your cart is empty" body="Pick a restaurant and add something delicious."
@@ -131,12 +159,26 @@ function Checkout() {
     );
   }
 
-  const voucherError = quote.error instanceof ApiError && quote.error.code === "voucher_invalid" ? quote.error.message : null;
+  const firstError = quotes[0]?.error;
+  const voucherError = firstError instanceof ApiError && firstError.code === "voucher_invalid" ? firstError.message : null;
+  const several = shops.length > 1;
 
   return (
     <div className="container-page grid gap-8 py-8 lg:grid-cols-[1fr_400px]">
       <div className="space-y-6">
         <h1 className="font-display text-3xl">Checkout</h1>
+        <Card className="space-y-4 p-5">
+          <div>
+            <h2 className="font-semibold">Your cart</h2>
+            {several && <p className="text-sm text-muted">{shops.length} shops · one order per shop, one payment for all</p>}
+          </div>
+          {shops.map((shop) => (
+            <section key={shop.restaurant_id} aria-label={`Items from ${shop.restaurant_name}`} className="space-y-2">
+              <h3 className="text-sm font-bold">{shop.restaurant_name}</h3>
+              {shop.items.map((item) => <CartLineRow key={item.key} item={item} onQuantity={setQuantity} onRemove={remove} />)}
+            </section>
+          ))}
+        </Card>
         <Card className="space-y-4 p-5">
           <h2 className="font-semibold">How would you like it?</h2>
           <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Fulfilment">
@@ -201,7 +243,7 @@ function Checkout() {
                     </Select>
                   </Field>
                 )}
-                <Field label="Phone for the rider" htmlFor="phone">
+                <Field label="Phone number" htmlFor="phone">
                   <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0803 000 0000" inputMode="tel" autoComplete="tel" />
                 </Field>
                 <Field label="Delivery instructions" htmlFor="ins">
@@ -214,7 +256,7 @@ function Checkout() {
 
         <Card className="space-y-3 p-5">
           <h2 className="font-semibold">Payment</h2>
-          <PaymentMethodPicker totalKobo={quote.data?.breakdown.total_kobo ?? null} value={method} onChange={setMethod}
+          <PaymentMethodPicker totalKobo={totalKobo} value={method} onChange={setMethod}
             cash={{ offered: true, reason: fulfillment === "pickup" ? "Only for delivery orders" : null }} />
         </Card>
 
@@ -236,45 +278,64 @@ function Checkout() {
             </div>
           )}
           {voucherError && <p className="text-sm text-danger" role="alert">{voucherError}</p>}
-          {appliedVoucher && quote.data?.breakdown.voucher_code && <p className="text-sm text-secondary">Voucher {appliedVoucher} applied.</p>}
+          {appliedVoucher && quotes[0]?.data?.breakdown.voucher_code && <p className="text-sm text-secondary">Voucher {appliedVoucher} applied.</p>}
+          {several && <p className="text-xs text-muted">Voucher applies to one shop&apos;s order ({shops[0]!.restaurant_name}).</p>}
         </Card>
       </div>
 
       <aside className="lg:sticky lg:top-24 lg:self-start">
         <Card className="space-y-4 p-5">
-          <div>
-            <h2 className="font-display text-xl">{cart.restaurant_name}</h2>
-            <p className="text-sm text-muted">{cart.items.reduce((n, i) => n + i.quantity, 0)} items</p>
-          </div>
-          <ul className="space-y-2 text-sm">
-            {(quote.data?.lines ?? []).map((ln) => (
-              <li key={ln.item_id + ln.selection_labels.join()} className="flex justify-between gap-3">
-                <span>{ln.quantity} × {ln.name}{ln.selection_labels.length > 0 && <span className="block text-xs text-muted">{ln.selection_labels.join(" · ")}</span>}</span>
-                <Price kobo={ln.line_total_kobo} />
-              </li>
-            ))}
-          </ul>
-          {!quoteReady ? (
-            <p className="text-sm text-muted">Add a delivery address to see your total.</p>
-          ) : quote.isLoading ? (
-            <Skeleton className="h-32" />
-          ) : quote.error && !voucherError ? (
-            <ErrorState message={(quote.error as Error).message} onRetry={() => quote.refetch()} />
-          ) : quote.data ? (
-            <Breakdown quote={quote.data} />
-          ) : null}
+          <h2 className="font-display text-xl">Summary</h2>
+          {shops.map((shop, i) => {
+            const q = quotes[i];
+            const quoteError = q?.error && !(i === 0 && voucherError) ? (q.error as Error).message : null;
+            return (
+              <section key={shop.restaurant_id} aria-label={`${shop.restaurant_name} order`} className="space-y-3">
+                <div>
+                  <h3 className="font-semibold">{shop.restaurant_name}</h3>
+                  <p className="text-sm text-muted">{shop.count} {shop.count === 1 ? "item" : "items"}</p>
+                </div>
+                <ul className="space-y-2 text-sm">
+                  {(q?.data?.lines ?? []).map((ln) => (
+                    <li key={ln.item_id + ln.selection_labels.join() + (ln.notes ?? "")} className="flex justify-between gap-3">
+                      <span>{ln.quantity} × {ln.name}{ln.selection_labels.length > 0 && <span className="block text-xs text-muted">{ln.selection_labels.join(" · ")}</span>}</span>
+                      <Price kobo={ln.line_total_kobo} />
+                    </li>
+                  ))}
+                </ul>
+                {!quoteReady ? null : !q || q.isLoading ? (
+                  <Skeleton className="h-32" />
+                ) : quoteError ? (
+                  <ErrorState message={quoteError} onRetry={() => q.refetch()} />
+                ) : q.data ? (
+                  <Breakdown quote={q.data} totalLabel={several ? "Shop total" : "Total to pay"} showPlus={i === 0} />
+                ) : null}
+              </section>
+            );
+          })}
+          {!quoteReady && <p className="text-sm text-muted">Add a delivery address to see your total.</p>}
+          {several && totalKobo != null && (
+            <div className="flex justify-between border-t-2 border-text pt-3 text-lg font-bold">
+              <span>Total to pay</span><Price kobo={totalKobo} />
+            </div>
+          )}
+          {tooManyShops && (
+            <p className="text-sm text-danger" role="alert">
+              One payment can cover up to {MAX_SHOPS_PER_PAYMENT} shops. Remove the items of {shops.length - MAX_SHOPS_PER_PAYMENT} {shops.length - MAX_SHOPS_PER_PAYMENT === 1 ? "shop" : "shops"} to continue.
+            </p>
+          )}
           {placeOrder.error && <ErrorState message={(placeOrder.error as Error).message} />}
-          <Button block size="lg" disabled={!quote.data || typing || placeOrder.isPending} loading={placeOrder.isPending}
-            onClick={() => quote.data && placeOrder.mutate(quote.data)}>
+          <Button block size="lg" disabled={!allQuotes || typing || tooManyShops || placeOrder.isPending} loading={placeOrder.isPending}
+            onClick={() => allQuotes && placeOrder.mutate(allQuotes)}>
             {method === "cash"
-              ? `Place order · pay ${quote.data ? formatNaira(quote.data.breakdown.total_kobo) : ""} on delivery`
-              : `Pay ${quote.data ? formatNaira(quote.data.breakdown.total_kobo) : ""}${method === "wallet" ? " from wallet" : ""}`}
+              ? `Place ${several ? "orders" : "order"} · pay ${totalKobo != null ? formatNaira(totalKobo) : ""} on delivery`
+              : `Pay ${totalKobo != null ? formatNaira(totalKobo) : ""}${method === "wallet" ? " from wallet" : ""}`}
           </Button>
           <p className="flex items-start gap-2 text-xs text-muted">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-secondary" aria-hidden="true" />
-            {method === "card" && "You'll pay on a secure payment page. Your order is sent to the kitchen once we verify the payment."}
-            {method === "wallet" && "Paid instantly from your Yummy Chops wallet. If the order is cancelled, the money goes straight back."}
-            {method === "cash" && "Your order goes to the kitchen now. Pay the rider in cash when it arrives, then share your delivery code."}
+            {method === "card" && `You'll pay on a secure payment page. Your ${several ? "orders are" : "order is"} sent once we verify the payment.`}
+            {method === "wallet" && `Paid instantly from your Yummy Chops wallet. If ${several ? "an" : "the"} order is cancelled, the money goes straight back.`}
+            {method === "cash" && `Your ${several ? "orders go to their shops" : "order goes to the kitchen"} now. Pay the rider in cash when it arrives, then share your delivery code.`}
           </p>
         </Card>
       </aside>
@@ -282,7 +343,7 @@ function Checkout() {
   );
 }
 
-function Breakdown({ quote }: { quote: Quote }) {
+function Breakdown({ quote, totalLabel, showPlus }: { quote: Quote; totalLabel: string; showPlus: boolean }) {
   const b = quote.breakdown;
   const rows: [string, number][] = [
     ["Subtotal", b.subtotal_kobo],
@@ -303,7 +364,7 @@ function Breakdown({ quote }: { quote: Quote }) {
         <div className="flex justify-between font-semibold text-secondary"><dt>Yummy Chops Plus saved you</dt><dd><Price kobo={b.plus_savings_kobo} /></dd></div>
       )}
       <div className="flex justify-between border-t border-border pt-2 text-base font-bold">
-        <dt>Total</dt><dd><Price kobo={b.total_kobo} /></dd>
+        <dt>{totalLabel}</dt><dd><Price kobo={b.total_kobo} /></dd>
       </div>
       {quote.fulfillment === "delivery" && quote.road_distance_km ? (
         <p className="pt-1 text-xs text-muted">
@@ -314,7 +375,7 @@ function Breakdown({ quote }: { quote: Quote }) {
         {quote.fulfillment === "delivery" ? `Estimated arrival ${formatTime(quote.estimated_delivery_at)}` : `Ready in about ${quote.eta_minutes} min`}
         {" · "}price held until {formatTime(quote.expires_at)}
       </p>
-      {!b.plus_savings_kobo && b.delivery_fee_kobo > 0 && (
+      {showPlus && !b.plus_savings_kobo && b.delivery_fee_kobo > 0 && (
         <Link href="/plus" className="block pt-1 text-xs font-bold text-primary underline-offset-2 hover:underline">Get free delivery with Yummy Chops Plus →</Link>
       )}
     </dl>

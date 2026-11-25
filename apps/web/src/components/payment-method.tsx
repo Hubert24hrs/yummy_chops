@@ -1,6 +1,6 @@
 "use client";
 
-import { formatNaira, type CheckoutResult } from "@gudmeal/api-client";
+import { formatNaira, type CheckoutResult, type MultiCheckoutResult } from "@gudmeal/api-client";
 import { cn } from "@gudmeal/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Banknote, CreditCard, Wallet } from "lucide-react";
@@ -15,12 +15,48 @@ export function checkoutProvider(method: PayMethod): string | undefined {
   return method === "card" ? undefined : method;
 }
 
-/** Card payments continue on the gateway's page; wallet and cash orders are already placed. */
-export function continueAfterCheckout(res: CheckoutResult, go: (path: string) => void): void {
-  if (res.authorization_url) window.location.assign(res.authorization_url);
-  // Paid from the wallet: the money has moved, so the receipt printer comes next (ADR-0019). A
-  // pay-on-delivery order is paid at the door; its receipt is on the order page once the cash is in.
-  else go(res.provider === "wallet" ? `/orders/${res.order_id}/receipt` : `/orders/${res.order_id}`);
+const PAID_TOGETHER_KEY = "gudmeal.checkout.orders.v1";
+
+/**
+ * A card payment for several orders (one per shop) comes back to /checkout/callback with the first order's id only.
+ * The page remembers which orders the payment covers, so the return page can show all of them.
+ */
+export function rememberPaidTogether(reference: string | null, orderIds: string[]): void {
+  try {
+    if (reference && orderIds.length > 1) window.sessionStorage.setItem(PAID_TOGETHER_KEY, JSON.stringify({ reference, orderIds }));
+    else window.sessionStorage.removeItem(PAID_TOGETHER_KEY);
+  } catch {
+    /* storage unavailable: the return page still verifies the payment and shows the first order */
+  }
+}
+
+/** The orders one payment covered, when it covered more than one (see `rememberPaidTogether`). */
+export function ordersPaidTogether(reference: string | null): string[] {
+  try {
+    const saved = JSON.parse(window.sessionStorage.getItem(PAID_TOGETHER_KEY) ?? "null") as { reference: string; orderIds: string[] } | null;
+    return saved && reference && saved.reference === reference && Array.isArray(saved.orderIds) ? saved.orderIds : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Card payments continue on the gateway's page; wallet and cash orders are already placed. Works for one order
+ * (`POST /v1/orders/{id}/checkout`) and for one payment covering several (`POST /v1/checkouts`).
+ */
+export function continueAfterCheckout(res: CheckoutResult | MultiCheckoutResult, go: (path: string) => void): void {
+  const orderIds = "order_ids" in res ? res.order_ids : [res.order_id];
+  if (res.authorization_url) {
+    rememberPaidTogether(res.reference, orderIds);
+    window.location.assign(res.authorization_url);
+  } else if (orderIds.length > 1) {
+    // Several shops: each order is listed on its own on the Orders page.
+    go("/orders");
+  } else {
+    // Paid from the wallet: the money has moved, so the receipt printer comes next (ADR-0019). A
+    // pay-on-delivery order is paid at the door; its receipt is on the order page once the cash is in.
+    go(res.provider === "wallet" ? `/orders/${orderIds[0]}/receipt` : `/orders/${orderIds[0]}`);
+  }
 }
 
 interface CashRules {

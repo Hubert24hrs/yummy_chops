@@ -27,18 +27,16 @@ export function ItemDialog({ item, groups, restaurantId, restaurantName, onClose
   /** Group orders: hand the chosen line to the caller instead of adding it to this device's cart. */
   onAdd?: (line: CartLine) => void;
 }) {
-  const { cart, add } = useCart();
+  const { add, openCart } = useCart();
   const [chosen, setChosen] = useState<Record<string, string[]>>({});
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState("");
-  const [confirmReplace, setConfirmReplace] = useState(false);
 
   const itemGroups = item.option_group_ids.map((id) => groups[id]).filter((g): g is OptionGroup => Boolean(g));
   const extras = useMemo(() => itemGroups.reduce((sum, g) =>
     sum + (chosen[g.id] ?? []).reduce((s, cid) => s + (g.choices.find((c) => c.id === cid)?.price_delta_kobo ?? 0), 0), 0), [chosen, itemGroups]);
   const unit = item.price_kobo + extras;
   const error = validateSelections(item, groups, chosen);
-  const otherRestaurant = !onAdd && cart.restaurant_id !== null && cart.restaurant_id !== restaurantId && cart.items.length > 0;
 
   function toggle(g: OptionGroup, choiceId: string) {
     setChosen((prev) => {
@@ -52,10 +50,6 @@ export function ItemDialog({ item, groups, restaurantId, restaurantName, onClose
 
   function addToCart() {
     if (error) return;
-    if (otherRestaurant && !confirmReplace) {
-      setConfirmReplace(true);
-      return;
-    }
     const selections: OptionSelection[] = itemGroups.filter((g) => (chosen[g.id] ?? []).length)
       .map((g) => ({ group_id: g.id, choice_ids: chosen[g.id]! }));
     const labels = itemGroups.flatMap((g) => (chosen[g.id] ?? []).map((cid) => `${g.name}: ${g.choices.find((c) => c.id === cid)?.name}`));
@@ -64,22 +58,17 @@ export function ItemDialog({ item, groups, restaurantId, restaurantName, onClose
       onClose();
       return;
     }
+    // One cart holds items from every shop: this joins whatever is already in it.
     add(restaurantId, restaurantName, {
-      key: cartKey(item.id, selections, notes.trim() || undefined), item_id: item.id, name: item.name, unit_price_kobo: unit,
+      key: cartKey(restaurantId, item.id, selections, notes.trim() || undefined), item_id: item.id, name: item.name, unit_price_kobo: unit,
       quantity, selections, selection_labels: labels, notes: notes.trim() || undefined,
     });
     onClose();
+    openCart();
   }
 
   return (
     <Dialog open onClose={onClose} title={item.name} footer={
-      <div className="space-y-3">
-      {confirmReplace && (
-        // Next to the button (not at the end of a long options list) so it is seen before confirming.
-        <p role="alert" className="rounded-md bg-accent-soft p-3 text-sm">
-          Your cart has items from {cart.restaurant_name}. Adding this will start a new cart from {restaurantName}.
-        </p>
-      )}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1">
           <button className="grid size-9 place-items-center rounded-full border border-border" aria-label="Decrease quantity"
@@ -89,9 +78,8 @@ export function ItemDialog({ item, groups, restaurantId, restaurantName, onClose
             onClick={() => setQuantity((q) => Math.min(20, q + 1))}><Plus className="size-4" /></button>
         </div>
         <Button block size="lg" onClick={addToCart} disabled={Boolean(error)}>
-          {confirmReplace ? "Start new cart" : "Add"} · {formatNaira(unit * quantity)}
+          {onAdd ? "Add" : "Add to cart"} · {formatNaira(unit * quantity)}
         </Button>
-      </div>
       </div>
     }>
       <div className="space-y-5">

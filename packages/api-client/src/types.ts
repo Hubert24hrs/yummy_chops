@@ -191,6 +191,19 @@ export interface CheckoutResult {
   /** Set when the default gateway was down and the backup gateway took the payment. */
   failover_from?: string;
 }
+/** `POST /v1/checkouts`: one payment covering several of the customer's orders (one per shop). */
+export interface MultiCheckoutResult {
+  order_ids: string[]; provider: string;
+  /** The one payment covering all the orders; null for pay on delivery. */
+  reference: string | null;
+  /** Open this for card payments; null for wallet and pay on delivery. */
+  authorization_url: string | null;
+  amount_kobo: Kobo; currency: string;
+  /** "succeeded" for wallet, "pending" for card and cash. */
+  payment_status: string;
+  orders: { order_id: string; status: string; amount_kobo: Kobo }[];
+  failover_from?: string;
+}
 export interface PaymentView {
   id: string; order_id: string | null; purpose?: "order" | "wallet_topup" | "plus" | "group_share"; provider: string; reference: string;
   amount_kobo: Kobo; status: string; paid_at: string | null; refunded_kobo: Kobo; created_at: string;

@@ -11,7 +11,7 @@ const publicConfig = vi.fn();
 vi.mock("@/lib/api", () => ({ useApi: () => api, publicApi: { catalog: { publicConfig } } }));
 vi.mock("next/link", () => ({ default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => <a href={href} {...rest}>{children}</a> }));
 
-const { PaymentMethodPicker, checkoutProvider, continueAfterCheckout } = await import("./payment-method");
+const { PaymentMethodPicker, checkoutProvider, continueAfterCheckout, ordersPaidTogether, rememberPaidTogether } = await import("./payment-method");
 
 function wallet(balance: number, enabled = true) {
   return { balance_kobo: balance, currency: "NGN", enabled, refund_to_wallet: false, transactions: [], seller: null,
@@ -77,5 +77,24 @@ describe("payment method picker", () => {
     const go = vi.fn();
     continueAfterCheckout({ order_id: "o1", status: "submitted_to_restaurant", provider: "cash", reference: "R", authorization_url: null, amount_kobo: 1 }, go);
     expect(go).toHaveBeenCalledWith("/orders/o1");
+  });
+
+  it("after one payment for several shops' orders, goes to Orders; a card payment remembers which orders it covers", () => {
+    const multi = (provider: string, reference: string | null) => ({
+      order_ids: ["o1", "o2"], provider, reference, authorization_url: null, amount_kobo: 900_000, currency: "NGN",
+      payment_status: provider === "wallet" ? "succeeded" : "pending", orders: [],
+    });
+    const go = vi.fn();
+    continueAfterCheckout(multi("wallet", "YC-B-1"), go);
+    continueAfterCheckout(multi("cash", null), go);
+    expect(go.mock.calls).toEqual([["/orders"], ["/orders"]]);
+    continueAfterCheckout({ ...multi("wallet", "YC-B-2"), order_ids: ["o9"] }, go);
+    expect(go).toHaveBeenLastCalledWith("/orders/o9/receipt");
+
+    rememberPaidTogether("YC-B-3", ["o1", "o2"]);
+    expect(ordersPaidTogether("YC-B-3")).toEqual(["o1", "o2"]);
+    expect(ordersPaidTogether("YC-OTHER")).toEqual([]);
+    rememberPaidTogether("YC-B-4", ["o5"]); // one order: nothing to remember
+    expect(ordersPaidTogether("YC-B-3")).toEqual([]);
   });
 });

@@ -5,7 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, CircleAlert, Smartphone, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { ordersPaidTogether } from "@/components/payment-method";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
@@ -49,6 +50,8 @@ function Callback() {
   const orderId = params.get("order_id");
   const isTopUp = params.get("purpose") === "wallet_topup";
   const groupId = params.get("group_order_id");
+  // One payment for orders from several shops: the gateway comes back with the first order only.
+  const [paidTogether] = useState(() => ordersPaidTogether(reference));
 
   // Never trust the redirect: ask the server to verify with the provider.
   const verify = useQuery({
@@ -61,11 +64,14 @@ function Callback() {
   const status = verify.data?.status;
   // An order that has just been paid for: straight to the receipt printer (ADR-0019).
   const router = useRouter();
-  const paidOrderId =
-    status === "succeeded" && !isTopUp && (verify.data?.purpose ?? "order") === "order" ? verify.data?.order_id : undefined;
+  const paidOrder = status === "succeeded" && !isTopUp && (verify.data?.purpose ?? "order") === "order";
+  const paidOrderId = paidOrder ? verify.data?.order_id ?? orderId : undefined;
+  const severalOrders = paidTogether.length > 1;
   useEffect(() => {
-    if (paidOrderId) router.replace(`/orders/${paidOrderId}/receipt`);
-  }, [paidOrderId, router]);
+    // Several orders: each is listed on its own on the Orders page (each has its own receipt there).
+    if (paidOrder && severalOrders) router.replace("/orders");
+    else if (paidOrderId) router.replace(`/orders/${paidOrderId}/receipt`);
+  }, [paidOrder, severalOrders, paidOrderId, router]);
   /** Where to go from a payment that is not confirmed: back to what was being paid for. */
   const back = (
     <>
@@ -107,12 +113,18 @@ function Callback() {
                 <p className="text-sm text-muted">The money is in your Yummy Chops wallet. Pay for orders in one tap.</p>
                 <Link href="/wallet"><Button size="lg" block>Go to my wallet</Button></Link>
               </>
+            ) : severalOrders ? (
+              <>
+                <h1 className="font-display text-2xl">Payment confirmed</h1>
+                <p className="text-sm text-muted">Your {paidTogether.length} orders have been sent to their shops. Opening your orders…</p>
+                <Link href="/orders"><Button size="lg" block>Track my orders</Button></Link>
+              </>
             ) : (
               <>
                 <h1 className="font-display text-2xl">Payment confirmed</h1>
                 <p className="text-sm text-muted">Your order has been sent. Opening your receipt…</p>
-                <Link href={`/orders/${verify.data!.order_id}/receipt`}><Button size="lg" block>Print my receipt</Button></Link>
-                <Link href={`/orders/${verify.data!.order_id}`}><Button variant="outline" block>Track my order</Button></Link>
+                <Link href={`/orders/${paidOrderId}/receipt`}><Button size="lg" block>Print my receipt</Button></Link>
+                <Link href={`/orders/${paidOrderId}`}><Button variant="outline" block>Track my order</Button></Link>
               </>
             )}
           </>

@@ -49,8 +49,13 @@ const market = (over: Partial<RestaurantDetail["restaurant"]> = {}): RestaurantD
 });
 
 function CartCount() {
-  const { count, cart } = useCart();
-  return <output aria-label="cart">{count} from {cart.restaurant_name ?? "nowhere"}</output>;
+  const { count, shops, drawerOpen } = useCart();
+  return (
+    <>
+      <output aria-label="cart">{count} from {shops.map((s) => s.restaurant_name).join(" + ") || "nowhere"}</output>
+      <output aria-label="drawer">{drawerOpen ? "open" : "closed"}</output>
+    </>
+  );
 }
 
 const renderShop = (d: RestaurantDetail = market(), openItemId?: string) =>
@@ -171,26 +176,28 @@ describe("a shop browsed by the aisle", () => {
     expect(within(dialog).getByText("How much?")).toBeTruthy();
     expect(within(dialog).getByText("+₦3,800")).toBeTruthy();
     expect(within(dialog).getByText(/Notes for your shopper/)).toBeTruthy();
-    expect((within(dialog).getByRole("button", { name: /Add · / }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(dialog).getByRole("button", { name: /Add to cart · / }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByLabelText("drawer").textContent).toBe("closed"); // one-tap adds keep the customer on the shelf
     fireEvent.click(within(dialog).getByLabelText(/1 kg/));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Add · ₦8,000" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add to cart · ₦8,000" }));
     expect(screen.getByLabelText("cart").textContent).toBe("3 from Lekki Market Shopper");
+    expect(screen.getByLabelText("drawer").textContent).toBe("open"); // the customer lands on their cart
   });
 
-  it("asks before replacing an order from another shop", () => {
-    window.localStorage.setItem("gudmeal.cart.v1", JSON.stringify({
-      restaurant_id: "r-jollof", restaurant_name: "Jollof Junction",
-      items: [{ key: "jj#", item_id: "jj", name: "Jollof", unit_price_kobo: 350_000, quantity: 1, selections: [], selection_labels: [] }],
-    }));
+  it("adds to the same cart as another shop's items, without asking to start a new cart", () => {
+    window.localStorage.setItem("gudmeal.cart.v2", JSON.stringify({ items: [{
+      key: "r-jollof/jj##", restaurant_id: "r-jollof", restaurant_name: "Jollof Junction", item_id: "jj", name: "Jollof",
+      unit_price_kobo: 350_000, quantity: 1, selections: [], selection_labels: [],
+    }] }));
     renderShop();
     expect(screen.getByLabelText("cart").textContent).toBe("1 from Jollof Junction");
-    fireEvent.click(within(screen.getByRole("region", { name: "Rice, grains & garri" })).getByRole("button", { name: "Add Local rice" }));
-    const dialog = document.querySelector("dialog")!;
-    fireEvent.click(within(dialog).getByRole("button", { name: /Add · / }));
-    expect(within(dialog).getByRole("alert").textContent).toContain("Your cart has items from Jollof Junction");
-    expect(screen.getByLabelText("cart").textContent).toBe("1 from Jollof Junction");
-    fireEvent.click(within(dialog).getByRole("button", { name: /Start new cart/ }));
-    expect(screen.getByLabelText("cart").textContent).toBe("1 from Lekki Market Shopper");
+    const grainsAisle = screen.getByRole("region", { name: "Rice, grains & garri" });
+    fireEvent.click(within(grainsAisle).getByRole("button", { name: "Add Local rice" }));
+    expect(document.querySelector("dialog")).toBeNull();
+    expect(screen.queryByText(/new cart/i)).toBeNull();
+    expect(screen.getByLabelText("cart").textContent).toBe("2 from Jollof Junction + Lekki Market Shopper");
+    // The jollof is not counted as rice from this shop.
+    expect(within(grainsAisle).getByRole("button", { name: "Add another Local rice (1 in your order)" })).toBeTruthy();
   });
 
   it("lets people look but not buy while the shop is closed, and opens a linked product when it can be bought", () => {
