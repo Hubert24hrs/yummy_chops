@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from ...domain.models import CartLine, DeliveryAddress, ParcelQuote, ParcelQuoteRequest, QuoteRequest
 from ...errors import NotFound
+from ...security.rbac import Permission
 from ...services.engagement import (
     MealPlanInput,
     ProfileUpdate,
@@ -216,7 +217,23 @@ async def get_order(order_id: str, c: Ctr, principal: CurrentPrincipal) -> dict[
 
 @router.get("/orders/{order_id}/events")
 async def order_events(order_id: str, c: Ctr, principal: CurrentPrincipal) -> Any:
-    return await c.orders.events(principal, order_id)
+    events = await c.orders.events(principal, order_id)
+    if principal.is_staff:
+        return events
+    # Customers, shops and riders see what happened and when; who on the team did it, their notes and the
+    # internal details stay with staff.
+    return [
+        {
+            "id": e.id,
+            "order_id": e.order_id,
+            "from_status": e.from_status,
+            "to_status": e.to_status,
+            "actor_type": e.actor_type,
+            "reason": None if e.actor_type == "staff" else e.reason,
+            "at": e.at,
+        }
+        for e in events
+    ]
 
 
 @router.get("/orders/{order_id}/codes")
@@ -224,26 +241,33 @@ async def order_codes(order_id: str, c: Ctr, principal: CurrentPrincipal) -> dic
     return await c.orders.customer_codes(principal, order_id)
 
 
+LIVE_STATUSES = ("rider_assigned", "picked_up", "in_transit")
+
+
 @router.get("/orders/{order_id}/tracking")
 async def order_tracking(order_id: str, c: Ctr, principal: CurrentPrincipal) -> dict[str, Any]:
     """Live delivery map data. The rider's position is only shared while they are on this delivery."""
     order = await c.orders.get_for(principal, order_id)
     tracking = await c.repos.get_tracking(order_id) or {}
-    live = order.status.value in ("rider_assigned", "picked_up", "in_transit") and tracking.get(
-        "active", True
+    # A shop sees how the delivery is going, but not where the rider is or the customer's exact pin (ADR-0028).
+    sees_map = principal.uid in (order.customer_id, order.rider_id) or principal.can(
+        Permission.ORDERS_READ_ALL
     )
+    live = sees_map and order.status.value in LIVE_STATUSES and tracking.get("active", True)
     return {
         "order_id": order.id,
         "status": order.status.value,
         "rider_name": order.rider_name,
         "rider_location": tracking.get("rider_location") if live else None,
-        "eta_minutes": tracking.get("eta_minutes") if live else None,
-        "eta_source": tracking.get("eta_source") if live else None,  # "google" (measured) or "estimate"
+        "eta_minutes": tracking.get("eta_minutes") if order.status.value in LIVE_STATUSES else None,
+        "eta_source": tracking.get("eta_source")  # "google" (measured) or "estimate"
+        if order.status.value in LIVE_STATUSES
+        else None,
         "route_polyline": tracking.get("route_polyline") if live else None,  # current leg, Google format
         "updated_at": tracking.get("updated_at"),
         "estimated_delivery_at": order.estimated_delivery_at,
         "pickup_location": order.restaurant_location,
-        "dropoff_location": order.delivery_address.location if order.delivery_address else None,
+        "dropoff_location": order.delivery_address.location if sees_map and order.delivery_address else None,
     }
 
 

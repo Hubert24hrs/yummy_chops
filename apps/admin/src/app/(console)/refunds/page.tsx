@@ -13,9 +13,15 @@ export default function RefundsPage() {
   const [status, setStatus] = useState("requested");
   const list = useQuery({ queryKey: ["refunds", status], queryFn: () => api.admin.refunds(status || undefined) });
   const decide = useMutation({
-    mutationFn: ({ id, approve }: { id: string; approve: boolean }) => api.admin.decideRefund(id, approve, window.prompt("Note for the audit log") ?? undefined),
+    mutationFn: ({ id, approve, note }: { id: string; approve: boolean; note?: string }) => api.admin.decideRefund(id, approve, note),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["refunds"] }),
   });
+  /** Asks for the note first. Cancel (or Esc) stops here: nothing is approved, rejected or paid. */
+  const ask = (id: string, approve: boolean) => {
+    const note = window.prompt(`${approve ? "Approve" : "Reject"} this refund? Note for the audit log (you can leave it empty). Cancel changes nothing.`);
+    if (note === null) return;
+    decide.mutate({ id, approve, note: note.trim() || undefined });
+  };
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -36,8 +42,8 @@ export default function RefundsPage() {
           { key: "status", header: "Status", render: (r) => <Badge tone={r.status === "succeeded" ? "success" : r.status === "requested" ? "warning" : "neutral"}>{r.status}</Badge> },
           { key: "actions", header: "", render: (r) => r.status === "requested" ? (
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => decide.mutate({ id: r.id, approve: true })}>Approve</Button>
-              <Button size="sm" variant="outline" onClick={() => decide.mutate({ id: r.id, approve: false })}>Reject</Button>
+              <Button size="sm" onClick={() => ask(r.id, true)}>Approve</Button>
+              <Button size="sm" variant="outline" onClick={() => ask(r.id, false)}>Reject</Button>
             </div>
           ) : null },
         ]} />

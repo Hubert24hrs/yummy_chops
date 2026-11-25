@@ -64,6 +64,8 @@ def test_sensitive_tools_require_approval():
         "reject_order",
         "set_item_availability",
         "request_rider_assignment",
+        "book_parcel",
+        "update_my_preferences",  # clearing an allergy list must never be silent
     ):
         assert registry.get(name).requires_approval, name
 
@@ -111,6 +113,13 @@ def test_normal_requests_pass_and_cards_are_redacted():
     phone = check_input("call me on 08012345678", max_chars=2000)
     assert phone.text.endswith("08012345678")  # not a card (fails Luhn / length) → untouched
     assert check_input("x" * 2001, max_chars=2000).blocked
+
+
+def test_an_over_long_message_is_redacted_before_it_is_cut():
+    long = check_input("card 4111 1111 1111 1111 cvv 123 " + "x" * 2100, max_chars=2000)
+    assert long.blocked and long.reason == "too_long" and len(long.text) == 2000
+    assert "4111" not in long.text and "123" not in long.text  # the kept start holds no card or CVV
+    assert long.warnings == ["card_number_removed", "secret_removed"]
 
 
 def test_deadline_parsing():

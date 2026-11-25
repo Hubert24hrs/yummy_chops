@@ -30,6 +30,44 @@ export function newIdempotencyKey(prefix = "gm"): string {
   return `${prefix}-${rand}`;
 }
 
+/**
+ * True when the API may not have answered a request: nothing came back, what came back was not the API's own
+ * answer (an error page from a proxy), or the server failed (5xx). Sending it again with the same key is then safe.
+ */
+function mayNotHaveAnswered(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return true;
+  return error.status === 0 || error.status >= 500 || error.code === "bad_response";
+}
+
+/**
+ * Sends requests that must not happen twice (orders, payments, payouts), each with an Idempotency-Key.
+ *
+ * The API keeps its answer under the key: the same key with the same body gets that answer again, and the same key
+ * with another body is refused. So the key belongs to the request body:
+ * - the same body again after a network error or a server failure (5xx) keeps its key, so trying again cannot do
+ *   the thing twice;
+ * - another body, or the same body after the API answered (done, or refused with a 4xx), gets a new key, so a
+ *   corrected request is a new request and a refusal is not repeated for ever.
+ *
+ * `const send = idempotentCalls("topup"); await send({ kobo }, (key) => api.wallet.topUp(kobo, key));`
+ */
+export function idempotentCalls(prefix = "gm") {
+  let pending: { body: string; key: string } | null = null;
+  return async function send<R>(body: unknown, call: (key: string) => Promise<R>): Promise<R> {
+    const text = JSON.stringify(body) ?? "";
+    if (pending?.body !== text) pending = { body: text, key: newIdempotencyKey(prefix) };
+    const mine = pending;
+    try {
+      const result = await call(mine.key);
+      if (pending === mine) pending = null;
+      return result;
+    } catch (error) {
+      if (pending === mine && !mayNotHaveAnswered(error)) pending = null;
+      throw error;
+    }
+  };
+}
+
 export function createApi(opts: ClientOptions) {
   const base = opts.baseUrl.replace(/\/$/, "");
   const doFetch = opts.fetchImpl ?? fetch;
@@ -60,7 +98,13 @@ export function createApi(opts: ClientOptions) {
     }
     if (res.status === 204) return undefined as R;
     const text = await res.text();
-    const data = text ? JSON.parse(text) : undefined;
+    let data;
+    try {
+      data = text ? JSON.parse(text) : undefined;
+    } catch {
+      // Not JSON: an error page from the host or a proxy in front of the API. A plain message, never the parser's.
+      throw new ApiError(res.status, "bad_response", "Yummy Chops sent an answer we couldn't read. Please try again in a moment.");
+    }
     if (!res.ok) {
       const err = data?.error ?? {};
       const detail = typeof data?.detail === "string" ? data.detail : undefined;

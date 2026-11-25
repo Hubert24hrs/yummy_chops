@@ -2,7 +2,7 @@
 
 import { Button, Card, Spinner } from "@gudmeal/ui";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Smartphone, XCircle } from "lucide-react";
+import { CheckCircle2, CircleAlert, Smartphone, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect } from "react";
@@ -66,6 +66,15 @@ function Callback() {
   useEffect(() => {
     if (paidOrderId) router.replace(`/orders/${paidOrderId}/receipt`);
   }, [paidOrderId, router]);
+  /** Where to go from a payment that is not confirmed: back to what was being paid for. */
+  const back = (
+    <>
+      {orderId && <Link href={`/orders/${orderId}`}><Button variant="outline" block>View order</Button></Link>}
+      {isTopUp && <Link href="/wallet"><Button variant="outline" block>Back to my wallet</Button></Link>}
+      {groupId && <Link href={`/group/${groupId}`}><Button variant="outline" block>Back to the group order</Button></Link>}
+      {params.get("purpose") === "plus" && <Link href="/plus"><Button variant="outline" block>Back to Yummy Chops Plus</Button></Link>}
+    </>
+  );
   return (
     <div className="container-page grid place-items-center py-20">
       <Card className="w-full max-w-md space-y-4 p-8 text-center">
@@ -107,15 +116,41 @@ function Callback() {
               </>
             )}
           </>
-        ) : (
+        ) : status === "failed" || status === "abandoned" ? (
+          // The API said the payment did not go through. Only a failed payment is "not charged" for certain: one
+          // left unfinished (a bank transfer, for example) can still arrive.
           <>
             <XCircle className="mx-auto size-12 text-danger" />
             <h1 className="font-display text-2xl">Payment not completed</h1>
-            <p className="text-sm text-muted">{verify.data?.failure_reason ?? "The payment was not successful. You have not been charged."}</p>
-            {orderId && <Link href={`/orders/${orderId}`}><Button variant="outline" block>View order</Button></Link>}
-            {isTopUp && <Link href="/wallet"><Button variant="outline" block>Back to my wallet</Button></Link>}
-            {groupId && <Link href={`/group/${groupId}`}><Button variant="outline" block>Back to the group order</Button></Link>}
-            {params.get("purpose") === "plus" && <Link href="/plus"><Button variant="outline" block>Back to Yummy Chops Plus</Button></Link>}
+            <p className="text-sm text-muted">
+              {status === "failed"
+                ? verify.data?.failure_reason ?? "The payment was not successful. You have not been charged."
+                : "The payment was not finished. If you did send the money, your order updates by itself when it arrives."}
+            </p>
+            {back}
+          </>
+        ) : status === "flagged" ? (
+          // Money came in but it does not match the order (amount, currency or reference): the team sorts it out.
+          <>
+            <CircleAlert className="mx-auto size-12 text-warning" />
+            <h1 className="font-display text-2xl">We are checking your payment</h1>
+            <p className="text-sm text-muted">
+              We received a payment that does not match this order, so our team is looking at it. Please do not pay again.
+            </p>
+            <Link href="/support"><Button block>Contact support</Button></Link>
+            {back}
+          </>
+        ) : (
+          // The check itself did not work (no connection, too many tries, another account): nothing is known about
+          // the payment, so this never says the customer was not charged.
+          <>
+            <CircleAlert className="mx-auto size-12 text-warning" />
+            <h1 className="font-display text-2xl">We could not check your payment</h1>
+            <p className="text-sm text-muted">
+              This does not mean the payment failed. If you were charged, your order updates by itself: you do not need to pay again.
+            </p>
+            <Button block loading={verify.isFetching} onClick={() => verify.refetch()}>Try again</Button>
+            {back}
           </>
         )}
       </Card>

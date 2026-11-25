@@ -13,7 +13,7 @@ from sqlalchemy import and_, func, select
 from ..domain.models import Order, RestaurantStatus, RiderStatus
 from ..domain.order_state import OrderStatus
 from ..domain.pricing import PricingConfig
-from ..errors import NotFound, ValidationFailed
+from ..errors import Conflict, NotFound, ValidationFailed
 from ..ledger import ledger as postings
 from ..ledger.audit import AuditLog
 from ..ledger.db import Database
@@ -28,16 +28,25 @@ from ..ledger.tables import (
     RestaurantSettlement,
     RiderPayout,
 )
-from ..repositories import Repositories
+from ..repositories import Repositories, Transaction, to_doc
 from ..security.rbac import Permission, Principal, Role, require, require_restaurant, require_rider
+from .business import suspend_branches_selling
 from .infra import IdentityAdmin
 
 S = OrderStatus
 LAGOS_OFFSET = timedelta(hours=1)
+PRICING_PATH = "platform_configuration/pricing"  # the document Repositories.get_pricing_config reads
+# What a shop's statement adds up: its earnings, refunds it bears, and shares it has had already by split payment.
+SETTLEMENT_KINDS = ("order_settlement", "refund", "split_settled")
+UNPAID_SETTLEMENTS = ("pending", "approved")
 
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def as_utc(moment: datetime) -> datetime:
+    return moment.astimezone(UTC) if moment.tzinfo else moment.replace(tzinfo=UTC)
 
 
 def lagos_day_start(now: datetime) -> datetime:
@@ -240,13 +249,18 @@ class AdminService:
         if await self.repos.restaurants.get(restaurant_id) is None:
             raise NotFound("Restaurant not found")
         await self.repos.restaurants.update(restaurant_id, {"status": status.value})
+        stopped = (
+            await suspend_branches_selling(self.repos, restaurant_id)
+            if status == RestaurantStatus.SUSPENDED
+            else []
+        )
         await self.audit.record(
             actor_id=principal.uid,
             actor_roles=principal.audit_roles(),
             action="restaurant.status_changed",
             resource_type="restaurant",
             resource_id=restaurant_id,
-            details={"status": status.value, "reason": reason},
+            details={"status": status.value, "reason": reason, "branches_suspended": stopped},
         )
 
     async def list_riders(self, principal: Principal) -> list[Any]:
@@ -299,10 +313,23 @@ class AdminService:
         return await self.repos.get_pricing_config()
 
     async def update_pricing(self, principal: Principal, cfg: PricingConfig) -> PricingConfig:
+        """Publish new prices. The page sends back the version it loaded: if someone else has published since,
+        saving would silently undo their change, so it is refused and the page must be reloaded."""
         require(principal, Permission.CONFIG_WRITE)
-        current = await self.repos.get_pricing_config()
-        new_cfg = cfg.model_copy(update={"version": current.version + 1})
-        await self.repos.save_pricing_config(new_cfg)
+
+        async def fn(tx: Transaction) -> PricingConfig:
+            doc = await tx.get(PRICING_PATH)
+            current = PricingConfig.model_validate(doc) if doc else PricingConfig()
+            if cfg.version != current.version:
+                raise Conflict(
+                    "The pricing was changed after you opened this page. Reload it and make your changes again.",
+                    details={"your_version": cfg.version, "current_version": current.version},
+                )
+            new_cfg = cfg.model_copy(update={"version": current.version + 1})
+            tx.set(PRICING_PATH, to_doc(new_cfg))
+            return new_cfg
+
+        new_cfg = await self.repos.store.run_transaction(fn)
         await self.audit.record(
             actor_id=principal.uid,
             actor_roles=principal.audit_roles(),
@@ -310,7 +337,7 @@ class AdminService:
             resource_type="config",
             resource_id="pricing",
             details={
-                "from_version": current.version,
+                "from_version": new_cfg.version - 1,
                 "to_version": new_cfg.version,
                 "config": new_cfg.model_dump(mode="json"),
             },
@@ -347,7 +374,15 @@ class AdminService:
     async def generate_settlements(
         self, principal: Principal, period_start: datetime, period_end: datetime
     ) -> list[dict[str, Any]]:
+        """Statements of what each shop is owed for a period (period_end is not included, so the next period
+        starts where this one ends). A statement never asks Finance to pay more than the shop is owed now:
+
+        - a share the shop has had already by split payment counts against its earnings;
+        - what its other unpaid statements promise is taken off first, and money it owes back (a refunded split
+          order, a refund it bears) is taken out of what it earns next;
+        - days that are on one of the shop's statements already are not put on another."""
         require(principal, Permission.SETTLEMENTS_MANAGE)
+        period_start, period_end = as_utc(period_start), as_utc(period_end)
         if period_end <= period_start:
             raise ValidationFailed("period_end must be after period_start")
         created: list[dict[str, Any]] = []
@@ -365,7 +400,7 @@ class AdminService:
                     .where(
                         and_(
                             FinancialAccount.owner_type == "restaurant",
-                            FinancialTransaction.kind.in_(("order_settlement", "refund")),
+                            FinancialTransaction.kind.in_(SETTLEMENT_KINDS),
                             FinancialTransaction.created_at >= period_start,
                             FinancialTransaction.created_at < period_end,
                         )
@@ -379,14 +414,16 @@ class AdminService:
                 if direction == "credit":
                     totals[owner_id]["orders"] = int(orders or 0)
             for restaurant_id, t in totals.items():
-                exists = await s.scalar(
-                    select(RestaurantSettlement.id).where(
+                overlaps = await s.scalar(
+                    select(RestaurantSettlement.id)
+                    .where(
                         RestaurantSettlement.restaurant_id == restaurant_id,
-                        RestaurantSettlement.period_start == period_start,
-                        RestaurantSettlement.period_end == period_end,
+                        RestaurantSettlement.period_start < period_end,
+                        RestaurantSettlement.period_end > period_start,
                     )
+                    .limit(1)
                 )
-                if exists:
+                if overlaps:
                     continue
                 commission = await s.scalar(
                     select(func.coalesce(func.sum(CommissionRecord.commission_kobo), 0)).where(
@@ -395,7 +432,15 @@ class AdminService:
                         CommissionRecord.created_at < period_end,
                     )
                 )
-                net = t["credit"] - t["debit"]
+                owed = await self.ledger.balance(s, f"liability:restaurant:{restaurant_id}")
+                promised = await s.scalar(
+                    select(func.coalesce(func.sum(RestaurantSettlement.net_kobo), 0)).where(
+                        RestaurantSettlement.restaurant_id == restaurant_id,
+                        RestaurantSettlement.status.in_(UNPAID_SETTLEMENTS),
+                        RestaurantSettlement.net_kobo > 0,
+                    )
+                )
+                net = min(t["credit"] - t["debit"], owed - int(promised or 0))
                 row = RestaurantSettlement(
                     id=str(uuid.uuid4()),
                     restaurant_id=restaurant_id,
@@ -404,7 +449,7 @@ class AdminService:
                     orders_count=t["orders"],
                     gross_kobo=t["credit"] + int(commission or 0),
                     commission_kobo=int(commission or 0),
-                    adjustments_kobo=-t["debit"],
+                    adjustments_kobo=net - t["credit"],  # gross - commission + adjustments = net
                     net_kobo=net,
                     status="pending",
                 )
@@ -463,6 +508,17 @@ class AdminService:
             if row.status == "paid":
                 return {"id": row.id, "status": row.status}
             if row.net_kobo > 0:
+                # The statement was right when it was made; a refund the shop bears, or a share it has had by
+                # split payment since, may have lowered what it is owed. Never pay out more than that.
+                account = f"liability:restaurant:{row.restaurant_id}"
+                await self.ledger.lock_account(s, account)
+                owed = await self.ledger.balance(s, account)
+                if row.net_kobo > owed:
+                    raise ValidationFailed(
+                        "The shop is owed less than this statement says, so nothing was paid. "
+                        "It can be paid once the shop has earned the difference.",
+                        details={"net_kobo": row.net_kobo, "owed_kobo": owed},
+                    )
                 await self.ledger.post(
                     s,
                     kind="restaurant_payout",
@@ -545,18 +601,27 @@ class AdminService:
         require_rider(principal)
         if amount_kobo < MIN_PAYOUT_KOBO:
             raise ValidationFailed("Minimum withdrawal is ₦1,000")
-        earnings = await self.rider_earnings(principal)
-        if amount_kobo > earnings["available_kobo"]:
-            raise ValidationFailed(
-                "Amount exceeds your available balance",
-                details={"available_kobo": earnings["available_kobo"]},
-            )
+        account = postings.rider_account(principal.uid)
         async with self.db.transaction() as s:
             existing = await s.scalar(
                 select(RiderPayout).where(RiderPayout.idempotency_key == f"{principal.uid}:{idempotency_key}")
             )
             if existing:
                 return {"id": existing.id, "status": existing.status, "amount_kobo": existing.amount_kobo}
+            # Checked under the account lock: two requests sent at once cannot both count the same balance.
+            await self.ledger.lock_account(s, account)
+            balance = await self.ledger.balance(s, account)
+            cash_held = await self.ledger.balance(s, postings.rider_cash_account(principal.uid))
+            pending = await s.scalar(
+                select(func.coalesce(func.sum(RiderPayout.amount_kobo), 0)).where(
+                    RiderPayout.rider_id == principal.uid, RiderPayout.status.in_(("requested", "approved"))
+                )
+            )
+            available = max(0, balance - int(pending or 0) - cash_held)
+            if amount_kobo > available:
+                raise ValidationFailed(
+                    "Amount exceeds your available balance", details={"available_kobo": available}
+                )
             row = RiderPayout(
                 rider_id=principal.uid,
                 amount_kobo=amount_kobo,
@@ -602,6 +667,7 @@ class AdminService:
             if approve:
                 if not bank_reference:
                     raise ValidationFailed("A bank transfer reference is required to mark the payout as paid")
+                await self.ledger.lock_account(s, postings.rider_account(row.rider_id))
                 balance = await self.ledger.balance(s, f"liability:rider:{row.rider_id}")
                 cash_held = await self.ledger.balance(s, postings.rider_cash_account(row.rider_id))
                 if row.amount_kobo > balance - cash_held:

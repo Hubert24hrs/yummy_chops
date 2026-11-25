@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const auth = { user: null as null | { uid: string }, loading: false };
@@ -64,5 +64,45 @@ describe("payment return page", () => {
     show();
     await waitFor(() => expect(screen.getByRole("heading", { name: "Payment not completed" })).toBeTruthy());
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("says “not charged” only when the API said the payment failed", async () => {
+    auth.user = { uid: "cust-1" };
+    verify.mockResolvedValue({ status: "failed", order_id: "o1", purpose: "order", failure_reason: null });
+    show();
+    expect(await screen.findByText("The payment was not successful. You have not been charged.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "View order" }).getAttribute("href")).toBe("/orders/o1");
+    cleanup();
+
+    // Left unfinished (a bank transfer can still arrive): no promise that nothing was taken.
+    verify.mockResolvedValue({ status: "abandoned", order_id: "o1", purpose: "order", failure_reason: "abandoned" });
+    show();
+    expect(await screen.findByText(/The payment was not finished\. If you did send the money, your order updates by itself/)).toBeTruthy();
+    expect(screen.queryByText(/not been charged/)).toBeNull();
+    cleanup();
+
+    // The money came in but does not match the order: the team checks it, and the customer must not pay again.
+    verify.mockResolvedValue({ status: "flagged", order_id: "o1", purpose: "order", failure_reason: "amount_mismatch" });
+    show();
+    expect(await screen.findByRole("heading", { name: "We are checking your payment" })).toBeTruthy();
+    expect(screen.getByText(/Please do not pay again/)).toBeTruthy();
+    expect(screen.queryByText(/not been charged|amount_mismatch/)).toBeNull();
+  });
+
+  it("when the check itself fails, says so, offers to try again and never says “not charged”", async () => {
+    auth.user = { uid: "cust-1" };
+    verify.mockRejectedValueOnce(new Error("We couldn't reach Yummy Chops. Check your connection and try again."));
+    show();
+    expect(await screen.findByRole("heading", { name: "We could not check your payment" })).toBeTruthy();
+    expect(screen.getByText(/If you were charged, your order updates by itself: you do not need to pay again/)).toBeTruthy();
+    expect(screen.queryByText(/not been charged/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Payment not completed" })).toBeNull();
+    expect(replace).not.toHaveBeenCalled();
+
+    verify.mockResolvedValue({ status: "succeeded", order_id: "o1", purpose: "order" });
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("heading", { name: "Payment confirmed" })).toBeTruthy();
+    expect(verify).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/orders/o1/receipt"));
   });
 });

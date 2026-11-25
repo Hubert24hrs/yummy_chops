@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiError, createApi, formatDayLabel, formatNaira, ORDER_STATUS } from "./index";
+import { ApiError, createApi, formatDayLabel, formatNaira, idempotentCalls, ORDER_STATUS } from "./index";
 
 function mockFetch(status: number, body: unknown, seen: Request[] = []) {
   return (async (input: URL | RequestInfo, init?: RequestInit) => {
@@ -59,6 +59,68 @@ describe("createApi", () => {
     const api = createApi({ baseUrl: "http://api.test", fetchImpl: mockFetch(409, { error: { code: "price_changed", message: "Prices changed" } }) });
     await expect(api.orders.get("x")).rejects.toMatchObject({ status: 409, code: "price_changed", message: "Prices changed" });
     await expect(api.orders.get("x")).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("turns an answer that is not JSON (an error page from the host) into a plain error", async () => {
+    const page = (status: number) => (async () => new Response("<html><body>502 Bad Gateway</body></html>", { status })) as typeof fetch;
+    const api = createApi({ baseUrl: "http://api.test", fetchImpl: page(502) });
+    const error = await api.orders.get("x").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 502, code: "bad_response", message: "Yummy Chops sent an answer we couldn't read. Please try again in a moment." });
+    // The same for a page that says 200 (a Wi-Fi sign-in page, for example): never the parser's own message.
+    const portal = createApi({ baseUrl: "http://api.test", fetchImpl: page(200) });
+    await expect(portal.orders.get("x")).rejects.toMatchObject({ status: 200, code: "bad_response" });
+  });
+});
+
+describe("idempotentCalls", () => {
+  const refused = new ApiError(409, "quote_expired", "Your price quote expired");
+  /** Calls `send` and gives back the key it used, whatever the outcome. */
+  async function keyOf(send: ReturnType<typeof idempotentCalls>, body: unknown, outcome: "ok" | ApiError | Error = "ok") {
+    let used = "";
+    await send(body, async (key) => {
+      used = key;
+      if (outcome !== "ok") throw outcome;
+      return "done";
+    }).catch(() => undefined);
+    return used;
+  }
+
+  it("keeps the key for the same request after a network error, a server failure or an unreadable answer", async () => {
+    const send = idempotentCalls("order");
+    const first = await keyOf(send, { quote: "q1" }, new ApiError(0, "network_error", "offline"));
+    expect(first).toMatch(/^order-[a-z0-9]{8,}$/);
+    expect(await keyOf(send, { quote: "q1" }, new ApiError(503, "error", "down"))).toBe(first);
+    expect(await keyOf(send, { quote: "q1" }, new ApiError(502, "bad_response", "unreadable"))).toBe(first);
+    expect(await keyOf(send, { quote: "q1" }, new Error("the page broke before the answer was read"))).toBe(first);
+    expect(await keyOf(send, { quote: "q1" })).toBe(first); // the retry that gets through still uses it
+  });
+
+  it("uses a new key after the API refused the request (4xx), so the refusal is not repeated", async () => {
+    const send = idempotentCalls("order");
+    const first = await keyOf(send, { quote: "q1" }, refused);
+    const second = await keyOf(send, { quote: "q1" });
+    expect(second).not.toBe(first);
+  });
+
+  it("uses a new key when the request body changes, even after a network error", async () => {
+    const send = idempotentCalls("topup");
+    const first = await keyOf(send, { kobo: 100_000 }, new ApiError(0, "network_error", "offline"));
+    const second = await keyOf(send, { kobo: 200_000 }, new ApiError(0, "network_error", "offline"));
+    expect(second).not.toBe(first);
+    expect(await keyOf(send, { kobo: 200_000 })).toBe(second);
+  });
+
+  it("uses a new key after a request that went through: doing the same thing again is a new request", async () => {
+    const send = idempotentCalls("redeem");
+    const first = await keyOf(send, { points: 500 });
+    expect(await keyOf(send, { points: 500 })).not.toBe(first);
+  });
+
+  it("gives back the answer and passes errors on", async () => {
+    const send = idempotentCalls();
+    await expect(send({ a: 1 }, async () => 42)).resolves.toBe(42);
+    await expect(send({ a: 1 }, async () => { throw refused; })).rejects.toBe(refused);
   });
 });
 

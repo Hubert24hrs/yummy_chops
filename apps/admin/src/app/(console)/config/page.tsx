@@ -5,6 +5,7 @@ import { Button, Card, ErrorState, Field, Input, Skeleton, Toggle } from "@gudme
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useApi } from "@/lib/api";
+import { settingsError } from "@/lib/errors";
 
 export default function ConfigPage() {
   const api = useApi();
@@ -55,7 +56,7 @@ export default function ConfigPage() {
           </div>
         ))}
       </Card>
-      {save.error && <ErrorState message={(save.error as Error).message} />}
+      {save.error && <ErrorState message={settingsError(save.error)} />}
       <div className="flex items-center gap-3">
         <Button onClick={() => save.mutate(cfg)} loading={save.isPending}>Publish pricing v{cfg.version + 1}</Button>
         <span className="text-xs text-muted">Example: a 5 km delivery is about {formatNaira(cfg.delivery.base_kobo + Math.round(cfg.delivery.per_km_kobo * 5 * 1.35))} before surge.</span>

@@ -24,7 +24,9 @@ class AppCheckVerifier(Protocol):
 
 
 def principal_from_claims(claims: dict[str, Any], token: str | None = None) -> Principal:
-    raw_roles = claims.get("roles") or []
+    raw_roles = claims.get("roles")
+    if not isinstance(raw_roles, list | tuple):
+        raw_roles = []  # roles are set as a list (scripts, the Command Centre); anything else counts as none
     roles = {r for r in raw_roles if isinstance(r, str) and r in {x.value for x in Role}}
     roles.add(Role.CUSTOMER.value)  # every signed-in user can order food
     raw_restaurants = claims.get("restaurant_roles") or {}

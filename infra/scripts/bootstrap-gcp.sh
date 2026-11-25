@@ -55,15 +55,18 @@ for sa in gudmeal-api gudmeal-agents gudmeal-tasks gudmeal-deployer gudmeal-web;
     gcloud iam service-accounts create "$sa" --display-name "$sa"
 done
 bind() { gcloud projects add-iam-policy-binding "$PROJECT" --member "serviceAccount:$1@$PROJECT.iam.gserviceaccount.com" --role "$2" --condition None >/dev/null; }
-for role in roles/datastore.user roles/cloudsql.client roles/secretmanager.secretAccessor roles/pubsub.publisher \
+for role in roles/datastore.user roles/cloudsql.client roles/pubsub.publisher \
             roles/cloudtasks.enqueuer roles/firebaseauth.admin roles/firebasecloudmessaging.admin roles/logging.logWriter \
             roles/monitoring.metricWriter; do
   bind gudmeal-api "$role"
 done
-for role in roles/cloudsql.client roles/secretmanager.secretAccessor roles/logging.logWriter roles/monitoring.metricWriter; do
+# Yummy checks whether a sign-in was revoked (CHECK_TOKEN_REVOCATION), which reads Firebase Auth.
+for role in roles/cloudsql.client roles/firebaseauth.viewer roles/logging.logWriter roles/monitoring.metricWriter; do
   bind gudmeal-agents "$role"
 done
-for role in roles/run.admin roles/cloudbuild.builds.editor roles/artifactregistry.writer roles/iam.serviceAccountUser; do
+# secretmanager.viewer: deploy.sh checks which secrets have values (never their contents).
+for role in roles/run.admin roles/cloudbuild.builds.editor roles/artifactregistry.writer roles/iam.serviceAccountUser \
+            roles/secretmanager.viewer; do
   bind gudmeal-deployer "$role"
 done
 # The API enqueues Cloud Tasks that authenticate as gudmeal-tasks.
@@ -91,6 +94,28 @@ for s in api-database-url agents-database-url agents-checkpoint-url paystack-sec
          channel-token-secret whatsapp-access-token whatsapp-app-secret whatsapp-verify-token; do
   exists gcloud secrets describe "$s" || gcloud secrets create "$s" --replication-policy automatic
 done
+# Each service reads only its own secrets: Yummy, which talks to an AI model, never sees the payment keys or the
+# API's database.
+grant_secret() {
+  gcloud secrets add-iam-policy-binding "$2" --member "serviceAccount:$1@$PROJECT.iam.gserviceaccount.com" \
+    --role roles/secretmanager.secretAccessor >/dev/null
+}
+for s in api-database-url paystack-secret-key flutterwave-secret-key flutterwave-secret-hash api-code-pepper \
+         google-maps-server-key channel-token-secret whatsapp-access-token whatsapp-app-secret whatsapp-verify-token; do
+  grant_secret gudmeal-api "$s"
+done
+for s in agents-database-url agents-checkpoint-url gemini-api-key gemini-model channel-token-secret; do
+  grant_secret gudmeal-agents "$s"
+done
+
+say "Cloud Storage for riders' KYC documents"
+BUCKET="${STORAGE_BUCKET:-$PROJECT.firebasestorage.app}"
+if exists gcloud storage buckets describe "gs://$BUCKET"; then
+  gcloud storage buckets add-iam-policy-binding "gs://$BUCKET" \
+    --member "serviceAccount:gudmeal-api@$PROJECT.iam.gserviceaccount.com" --role roles/storage.objectAdmin >/dev/null
+else
+  echo "Turn on Storage in the Firebase console (it creates gs://$BUCKET), then run this script again."
+fi
 
 if [[ "$WITH_SQL" == "--with-cloud-sql" ]]; then
   TIER=$([[ "$ENV_NAME" == "prod" ]] && echo db-custom-2-7680 || echo db-custom-1-3840)

@@ -276,14 +276,22 @@ class FirebaseIdentityAdmin:
     async def set_claims(self, uid: str, roles: list[str], restaurant_roles: dict[str, str]) -> None:
         from firebase_admin import auth
 
+        before = await self.get_claims(uid)
         await asyncio.to_thread(
             auth.set_custom_user_claims,
             uid,
             {"roles": sorted(set(roles)), "restaurant_roles": restaurant_roles},
             app=self._app,
         )
-        # Force clients to refresh tokens so new roles apply promptly.
-        await asyncio.to_thread(auth.revoke_refresh_tokens, uid, app=self._app)
+        # A role taken away must stop working now, so that person signs in again. A role given (a rider
+        # applicant, a new branch) only needs the app to refresh its token, which the apps do themselves.
+        old_roles = set(before.get("roles") or []) if isinstance(before.get("roles"), list) else set()
+        old_shops = before.get("restaurant_roles") if isinstance(before.get("restaurant_roles"), dict) else {}
+        removed = bool(old_roles - set(roles)) or any(
+            restaurant_roles.get(rid) != role for rid, role in old_shops.items()
+        )
+        if removed:
+            await asyncio.to_thread(auth.revoke_refresh_tokens, uid, app=self._app)
 
     async def get_claims(self, uid: str) -> dict[str, Any]:
         from firebase_admin import auth

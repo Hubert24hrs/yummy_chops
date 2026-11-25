@@ -4,7 +4,7 @@ import {
   ApiError,
   formatNaira,
   formatTime,
-  newIdempotencyKey,
+  idempotentCalls,
   type ParcelCategory,
   type ParcelQuote,
   type ParcelSize,
@@ -16,7 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CircleDot, MapPin, Package, Timer } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ParcelArt } from "@/components/illustrations";
 import { checkoutProvider, continueAfterCheckout, PaymentMethodPicker, type PayMethod } from "@/components/payment-method";
 import { publicApi, useApi } from "@/lib/api";
@@ -55,8 +55,8 @@ export function SendForm() {
   const [codNaira, setCodNaira] = useState("");
   const [method, setMethod] = useState<PayMethod>("card");
   const router = useRouter();
-  const orderKey = useRef(newIdempotencyKey("parcel"));
-  const checkoutKeys = useRef<Partial<Record<PayMethod, string>>>({});
+  const [sendBooking] = useState(() => idempotentCalls("parcel"));
+  const [sendCheckout] = useState(() => idempotentCalls("checkout"));
   const codKobo = codOn ? Math.round(Number(codNaira.replace(/[^0-9.]/g, "")) * 100) : 0;
 
   useEffect(() => {
@@ -112,9 +112,11 @@ export function SendForm() {
     setBusy(true);
     setError(null);
     try {
-      const order = await api.parcels.book(quote.id, orderKey.current);
-      const key = (checkoutKeys.current[method] ??= newIdempotencyKey("checkout"));
-      const res = await api.orders.checkout(order.id, key, checkoutProvider(method));
+      // A new price or payment method is a new request with a new key, and so is trying again after a refusal;
+      // only a request the API may not have answered keeps its key. Booking one quote twice gives the same order.
+      const order = await sendBooking({ quote: quote.id }, (key) => api.parcels.book(quote.id, key));
+      const provider = checkoutProvider(method);
+      const res = await sendCheckout({ order: order.id, provider }, (key) => api.orders.checkout(order.id, key, provider));
       continueAfterCheckout(res, router.push); // card: provider-hosted page; card data never touches Yummy Chops
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Couldn’t book the delivery. Please try again.");

@@ -25,16 +25,21 @@ Future<void> main() async {
     ),
   );
   if (config.useEmulators) {
-    await connectAuthEmulator(FirebaseAuth.instance, config.emulatorHost);
+    await connectAuthEmulator(FirebaseAuth.instance, config.emulatorHost, port: config.emulatorPort);
   }
   if (mapsEnabled && kIsWeb) {
     googleMapsReady = await loadGoogleMapsScript(const String.fromEnvironment('MAPS_BROWSER_KEY'));
   }
-  runApp(ProviderScope(
-    overrides: [
-      configProvider.overrideWithValue(config),
-      authRepositoryProvider.overrideWithValue(FirebaseAuthRepository(FirebaseAuth.instance, usingEmulator: config.useEmulators)),
-    ],
-    child: const GudMealApp(),
+  final auth = FirebaseAuthRepository(FirebaseAuth.instance, usingEmulator: config.useEmulators);
+  // What the app keeps in memory belongs to the signed-in customer: it all starts afresh when they sign out.
+  runApp(PerUserScope(
+    auth: auth,
+    child: ProviderScope(
+      overrides: [
+        configProvider.overrideWithValue(config),
+        authRepositoryProvider.overrideWithValue(auth),
+      ],
+      child: const GudMealApp(),
+    ),
   ));
 }

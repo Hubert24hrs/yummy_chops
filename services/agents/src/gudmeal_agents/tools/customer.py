@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from pydantic import Field
 
 from ..api_client import ApiError
-from .registry import ToolArgs, ToolContext, ToolError, ToolOutput, ToolRegistry, ToolSpec
+from .registry import ToolArgs, ToolContext, ToolError, ToolId, ToolOutput, ToolRegistry, ToolSpec
 
 LAGOS = ZoneInfo("Africa/Lagos")
 EVERYONE = frozenset({"customer"})
@@ -77,26 +77,33 @@ def parse_deadline(text: str | None, now: datetime) -> datetime | None:
 
 
 def order_summary(order: dict[str, Any]) -> dict[str, Any]:
-    b = order["breakdown"]
+    # The API shows each audience its own view: a rider's has the items but no prices (`breakdown`) and no
+    # `lines`. The summary says what is there and leaves the amounts empty.
+    b = order.get("breakdown") or None
+    lines = order.get("lines") or order.get("items") or []
+
+    def money(key: str) -> str | None:
+        return naira(b[key]) if b else None
+
     return {
         "order_id": order["id"],
         "short_code": order["short_code"],
         "status": order["status"],
         "status_label": order.get("progress", {}).get("label"),
-        "restaurant": order["restaurant_name"],
+        "restaurant": order.get("restaurant_name"),
         "items": [
             f"{ln['quantity']} × {ln['name']}"
             + (f" ({', '.join(ln['selection_labels'])})" if ln.get("selection_labels") else "")
-            for ln in order["lines"]
+            for ln in lines
         ],
-        "subtotal": naira(b["subtotal_kobo"]),
-        "delivery_fee": naira(b["delivery_fee_kobo"]),
-        "service_fee": naira(b["service_fee_kobo"] + b["small_order_fee_kobo"]),
-        "vat": naira(b["vat_kobo"]),
-        "discount": naira(b["discount_kobo"]) if b["discount_kobo"] else None,
-        "total": naira(b["total_kobo"]),
-        "total_kobo": b["total_kobo"],
-        "fulfillment": order["fulfillment"],
+        "subtotal": money("subtotal_kobo"),
+        "delivery_fee": money("delivery_fee_kobo"),
+        "service_fee": naira(b["service_fee_kobo"] + b["small_order_fee_kobo"]) if b else None,
+        "vat": money("vat_kobo"),
+        "discount": naira(b["discount_kobo"]) if b and b["discount_kobo"] else None,
+        "total": money("total_kobo"),
+        "total_kobo": b["total_kobo"] if b else None,
+        "fulfillment": order.get("fulfillment"),
         "estimated_arrival": lagos_time(order.get("estimated_delivery_at")),
         "rider": order.get("rider_name"),
     }
@@ -149,7 +156,7 @@ class SearchFoodArgs(ToolArgs):
 
 
 class MenuArgs(ToolArgs):
-    restaurant_id: str = Field(min_length=2, max_length=64)
+    restaurant_id: ToolId
 
 
 class MealPlanArgs(ToolArgs):
@@ -167,12 +174,12 @@ class MealPlanArgs(ToolArgs):
 
 
 class ChoiceArg(ToolArgs):
-    group_id: str
-    choice_ids: list[str] = Field(default_factory=list, max_length=10)
+    group_id: ToolId
+    choice_ids: list[ToolId] = Field(default_factory=list, max_length=10)
 
 
 class ItemArg(ToolArgs):
-    item_id: str
+    item_id: ToolId
     quantity: int = Field(default=1, ge=1, le=20)
     choices: list[ChoiceArg] = Field(default_factory=list, max_length=10)
     notes: str | None = Field(default=None, max_length=200)
@@ -182,22 +189,22 @@ class DraftArgs(ToolArgs):
     plan_ref: str | None = Field(
         default=None, description="A plan reference such as 'plan-1' from plan_meal_within_budget"
     )
-    restaurant_id: str | None = None
+    restaurant_id: ToolId | None = None
     items: list[ItemArg] = Field(default_factory=list, max_length=30)
     fulfillment: Literal["delivery", "pickup"] = "delivery"
     voucher_code: str | None = Field(default=None, max_length=40)
 
 
 class OrderIdArgs(ToolArgs):
-    order_id: str = Field(min_length=6, max_length=64)
+    order_id: ToolId
 
 
 class OptionalOrderArgs(ToolArgs):
-    order_id: str | None = Field(default=None, max_length=64, description="Omit to use the most recent order")
+    order_id: ToolId | None = Field(default=None, description="Omit to use the most recent order")
 
 
 class CancelArgs(ToolArgs):
-    order_id: str = Field(min_length=6, max_length=64)
+    order_id: ToolId
     reason: str = Field(default="Cancelled via Yummy Chops assistant", max_length=300)
 
 
@@ -707,6 +714,26 @@ async def get_my_preferences(args: NoArgs, ctx: ToolContext) -> ToolOutput:
     )
 
 
+_PREFERENCE_LABELS = {
+    "dietary": "Dietary needs",
+    "allergens": "Allergies",
+    "favourite_cuisines": "Favourite cuisines",
+}
+
+
+async def preview_preferences(args: PreferencesArgs, ctx: ToolContext) -> dict[str, Any]:
+    """What will be saved, list by list; an emptied list reads 'none', so clearing allergies is never silent."""
+    body = args.model_dump(exclude_none=True)
+    if not body:
+        raise ToolError("invalid_arguments", "Nothing to update")
+    changes = [f"{_PREFERENCE_LABELS[k]}: {', '.join(v) if v else 'none'}" for k, v in body.items()]
+    return {
+        "title": "Save these preferences to your profile?",
+        "message": ". ".join(changes) + ". Yummy uses them when it suggests meals.",
+        "preferences": body,
+    }
+
+
 async def update_my_preferences(args: PreferencesArgs, ctx: ToolContext) -> ToolOutput:
     body = args.model_dump(exclude_none=True)
     if not body:
@@ -879,10 +906,12 @@ def register(reg: ToolRegistry) -> None:
         ToolSpec(
             "update_my_preferences",
             "Save dietary preferences, allergies or favourite cuisines the customer "
-            "explicitly asked to save.",
+            "explicitly asked to save. Requires the customer's approval.",
             PreferencesArgs,
             update_my_preferences,
             EVERYONE,
+            requires_approval=True,
+            preview=preview_preferences,
             mutating=True,
             rate_per_minute=5,
         )

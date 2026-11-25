@@ -57,6 +57,15 @@ async def _demo_shop_autopilot(c: Container) -> None:
             await run_demo_shops(c)
 
 
+def _too_large(content_length: str | None, limit: int) -> bool:
+    if content_length is None:
+        return False
+    try:
+        return int(content_length) > limit
+    except ValueError:
+        return True  # not a number: refuse rather than guess
+
+
 def create_app(settings: Settings | None = None, *, container: Container | None = None) -> FastAPI:
     settings = settings or get_settings()
 
@@ -109,6 +118,7 @@ def create_app(settings: Settings | None = None, *, container: Container | None 
         "ledger, dispatch). All money values are integer kobo.",
         lifespan=lifespan,
         docs_url=None if settings.environment == "production" else "/docs",
+        openapi_url=None if settings.environment == "production" else "/openapi.json",
         redoc_url=None,
     )
     if container is not None:
@@ -130,6 +140,12 @@ def create_app(settings: Settings | None = None, *, container: Container | None 
             or request.headers.get("x-cloud-trace-context", "").split("/")[0]
         )
         rid = rid or uuid.uuid4().hex
+        if _too_large(request.headers.get("content-length"), settings.max_request_bytes):
+            # Refused before the body is read: a flood of huge bodies cannot fill the server's memory.
+            return JSONResponse(
+                {"error": {"code": "too_large", "message": "That is too large to send.", "request_id": rid}},
+                status_code=413,
+            )
         token = request_id_var.set(rid)
         # Phone tests: remember the address the client reached this API at, so the payment sandbox page opens
         # at an address that phone can reach (lan.reachable_base_url).

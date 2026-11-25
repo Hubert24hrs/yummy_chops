@@ -40,7 +40,7 @@ Two gaps had to be closed first:
 
 ### 2. Linking a number to an account by one-time code
 
-- In the app or on the website, **Connect WhatsApp** creates a 6-digit code (single use, valid 10 minutes, at
+- In the app or on the website, **Connect WhatsApp** creates an 8-digit code (single use, valid 10 minutes, at
   most 5 an hour). It comes with a `wa.me` link that pre-fills `LINK 123456`.
 - Sending that message from WhatsApp links the number to the signed-in account (`whatsapp_links/{wa_id}`). One
   number belongs to one account and one account has one number; linking again replaces the old link.

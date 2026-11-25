@@ -1,9 +1,9 @@
 "use client";
 
-import { ApiError, formatNaira, newIdempotencyKey } from "@gudmeal/api-client";
+import { ApiError, formatNaira, idempotentCalls } from "@gudmeal/api-client";
 import { Button, Card, ErrorState, Field, Input, Skeleton } from "@gudmeal/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { RewardsSummary } from "@/components/growth";
 import { useApi } from "@/lib/api";
 
@@ -13,13 +13,13 @@ export function RewardsView() {
   const api = useApi();
   const qc = useQueryClient();
   const rewards = useQuery({ queryKey: ["rewards"], queryFn: () => api.rewards.get() });
-  const redeemKey = useRef(newIdempotencyKey("redeem"));
+  // The key is kept only until the API answers: other points, or trying again after a refusal, is a new request.
+  const [sendRedeem] = useState(() => idempotentCalls("redeem"));
   const [code, setCode] = useState("");
 
   const redeem = useMutation({
-    mutationFn: (points: number) => api.rewards.redeem(points, redeemKey.current),
+    mutationFn: (points: number) => sendRedeem({ points }, (key) => api.rewards.redeem(points, key)),
     onSuccess: () => {
-      redeemKey.current = newIdempotencyKey("redeem");
       qc.invalidateQueries({ queryKey: ["rewards"] });
     },
   });

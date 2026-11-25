@@ -28,10 +28,19 @@ export default function FinancePage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["settlements"] }); qc.invalidateQueries({ queryKey: ["ledger"] }); },
   });
   const payout = useMutation({
-    mutationFn: ({ id, approve }: { id: string; approve: boolean }) =>
-      api.admin.decidePayout(id, approve, approve ? window.prompt("Bank transfer reference") ?? undefined : undefined),
+    mutationFn: ({ id, approve, reference }: { id: string; approve: boolean; reference?: string }) => api.admin.decidePayout(id, approve, reference),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["payouts"] }); qc.invalidateQueries({ queryKey: ["ledger"] }); },
   });
+  /** "Paid" asks for the bank reference and "Reject" asks first. Cancel stops here: the request stays as it is. */
+  const decidePayout = (id: string, approve: boolean) => {
+    if (!approve) {
+      if (window.confirm("Reject this withdrawal request?")) payout.mutate({ id, approve });
+      return;
+    }
+    const reference = window.prompt("Bank transfer reference");
+    if (reference === null) return;
+    payout.mutate({ id, approve, reference: reference.trim() || undefined });
+  };
 
   const tb = ledger.data?.trial_balance;
   const accounts = ledger.data?.accounts ?? [];
@@ -77,8 +86,8 @@ export default function FinancePage() {
           { key: "t", header: "Requested", render: (p) => formatDateTime(p.requested_at) },
           { key: "x", header: "", render: (p) => (
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => payout.mutate({ id: p.id, approve: true })}>Paid</Button>
-              <Button size="sm" variant="outline" onClick={() => payout.mutate({ id: p.id, approve: false })}>Reject</Button>
+              <Button size="sm" onClick={() => decidePayout(p.id, true)}>Paid</Button>
+              <Button size="sm" variant="outline" onClick={() => decidePayout(p.id, false)}>Reject</Button>
             </div>
           ) },
         ]} />

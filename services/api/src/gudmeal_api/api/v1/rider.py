@@ -177,7 +177,8 @@ async def request_payout(
     )
 
 
-@router.post("/emergency", status_code=201)
+@router.post("/emergency", status_code=201, dependencies=[Depends(limit("support"))])
 async def emergency(data: EmergencyInput, c: Ctr, principal: CurrentPrincipal) -> Any:
+    require_rider(principal)
     location = GeoPoint(lat=data.lat, lng=data.lng) if data.lat is not None and data.lng is not None else None
     return await c.support.emergency(principal, data.description, location)

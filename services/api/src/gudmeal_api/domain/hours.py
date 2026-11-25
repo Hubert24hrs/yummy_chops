@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, field_validator
 
 LAGOS = ZoneInfo("Africa/Lagos")
+
+
+def known_zone(name: str) -> ZoneInfo | None:
+    """The time zone called `name` (e.g. "Africa/Lagos"), or None when there is no such zone."""
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, OSError):  # unknown or malformed name, or a folder of zones
+        return None
 
 
 def _parse_hhmm(value: str) -> time:
@@ -45,14 +53,19 @@ class OpeningHours(BaseModel):
     def every_day(cls, open_: str, close: str) -> OpeningHours:
         return cls(weekly={d: [TimeRange(open=open_, close=close)] for d in range(7)})
 
-    def tz(self) -> ZoneInfo:
-        return ZoneInfo(self.timezone)
+    def tz(self) -> ZoneInfo | None:
+        """The shop's time zone. None when the stored name is not a zone we know: the shop then counts as closed
+        (partners' input is checked when it is saved, see `RestaurantSettingsInput`)."""
+        return known_zone(self.timezone)
 
 
 def is_open(hours: OpeningHours, at: datetime) -> bool:
     if at.tzinfo is None:
         raise ValueError("`at` must be timezone-aware")
-    local = at.astimezone(hours.tz())
+    tz = hours.tz()
+    if tz is None:  # one shop's bad time zone must never take the whole catalogue down
+        return False
+    local = at.astimezone(tz)
     if local.date().isoformat() in hours.closed_dates:
         return False
     now_t = local.time()
@@ -76,6 +89,8 @@ def next_opening(hours: OpeningHours, after: datetime, horizon_days: int = 7) ->
     if is_open(hours, after):
         return after
     tz = hours.tz()
+    if tz is None:
+        return None
     local = after.astimezone(tz)
     candidates: list[datetime] = []
     for offset in range(horizon_days + 1):

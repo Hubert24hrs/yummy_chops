@@ -10,6 +10,7 @@ from sqlalchemy import text
 from ...domain import places
 from ...domain.cities import CITIES
 from ...domain.geo import GeoPoint
+from ...domain.pricing import cod_limit
 from ...errors import NotFound, ServiceUnavailable, ValidationFailed
 from ...services.catalog import RestaurantCard, RestaurantDetail
 from ..deps import Ctr
@@ -174,7 +175,10 @@ async def public_config(c: Ctr) -> dict[str, Any]:
             and flags.get("pay_on_delivery", {}).get("enabled", True),
             "max_order_kobo": c.settings.pay_on_delivery_max_kobo,
         },
-        "cash_on_delivery": {"max_kobo": cfg.parcel.cod_max_kobo, "fee_bps": cfg.parcel.cod_fee_bps},
+        "cash_on_delivery": {
+            "max_kobo": cod_limit(cfg, c.settings.rider_cash_limit_kobo),
+            "fee_bps": cfg.parcel.cod_fee_bps,
+        },
         "plus": {
             "enabled": cfg.plus.enabled,
             "price_kobo": cfg.plus.price_kobo,

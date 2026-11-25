@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import contextvars
 from typing import Any, Protocol
 
 from langchain_core.messages import AIMessage
 
 from .config import Settings
+
+# Bound per request by AgentService: True when a daily spend budget is used up, so this turn is answered by the
+# rule-based models instead of Gemini.
+offline_turn: contextvars.ContextVar[bool] = contextvars.ContextVar("offline_turn", default=False)
 
 
 class Invocable(Protocol):
@@ -31,6 +36,7 @@ class GeminiFactory:
             "temperature": settings.llm_temperature,
             "max_retries": settings.llm_max_retries,
             "timeout": settings.llm_timeout_seconds,
+            "max_output_tokens": settings.llm_max_output_tokens,
             "google_api_key": settings.google_api_key.get_secret_value(),
         }
         self.model_name = settings.gemini_model
@@ -49,10 +55,38 @@ class GeminiFactory:
         return primary  # type: ignore[no-any-return]
 
     def for_structured(self, schema: type) -> Invocable:
-        primary: Any = self._primary.with_structured_output(schema)
+        # include_raw: the answer comes as {"raw": message, "parsed": object}, and the message carries the token
+        # counts, so the router's usage is counted like every other call.
+        primary: Any = self._primary.with_structured_output(schema, include_raw=True)
         if self._fallback is not None:
-            return primary.with_fallbacks([self._fallback.with_structured_output(schema)])  # type: ignore[no-any-return]
+            fallback = self._fallback.with_structured_output(schema, include_raw=True)
+            return primary.with_fallbacks([fallback])  # type: ignore[no-any-return]
         return primary  # type: ignore[no-any-return]
+
+
+class BudgetedModels:
+    """The configured models, or the rule-based ones for a turn whose daily spend budget is used up."""
+
+    def __init__(self, primary: ModelFactory, offline: ModelFactory) -> None:
+        self._primary = primary
+        self._offline = offline
+
+    @property
+    def model_name(self) -> str:
+        return self._primary.model_name
+
+    @property
+    def deterministic_routing(self) -> bool:
+        return bool(getattr(self._current(), "deterministic_routing", False))
+
+    def _current(self) -> ModelFactory:
+        return self._offline if offline_turn.get() else self._primary
+
+    def for_tools(self, tools: list[dict[str, Any]]) -> Invocable:
+        return self._current().for_tools(tools)
+
+    def for_structured(self, schema: type) -> Invocable:
+        return self._current().for_structured(schema)
 
 
 def usage_of(message: AIMessage) -> tuple[int, int]:

@@ -1,12 +1,12 @@
 "use client";
 
-import { ApiError, formatNaira, formatTime, newIdempotencyKey, type CartLine, type GroupOrder, type MenuItem, type SplitMode } from "@gudmeal/api-client";
+import { ApiError, formatNaira, formatTime, idempotentCalls, type CartLine, type GroupOrder, type MenuItem, type SplitMode } from "@gudmeal/api-client";
 import { Badge, Button, Card, ErrorState, Field, Input, Price, Skeleton, Toggle, cn } from "@gudmeal/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lock, LockOpen, Plus, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { CodeChip, GroupBill, GroupItems, groupStatusLabel, ShareButton } from "@/components/growth";
 import { ItemDialog } from "@/components/item-dialog";
 import { checkoutProvider, continueAfterCheckout, PaymentMethodPicker, type PayMethod } from "@/components/payment-method";
@@ -36,7 +36,11 @@ export function GroupView({ id }: { id: string }) {
   const [selected, setSelected] = useState<MenuItem | null>(null);
   const [voucher, setVoucher] = useState("");
   const [method, setMethod] = useState<PayMethod>("card");
-  const keys = useRef({ checkout: newIdempotencyKey("group"), share: newIdempotencyKey("share"), rest: newIdempotencyKey("rest"), order: newIdempotencyKey("checkout") });
+  // One sender for each kind of payment. A request keeps its key only until the API answers it: another voucher or
+  // payment method, or trying again after a refusal, is a new request (see `idempotentCalls`).
+  const [send] = useState(() => ({
+    checkout: idempotentCalls("group"), share: idempotentCalls("share"), rest: idempotentCalls("rest"), order: idempotentCalls("checkout"),
+  }));
   const set = (next: GroupOrder) => qc.setQueryData(["group", id], next);
 
   const lines = useMutation({ mutationFn: (next: CartLine[]) => api.groups.setLines(id, next), onSuccess: set });
@@ -44,14 +48,18 @@ export function GroupView({ id }: { id: string }) {
   const lock = useMutation({ mutationFn: (v: boolean) => (v ? api.groups.lock(id) : api.groups.unlock(id)), onSuccess: set });
   const split = useMutation({ mutationFn: (mode: SplitMode) => api.groups.setSplitMode(id, mode), onSuccess: set });
   const place = useMutation({
-    mutationFn: () => api.groups.checkout(id, keys.current.checkout, { voucher_code: voucher.trim() || undefined }),
-    onSuccess: (res) => { keys.current.checkout = newIdempotencyKey("group"); set(res); },
+    mutationFn: () => {
+      const body = { voucher_code: voucher.trim() || undefined };
+      return send.checkout(body, (key) => api.groups.checkout(id, key, body));
+    },
+    onSuccess: set,
   });
   const pay = useMutation({
-    mutationFn: (rest: boolean) => api.groups.pay(id, rest ? keys.current.rest : keys.current.share, { provider: checkoutProvider(method), cover_rest: rest }),
-    onSuccess: (res, rest) => {
-      if (rest) keys.current.rest = newIdempotencyKey("rest");
-      else keys.current.share = newIdempotencyKey("share");
+    mutationFn: (rest: boolean) => {
+      const body = { provider: checkoutProvider(method), cover_rest: rest };
+      return (rest ? send.rest : send.share)(body, (key) => api.groups.pay(id, key, body));
+    },
+    onSuccess: (res) => {
       if (res.payment.authorization_url) {
         window.location.assign(res.payment.authorization_url);
         return;
@@ -61,7 +69,11 @@ export function GroupView({ id }: { id: string }) {
     },
   });
   const hostPays = useMutation({
-    mutationFn: () => api.orders.checkout(g!.order!.id, keys.current.order, checkoutProvider(method)),
+    mutationFn: () => {
+      const order = g!.order!.id;
+      const provider = checkoutProvider(method);
+      return send.order({ order, provider }, (key) => api.orders.checkout(order, key, provider));
+    },
     onSuccess: (res) => continueAfterCheckout(res, router.push),
   });
   const cancel = useMutation({ mutationFn: () => api.groups.cancel(id), onSuccess: set });

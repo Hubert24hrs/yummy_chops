@@ -158,9 +158,11 @@ async def test_linking_by_code_and_disconnecting(client, container):
     r = await client.post("/v1/me/whatsapp/link-code", headers=auth("customer"))
     assert r.status_code == 201
     code = r.json()["code"]
-    assert len(code) == 6 and r.json()["wa_link"].endswith(f"?text=LINK%20{code}")
+    assert len(code) == 8 and r.json()["wa_link"].endswith(f"?text=LINK%20{code}")
 
-    wrong = await say(client, container, ADA_PHONE, text="LINK 000000" if code != "000000" else "LINK 111111")
+    wrong = await say(
+        client, container, ADA_PHONE, text="LINK 00000000" if code != "00000000" else "LINK 11111111"
+    )
     assert "isn't valid or has expired" in texts(wrong)[0]
     linked = await say(client, container, ADA_PHONE, text=f"link {code}")
     assert texts(linked)[0].startswith("You're connected, Ada!")
@@ -298,8 +300,8 @@ async def test_limits_and_disabled_channel(client, container):
         assert (await client.post("/v1/me/whatsapp/link-code", headers=auth("customer2"))).status_code == 201
     assert (await client.post("/v1/me/whatsapp/link-code", headers=auth("customer2"))).status_code == 429
     for _ in range(5):
-        await say(client, container, "2348044444444", text="LINK 123450")
-    tired = await say(client, container, "2348044444444", text="LINK 123450")
+        await say(client, container, "2348044444444", text="LINK 12345670")
+    tired = await say(client, container, "2348044444444", text="LINK 12345670")
     assert "Too many tries" in texts(tired)[0]
     await link(client, container)
     replies: list[str] = []

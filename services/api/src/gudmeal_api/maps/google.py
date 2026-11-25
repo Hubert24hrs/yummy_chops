@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -170,7 +171,7 @@ class GoogleMapsClient:
         if session_token:
             params["sessionToken"] = session_token
         data = await self._send(
-            "GET", f"{PLACES_URL}/places/{place_id}", field_mask=PLACE_FIELDS, params=params
+            "GET", f"{PLACES_URL}/places/{quote(place_id, safe='')}", field_mask=PLACE_FIELDS, params=params
         )
         loc = data.get("location") or {}
         if "latitude" not in loc or "longitude" not in loc:

@@ -206,6 +206,7 @@ async def build_container(
     http: httpx.AsyncClient | None = None,
     task_queue: Any = None,
     extra_providers: dict[str, PaymentProvider] | None = None,
+    files: FileStore | None = None,
 ) -> Container:
     settings.validate_for_environment()
 
@@ -294,6 +295,7 @@ async def build_container(
         callback_url=_payment_callback_url(settings),
         email_fallback_domain=settings.customer_email_fallback_domain,
         refund_auto_approve_limit_kobo=settings.refund_auto_approve_limit_kobo,
+        split_exposure_limit_kobo=settings.split_exposure_limit_kobo,
         failover_provider=settings.payment_failover_provider,
         wallet_enabled=settings.wallet_enabled,
     )
@@ -356,8 +358,10 @@ async def build_container(
             phone_number_id=settings.whatsapp_phone_number_id,
             version=settings.whatsapp_graph_version,
         )
-    kyc = RiderKycService(repos, _file_store(settings), identity, audit, notifier)
-    businesses = BusinessService(repos, identity, audit, paystack=providers.get("paystack"))
+    kyc = RiderKycService(repos, files or _file_store(settings), identity, audit, notifier)
+    businesses = BusinessService(
+        repos, identity, audit, paystack=providers.get("paystack"), notifier=notifier
+    )
     container = Container(
         settings=settings,
         repos=repos,
@@ -380,7 +384,7 @@ async def build_container(
         http=http,
         catalog=catalog,
         quotes=quotes,
-        parcels=ParcelService(repos, maps=maps),
+        parcels=ParcelService(repos, maps=maps, rider_cash_limit_kobo=settings.rider_cash_limit_kobo),
         payments=payments,
         wallet=wallet,
         cash=cash,
@@ -391,6 +395,8 @@ async def build_container(
             notifier=notifier,
             audit=audit,
             unpaid_order_ttl_seconds=settings.unpaid_order_ttl_seconds,
+            sample_network_bookable=settings.environment in ("local", "test"),
+            rider_cash_limit_kobo=settings.rider_cash_limit_kobo,
         ),
         membership=MembershipService(repos, payments, db=db, ledger=ledger, notifier=notifier),
         rewards=RewardsService(repos, notifier=notifier, audit=audit),
@@ -494,6 +500,7 @@ def register_handlers(c: Container) -> None:
     h.on("order.cancelled", c.payments.on_order_cancelled)
     h.on("order.cancelled", c.dispatch.on_order_called_off)
     h.on("order.refund_pending", c.dispatch.on_order_called_off)
+    h.on("order.disputed", c.dispatch.on_order_called_off)  # staff stopped a delivery on the way
     # Interstate waybills: booking follow-up after payment, rider legs moving the shipment, call-offs.
     h.on("waybill.paid", c.waybills.on_paid)
     h.on("order.picked_up", c.waybills.on_leg_event)

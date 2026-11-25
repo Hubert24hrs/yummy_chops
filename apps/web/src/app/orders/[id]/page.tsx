@@ -1,11 +1,11 @@
 "use client";
 
-import { formatDateTime, formatTime, isMeasured, newIdempotencyKey, TRACKING_STEPS, type Order, type Tracking } from "@gudmeal/api-client";
+import { formatDateTime, formatTime, idempotentCalls, isMeasured, TRACKING_STEPS, type Order, type Tracking } from "@gudmeal/api-client";
 import { Badge, Button, Card, ErrorState, MapView, Price, Skeleton, StatusBadge, Textarea, cn, type MapPin } from "@gudmeal/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Banknote, Bike, KeyRound, MessageCircleWarning, Printer, Star, Wallet } from "lucide-react";
 import Link from "next/link";
-import { use, useRef, useState } from "react";
+import { use, useState } from "react";
 import { RequireAuth } from "@/components/require-auth";
 import { WaybillPanel } from "@/components/waybill-panel";
 import { useApi } from "@/lib/api";
@@ -33,9 +33,10 @@ function OrderDetail({ id }: { id: string }) {
   // Pay-on-delivery orders get their delivery code as soon as the kitchen has them (cash is paid at the door).
   const codes = useQuery({ queryKey: ["codes", id], queryFn: () => api.orders.codes(id), enabled: Boolean(o && (o.payment.status === "paid" || cashDue)) });
   const tracking = useQuery({ queryKey: ["tracking", id], queryFn: () => api.orders.tracking(id), enabled: Boolean(enRoute), refetchInterval: 5000 });
-  const payKey = useRef(newIdempotencyKey("checkout"));
+  // The key is kept only until the API answers: trying again after a refusal is a new request (see `idempotentCalls`).
+  const [sendPay] = useState(() => idempotentCalls("checkout"));
   const pay = useMutation({
-    mutationFn: () => api.orders.checkout(id, payKey.current),
+    mutationFn: () => sendPay({ order: id }, (key) => api.orders.checkout(id, key)),
     onSuccess: (r) => (r.authorization_url ? window.location.assign(r.authorization_url) : order.refetch()),
   });
   const cancel = useMutation({ mutationFn: () => api.orders.cancel(id, "Cancelled from website"), onSuccess: () => qc.invalidateQueries({ queryKey: ["order", id] }) });

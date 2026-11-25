@@ -3,8 +3,10 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- allowBackup off: nothing here is worth restoring, and a signed-in session must not travel in a backup. -->
     <application
         android:label="Yummy Chops Rider"
+        android:allowBackup="false"
         android:usesCleartextTraffic="${usesCleartextTraffic}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/widgets.dart';
 
 class GmUser {
   const GmUser({required this.uid, this.email, this.name, this.phone});
@@ -127,6 +128,48 @@ class FirebaseAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() => _auth.signOut();
+}
+
+/// Starts everything under it afresh when the signed-in user leaves: they sign out, or another account takes their
+/// place. What the app keeps in memory (orders, addresses, wallet, cart, a rider's earnings and KYC) belongs to that
+/// user and must not be shown to the next person on the same phone. Signing in keeps what a visitor already chose.
+///
+/// It goes above the app's `ProviderScope` in `main()`.
+class PerUserScope extends StatefulWidget {
+  const PerUserScope({super.key, required this.auth, required this.child});
+  final AuthRepository auth;
+  final Widget child;
+
+  @override
+  State<PerUserScope> createState() => _PerUserScopeState();
+}
+
+class _PerUserScopeState extends State<PerUserScope> {
+  late final StreamSubscription<GmUser?> _changes;
+  String? _uid;
+
+  /// How many users have left since the app started: a new number is a new start for [PerUserScope.child].
+  int _left = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _uid = widget.auth.currentUser?.uid;
+    _changes = widget.auth.authStateChanges().listen((user) {
+      final left = _uid != null && _uid != user?.uid;
+      _uid = user?.uid;
+      if (left) setState(() => _left++);
+    });
+  }
+
+  @override
+  void dispose() {
+    _changes.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => KeyedSubtree(key: ValueKey(_left), child: widget.child);
 }
 
 /// In-memory auth for tests and screenshots.

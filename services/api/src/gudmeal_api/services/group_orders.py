@@ -178,8 +178,14 @@ class GroupOrderService:
 
         return await self.repos.store.run_transaction(tx_fn)
 
+    async def _menu_of(self, g: GroupOrder) -> str:
+        """Whose menu the group's shop sells: a branch sells its main branch's (ADR-0028)."""
+        shop = await self.repos.restaurants.get(g.restaurant_id)
+        return shop.menu_id if shop else g.restaurant_id
+
     async def _price_lines(self, g: GroupOrder) -> tuple[list[dict[str, Any]], dict[str, int]]:
         """Live menu prices of everyone's lines (estimates: the checkout quote is the price)."""
+        menu = await self._menu_of(g)
         items = await self.repos.items.get_many([ln.item_id for ln in g.lines])
         groups = await self.repos.option_groups.get_many(
             sorted({gid for i in items.values() for gid in i.option_group_ids})
@@ -193,7 +199,7 @@ class GroupOrderService:
             total = 0
             labels: list[str] = []
             try:
-                if item is None or item.restaurant_id != g.restaurant_id:
+                if item is None or item.restaurant_id != menu:
                     raise ItemUnavailable("No longer on the menu")
                 priced = price_line(ln, item, groups)
                 total, labels = priced.line_total_kobo, priced.selection_labels
@@ -400,9 +406,10 @@ class GroupOrderService:
         option_groups = await self.repos.option_groups.get_many(
             sorted({gid for i in items.values() for gid in i.option_group_ids})
         )
+        menu = await self._menu_of(g)
         for line in lines:  # reject what the quote would reject, while the customer is still choosing
             item = items.get(line.item_id)
-            if item is None or item.restaurant_id != g.restaurant_id:
+            if item is None or item.restaurant_id != menu:
                 raise ItemUnavailable(
                     "That item is not on this store's menu", details={"item_id": line.item_id}
                 )
@@ -630,8 +637,11 @@ class GroupOrderService:
             if g.order_id != order_id or g.status != "ordered" or not live:
                 return amount, False, g  # cancelled, expired or replaced: give the money back
             shares = [s.model_copy() for s in g.shares]
-            if any(s.payment_reference == payload.get("reference") for s in shares):
-                return 0, all(s.status == "paid" for s in shares), g  # replayed event: nothing new to apply
+            covered = [s.amount_kobo for s in shares if s.payment_reference == payload.get("reference")]
+            if covered:
+                # Replayed event: nothing new to apply. What the payment did not cover is still handed back (the
+                # refund is made once, whatever happened to the first delivery of the event after it was applied).
+                return amount - sum(covered), all(s.status == "paid" for s in shares), g
             left = amount
 
             def settle(share: GroupShare) -> None:

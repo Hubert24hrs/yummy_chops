@@ -1,9 +1,9 @@
 "use client";
 
-import { formatDateTime, formatNaira, newIdempotencyKey } from "@gudmeal/api-client";
+import { formatDateTime, formatNaira, idempotentCalls } from "@gudmeal/api-client";
 import { Badge, Button, Card, DataTable, ErrorState, Field, Input, Select, Skeleton, Stat } from "@gudmeal/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useApi } from "@/lib/api";
 
 type Method = "bank_transfer" | "cash_deposit" | "earnings_offset";
@@ -22,38 +22,51 @@ export default function CashPage() {
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<Method>("bank_transfer");
   const [reference, setReference] = useState("");
-  const remitKey = useRef(newIdempotencyKey("remit"));
+  // A request keeps its key only until the API answers it. The same hand-in or payout sent again after a network
+  // error is recorded once; a corrected one, or one sent again after a refusal, is a new request.
+  const [sendRemit] = useState(() => idempotentCalls("remit"));
+  const [sendCarrier] = useState(() => idempotentCalls("carrier"));
   const [customer, setCustomer] = useState({ uid: "", reason: "", blocked: true });
 
   const remit = useMutation({
-    mutationFn: () => api.admin.recordRemittance(rider!, {
-      amount_kobo: Math.round(Number(amount) * 100), method, reference: reference.trim() || undefined,
-    }, remitKey.current),
+    mutationFn: () => {
+      const body = { amount_kobo: Math.round(Number(amount) * 100), method, reference: reference.trim() || undefined };
+      return sendRemit({ rider, ...body }, (key) => api.admin.recordRemittance(rider!, body, key));
+    },
     onSuccess: () => {
-      remitKey.current = newIdempotencyKey("remit");
       setRider(null); setAmount(""); setReference("");
       qc.invalidateQueries({ queryKey: ["cash"] });
     },
   });
   const decide = useMutation({
-    mutationFn: ({ id, approve }: { id: string; approve: boolean }) => {
-      if (!approve) return api.admin.decideSellerPayout(id, false, undefined, window.prompt("Reason (shown to the seller)") ?? undefined);
-      const ref = window.prompt("Bank transfer reference") ?? "";
-      if (ref.trim().length < 4) throw new Error("A bank transfer reference is required");
-      return api.admin.decideSellerPayout(id, true, ref.trim());
+    mutationFn: ({ id, approve, text }: { id: string; approve: boolean; text: string }) => {
+      if (!approve) return api.admin.decideSellerPayout(id, false, undefined, text || undefined);
+      if (text.length < 4) throw new Error("A bank transfer reference is required");
+      return api.admin.decideSellerPayout(id, true, text);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["seller-payouts"] }); qc.invalidateQueries({ queryKey: ["cash"] }); },
   });
+  /** Asks for the bank reference ("Paid") or the reason ("Reject"). Cancel stops here: the withdrawal stays as it is. */
+  const askSellerPayout = (id: string, approve: boolean) => {
+    const text = window.prompt(approve ? "Bank transfer reference" : "Reject this withdrawal? Reason (shown to the seller). Cancel changes nothing.");
+    if (text === null) return;
+    decide.mutate({ id, approve, text: text.trim() });
+  };
   const carrierPay = useMutation({
-    mutationFn: ({ id, owed }: { id: string; owed: number }) => {
-      const naira = window.prompt("Amount paid (₦)", String(owed / 100)) ?? "";
-      const amount = Math.round(Number(naira.replace(/[^0-9.]/g, "")) * 100);
-      const ref = (window.prompt("Bank transfer reference") ?? "").trim();
+    mutationFn: ({ id, amount, ref }: { id: string; amount: number; ref: string }) => {
       if (!amount || ref.length < 4) throw new Error("Enter the amount and the bank reference");
-      return api.admin.carrierPayout(id, amount, ref, newIdempotencyKey("carrier"));
+      return sendCarrier({ id, amount, ref }, (key) => api.admin.carrierPayout(id, amount, ref, key));
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cash"] }),
   });
+  /** Asks for the amount and the bank reference. Cancel on either stops here: nothing is recorded. */
+  const askCarrierPayout = (id: string, owed: number) => {
+    const naira = window.prompt("Amount paid (₦)", String(owed / 100));
+    if (naira === null) return;
+    const ref = window.prompt("Bank transfer reference");
+    if (ref === null) return;
+    carrierPay.mutate({ id, amount: Math.round(Number(naira.replace(/[^0-9.]/g, "")) * 100), ref: ref.trim() });
+  };
   const block = useMutation({
     mutationFn: () => api.admin.setPayOnDelivery(customer.uid.trim(), customer.blocked, customer.reason.trim()),
   });
@@ -116,7 +129,7 @@ export default function CashPage() {
           { key: "n", header: "Carrier", render: (x) => x.name },
           { key: "o", header: "Owed", render: (x) => <strong>{formatNaira(x.owed_kobo)}</strong> },
           { key: "a", header: "", render: (x) => (
-            <Button size="sm" loading={carrierPay.isPending} onClick={() => carrierPay.mutate({ id: x.carrier_id, owed: x.owed_kobo })}>Record payout</Button>
+            <Button size="sm" loading={carrierPay.isPending} onClick={() => askCarrierPayout(x.carrier_id, x.owed_kobo)}>Record payout</Button>
           ) },
         ]} />
       </Card>
@@ -131,8 +144,8 @@ export default function CashPage() {
           { key: "t", header: "Requested", render: (p) => formatDateTime(p.requested_at) },
           { key: "x", header: "", render: (p) => (
             <div className="flex gap-2">
-              <Button size="sm" onClick={() => decide.mutate({ id: p.id, approve: true })}>Paid</Button>
-              <Button size="sm" variant="outline" onClick={() => decide.mutate({ id: p.id, approve: false })}>Reject</Button>
+              <Button size="sm" onClick={() => askSellerPayout(p.id, true)}>Paid</Button>
+              <Button size="sm" variant="outline" onClick={() => askSellerPayout(p.id, false)}>Reject</Button>
             </div>
           ) },
         ]} />

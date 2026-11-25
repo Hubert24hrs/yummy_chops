@@ -127,7 +127,9 @@ async def test_declining_approval_never_charges(stack):
     body = (await client.post("/v1/chat", json={"message": VISION}, headers=bearer("customer"))).json()
     order_id = body["approval"]["preview"]["order"]["order_id"]
     r = await client.post(
-        f"/v1/chat/{body['thread_id']}/approval", json={"approved": False}, headers=bearer("customer")
+        f"/v1/chat/{body['thread_id']}/approval",
+        json={"approved": False, "tool_call_id": body["approval"]["tool_call_id"]},
+        headers=bearer("customer"),
     )
     assert r.json()["status"] == "completed"
     order = (await api.get(f"/v1/orders/{order_id}", headers=bearer("customer"))).json()
@@ -143,8 +145,9 @@ async def test_threads_are_isolated_and_tokens_never_persisted(stack):
     body = (await client.post("/v1/chat", json={"message": VISION}, headers=bearer("customer"))).json()
     tid = body["thread_id"]
     assert (await client.get(f"/v1/threads/{tid}/messages", headers=bearer("customer2"))).status_code == 404
+    answer = {"approved": True, "tool_call_id": body["approval"]["tool_call_id"]}
     assert (
-        await client.post(f"/v1/chat/{tid}/approval", json={"approved": True}, headers=bearer("customer2"))
+        await client.post(f"/v1/chat/{tid}/approval", json=answer, headers=bearer("customer2"))
     ).status_code == 404
     assert (
         await client.post("/v1/chat", json={"message": "hi", "thread_id": tid}, headers=bearer("customer2"))
@@ -272,7 +275,9 @@ async def test_restaurant_agent_accepts_order_after_approval(stack):
     ).json()
     assert body["status"] == "approval_required" and body["approval"]["tool"] == "accept_order"
     r = await client.post(
-        f"/v1/chat/{body['thread_id']}/approval", json={"approved": True}, headers=bearer("owner")
+        f"/v1/chat/{body['thread_id']}/approval",
+        json={"approved": True, "tool_call_id": body["approval"]["tool_call_id"]},
+        headers=bearer("owner"),
     )
     assert r.json()["status"] == "completed"
     accepted = (await api.get(f"/v1/orders/{order['id']}", headers=bearer("customer2"))).json()

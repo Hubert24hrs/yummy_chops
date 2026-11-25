@@ -1,49 +1,12 @@
 rules_version = '2';
 
-// Yummy Chops — Cloud Storage rules. Deny by default; strict size and content-type limits.
+// Yummy Chops: Cloud Storage rules. Files reach the bucket only through the API: riders' KYC documents under
+// applications/{uid}/, which only the rider and the team's reviewers can open, through the API. The apps and
+// websites never read or write the bucket directly, so nothing is open to them (no free uploads at our cost either).
 service firebase.storage {
   match /b/{bucket}/o {
-    function signedIn() { return request.auth != null; }
-    function isStaff() {
-      return signedIn() && request.auth.token.get('roles', []).hasAny(
-        ['support_agent', 'operations_manager', 'finance_manager', 'super_admin']);
-    }
-    function managesRestaurant(rid) {
-      return signedIn() && request.auth.token.get('restaurant_roles', {}).get(rid, '') in ['owner', 'manager'];
-    }
-    function isImage() { return request.resource.contentType.matches('image/(jpeg|png|webp)'); }
-    function isDocument() { return request.resource.contentType.matches('(image/(jpeg|png|webp)|application/pdf)'); }
-
     match /{allPaths=**} {
       allow read, write: if false;
-    }
-
-    // Restaurant logos, covers and menu photos — public read, managers upload (≤ 5 MB images).
-    match /public/restaurants/{rid}/{fileName} {
-      allow read: if true;
-      allow create, update: if managesRestaurant(rid) && isImage() && request.resource.size < 5 * 1024 * 1024;
-      allow delete: if managesRestaurant(rid);
-    }
-
-    // Onboarding documents (CAC, ID, licence, vehicle papers) — private to the applicant and staff.
-    match /applications/{userId}/{fileName} {
-      allow read: if signedIn() && (request.auth.uid == userId || isStaff());
-      allow create: if signedIn() && request.auth.uid == userId && isDocument()
-        && request.resource.size < 10 * 1024 * 1024;
-    }
-
-    // Proof-of-delivery photos — uploaded by the rider, visible to staff for disputes.
-    match /proof_of_delivery/{riderId}/{orderId}/{fileName} {
-      allow read: if signedIn() && (request.auth.uid == riderId || isStaff());
-      allow create: if signedIn() && request.auth.uid == riderId && isImage()
-        && request.resource.size < 5 * 1024 * 1024;
-    }
-
-    // Profile photos.
-    match /users/{userId}/avatar/{fileName} {
-      allow read: if signedIn();
-      allow write: if signedIn() && request.auth.uid == userId && isImage()
-        && request.resource.size < 2 * 1024 * 1024;
     }
   }
 }

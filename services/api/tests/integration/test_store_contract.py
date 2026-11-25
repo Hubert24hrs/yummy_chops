@@ -75,6 +75,15 @@ async def test_queries(store):
     assert len(await store.query(c, order_by=[("rank", "asc")], limit=2)) == 2
 
 
+async def test_null_filters(store):
+    """`!= None` finds documents whose field has a value (the catalogue reads only vouchers tied to a merchant)."""
+    c = col()
+    await store.set(f"{c}/shop", {"id": "shop", "restaurant_id": "r1"})
+    await store.set(f"{c}/personal", {"id": "personal", "restaurant_id": None})
+    assert [d["id"] for d in await store.query(c, where=[("restaurant_id", "!=", None)])] == ["shop"]
+    assert [d["id"] for d in await store.query(c, where=[("restaurant_id", "==", None)])] == ["personal"]
+
+
 async def test_transactions_are_atomic(store):
     c = col()
     await store.set(f"{c}/counter", {"id": "counter", "n": 0})

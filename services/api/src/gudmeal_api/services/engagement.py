@@ -16,6 +16,7 @@ from ..domain.models import (
     CustomerProfile,
     DeliveryAddress,
     MenuCategory,
+    PlainText,
     Restaurant,
     RestaurantStatus,
     Review,
@@ -80,6 +81,7 @@ class ProfileService:
         changes = {
             k: ([s.strip().lower() for s in v] if isinstance(v, list) else v)
             for k, v in data.model_dump(exclude_unset=True).items()
+            if v is not None or k == "display_name"  # only the name can be cleared
         }
         updated = profile.model_copy(update={**changes, "updated_at": utcnow()})
         await self.repos.customers.save(CustomerProfile.model_validate(updated.model_dump()))
@@ -102,7 +104,8 @@ class ProfileService:
         self, principal: Principal, address: DeliveryAddress, address_id: str | None = None
     ) -> SavedAddress:
         existing = await self.repos.list_addresses(principal.uid)
-        if address_id is None and len(existing) >= 20:
+        replacing = address_id is not None and any(a.id == address_id for a in existing)
+        if not replacing and len(existing) >= 20:
             raise ValidationFailed("You can save up to 20 addresses")
         saved = SavedAddress(id=address_id or uuid.uuid4().hex[:16], **address.model_dump())
         await self.repos.save_address(principal.uid, saved)
@@ -147,17 +150,17 @@ FIRST_CATEGORY: dict[str, tuple[str, str]] = {
 class RestaurantApplicationInput(BaseModel):
     """A business asks to sell on Yummy Chops: a restaurant or a shop of any kind (ADR-0025)."""
 
-    business_name: str = Field(min_length=2, max_length=80)
+    business_name: PlainText = Field(min_length=2, max_length=80)
     #: The kind of business, which decides the service the shop appears under: a restaurant (Order Food), a pharmacy,
     #: a beauty & skin care shop, a supermarket or store (Shop & Groceries) or a market shopper (Buy Foodstuff).
     vertical: Literal["food", "pharmacy", "beauty", "grocery", "market"] = "food"
     #: Pharmacies only: the Pharmacists Council of Nigeria premises licence, checked before the shop goes live.
     pcn_licence_number: str | None = Field(default=None, min_length=4, max_length=30)
     cac_number: str = Field(min_length=4, max_length=20, description="Corporate Affairs Commission number")
-    contact_name: str = Field(min_length=2, max_length=80)
+    contact_name: PlainText = Field(min_length=2, max_length=80)
     contact_phone: str = Field(min_length=7, max_length=20)
-    address: str = Field(min_length=5, max_length=200)
-    area: str = Field(min_length=2, max_length=60)
+    address: PlainText = Field(min_length=5, max_length=200)
+    area: PlainText = Field(min_length=2, max_length=60)
     location: GeoPoint
     cuisines: list[str] = Field(min_length=1, max_length=8)
     #: The business's email (docs/adr/0028-business-branches-and-split-payments.md).
@@ -429,7 +432,10 @@ class ReviewService:
             order_by=[("created_at", "desc")],
             limit=min(limit, 50),
         )
-        return [r.model_copy(update={"customer_id": "hidden"}) for r in reviews]
+        return [
+            r.model_copy(update={"customer_id": "hidden", "order_id": "hidden", "rider_id": None})
+            for r in reviews
+        ]
 
 
 # ================================================================================================
@@ -531,6 +537,19 @@ class SupportService:
                 raise ValidationFailed("Refunds need an order")
             require(principal, Permission.REFUNDS_REQUEST)
             order = await self.orders.get(ticket.order_id)
+            refundable = order.breakdown.total_kobo - order.refund_total_kobo
+            if data.refund_amount_kobo > refundable:
+                raise ValidationFailed(
+                    "Refund amount exceeds the refundable balance", details={"refundable_kobo": refundable}
+                )
+            if not order.completed_at:
+                # Refunding now stops the order (the kitchen and the rider are told to stop), and in full.
+                require(principal, Permission.ORDERS_INTERVENE)
+                if data.refund_amount_kobo != refundable:
+                    raise ValidationFailed(
+                        "An order that is not finished yet is refunded in full",
+                        details={"refundable_kobo": refundable},
+                    )
             target = OrderStatus.REFUND_PENDING
             await self.orders.transition(
                 order.id,

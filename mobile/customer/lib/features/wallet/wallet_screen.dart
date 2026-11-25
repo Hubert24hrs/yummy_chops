@@ -4,6 +4,7 @@ import 'package:gud_meal_core/gud_meal_core.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers.dart';
+import '../../ui/payment_picker.dart';
 
 /// Yummy Chops wallet: balance, top-up, instant refunds setting, history, and cash-on-delivery money for sellers.
 class WalletScreen extends ConsumerStatefulWidget {
@@ -17,7 +18,7 @@ const _quickAmounts = [100000, 200000, 500000, 1000000]; // ₦1,000 – ₦10,0
 
 int _toKobo(String naira) => ((double.tryParse(naira.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0) * 100).round();
 
-class _WalletScreenState extends ConsumerState<WalletScreen> {
+class _WalletScreenState extends ConsumerState<WalletScreen> with WidgetsBindingObserver, PaymentReturn<WalletScreen> {
   final _amount = TextEditingController();
   String? _error;
   bool _busy = false;
@@ -28,6 +29,9 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     _amount.dispose();
     super.dispose();
   }
+
+  @override
+  void paymentChecked() => ref.invalidate(walletProvider);
 
   Future<void> _topUp(WalletOverview w) async {
     final kobo = _toKobo(_amount.text);
@@ -51,9 +55,12 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
       final res = await ref.read(apiProvider).topUpWallet(kobo, _topUpKey);
       _topUpKey = newIdempotencyKey('topup');
       final url = res.authorizationUrl;
-      // Provider-hosted payment page: card data never touches the app. The balance updates once it's verified.
-      if (url != null) await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
-      if (url != null) await ref.read(apiProvider).verifyPayment(res.reference);
+      // Provider-hosted payment page: card data never touches the app. The payment is checked when the customer
+      // comes back to the app (there is nothing to check before they have paid), and the balance updates then.
+      if (url != null) {
+        paymentPageOpened(res.reference);
+        await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
+      }
       ref.invalidate(walletProvider);
     } on ApiException catch (e) {
       setState(() => _error = e.message);
@@ -133,8 +140,13 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
               title: const Text('Instant refunds to my wallet'),
               subtitle: const Text('Card refunds go to your wallet straight away instead of back to the card.'),
               onChanged: (on) async {
-                await ref.read(apiProvider).setRefundToWallet(on);
-                ref.invalidate(walletProvider);
+                final messenger = ScaffoldMessenger.of(context);
+                try {
+                  await ref.read(apiProvider).setRefundToWallet(on);
+                } on ApiException catch (e) {
+                  messenger.showSnackBar(SnackBar(content: Text(e.message)));
+                }
+                if (mounted) ref.invalidate(walletProvider);
               },
             ),
             if (w.seller != null) _SellerCard(seller: w.seller!),
@@ -183,6 +195,9 @@ class _SellerCardState extends ConsumerState<_SellerCard> {
   final _account = TextEditingController();
   final _name = TextEditingController();
   final _payout = TextEditingController();
+  // The same key until the server answers: a second tap after a lost connection is not a second withdrawal.
+  final _moveKey = IdempotencyKey('cod-move');
+  final _payoutKey = IdempotencyKey('payout');
   String? _message;
   bool _busy = false;
 
@@ -239,8 +254,10 @@ class _SellerCardState extends ConsumerState<_SellerCard> {
             OutlinedButton(
               onPressed: _busy
                   ? null
-                  : () => _run(() => api.moveCodToWallet(_toKobo(_move.text), newIdempotencyKey('cod-move')),
-                      'Moved to your wallet'),
+                  : () {
+                      final kobo = _toKobo(_move.text);
+                      _run(() => _moveKey.send(kobo, (key) => api.moveCodToWallet(kobo, key)), 'Moved to your wallet');
+                    },
               child: const Text('Move'),
             ),
           ]),
@@ -263,16 +280,23 @@ class _SellerCardState extends ConsumerState<_SellerCard> {
           FilledButton.tonal(
             onPressed: _busy
                 ? null
-                : () => _run(
-                      () => api.requestSellerPayout(
-                        amountKobo: _toKobo(_payout.text),
-                        bankName: _bank.text.trim(),
-                        accountNumber: _account.text.trim(),
-                        accountName: _name.text.trim(),
-                        idempotencyKey: newIdempotencyKey('payout'),
+                : () {
+                    final kobo = _toKobo(_payout.text);
+                    final bank = _bank.text.trim(), account = _account.text.trim(), name = _name.text.trim();
+                    _run(
+                      () => _payoutKey.send(
+                        (kobo, bank, account, name),
+                        (key) => api.requestSellerPayout(
+                          amountKobo: kobo,
+                          bankName: bank,
+                          accountNumber: account,
+                          accountName: name,
+                          idempotencyKey: key,
+                        ),
                       ),
                       "Withdrawal requested. We'll let you know when it's paid.",
-                    ),
+                    );
+                  },
             child: const Text('Request withdrawal'),
           ),
           if (_message != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_message!)),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -56,6 +57,15 @@ class GrowthApi extends GudMealApi {
   final created = <(String, String, String?)>[];
   GroupOrder groupState = _group();
   bool waLinked = false;
+  bool cardPage = false; // card payments open the provider's page
+  final verified = <String>[];
+
+  @override
+  Future<String> verifyPayment(String reference) async {
+    verified.add(reference);
+    member = true;
+    return 'succeeded';
+  }
 
   @override
   Future<WhatsAppStatus> whatsAppStatus() async => WhatsAppStatus(
@@ -95,6 +105,12 @@ class GrowthApi extends GudMealApi {
   @override
   Future<({TopUpResult payment, PlusOverview plus})> subscribePlus(String idempotencyKey, {String? provider, bool autoRenew = true}) async {
     subscribed.add((provider, autoRenew));
+    if (cardPage) {
+      return (
+        payment: const TopUpResult(reference: 'YC-PLUS-C1', provider: 'paystack', authorizationUrl: 'https://pay.example.com/c1', amountKobo: 150000),
+        plus: await plus(),
+      );
+    }
     member = true;
     return (payment: const TopUpResult(reference: 'YC-PLUS-W1', provider: 'wallet', amountKobo: 150000), plus: await plus());
   }
@@ -162,6 +178,33 @@ void main() {
     expect(api.subscribed, [('wallet', true)]);
     expect(find.text('Member until Tue 15 Dec 2026'), findsOneWidget);
     expect(find.byKey(const ValueKey('plus-join')), findsNothing);
+  });
+
+  testWidgets('Plus by card: the payment is checked when the customer comes back from the payment page', (tester) async {
+    const launcher = MethodChannel('plugins.flutter.io/url_launcher');
+    final opened = <Object?>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(launcher, (call) async {
+      opened.add((call.arguments as Map)['url']);
+      return true;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(launcher, null));
+    final api = GrowthApi()..cardPage = true;
+    await pump(tester, const PlusScreen(), api);
+    await tester.ensureVisible(find.text('Card, bank transfer or USSD'));
+    await tester.tap(find.text('Card, bank transfer or USSD'));
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const ValueKey('plus-join')));
+    await tester.tap(find.byKey(const ValueKey('plus-join')));
+    await tester.pumpAndSettle();
+    expect(opened, ['https://pay.example.com/c1']);
+    expect(api.verified, isEmpty, reason: 'nothing to check before the customer has paid');
+    expect(find.byKey(const ValueKey('plus-join')), findsOneWidget);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused); // on the payment page
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed); // and back
+    await tester.pumpAndSettle();
+    expect(api.verified, ['YC-PLUS-C1']);
+    expect(find.text('Member until Tue 15 Dec 2026'), findsOneWidget);
   });
 
   testWidgets('Rewards: points, voucher steps, vouchers and the referral code', (tester) async {

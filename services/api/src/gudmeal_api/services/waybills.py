@@ -13,6 +13,7 @@ their own, dispatched like any same-city package. Hubs confirm custody in the Co
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 import uuid
 from collections.abc import Callable
@@ -169,13 +170,18 @@ class WaybillService:
         notifier: Notifier,
         audit: AuditLog,
         unpaid_order_ttl_seconds: int = 1800,
+        sample_network_bookable: bool = True,
+        rider_cash_limit_kobo: int | None = None,
     ) -> None:
+        self.rider_cash_limit_kobo = rider_cash_limit_kobo
         self.repos = repos
         self.orders = orders
         self.tasks = tasks
         self.notifier = notifier
         self.audit = audit
         self.unpaid_ttl = unpaid_order_ttl_seconds
+        #: Sample hubs and carriers (the network before a real one is saved) can be booked in local and test only.
+        self.sample_network_bookable = sample_network_bookable
 
     async def network(self) -> WaybillNetwork:
         return await self.repos.get_waybill_network()
@@ -309,6 +315,10 @@ class WaybillService:
         if req.last_mile == "door":
             assert req.recipient.location is not None
             delivery_km = haversine_km(dest_hub.location, req.recipient.location)
+        sample = carrier.is_sample or origin_hub.is_sample or dest_hub.is_sample
+        if sample and not self.sample_network_bookable:
+            # Never take money for a route through a placeholder hub or carrier.
+            raise OutOfDeliveryArea("Interstate waybills on this route are not open for booking yet")
 
         result = compute_waybill_price(
             lane=lane,
@@ -320,6 +330,7 @@ class WaybillService:
             delivery_km=delivery_km,
             cod_amount_kobo=req.cod_amount_kobo or None,
             cfg=cfg,
+            rider_cash_limit_kobo=self.rider_cash_limit_kobo,
         )
         eta_from, eta_to = delivery_window(lane, now, first_mile=req.first_mile, last_mile=req.last_mile)
         details = WaybillDetails(
@@ -856,6 +867,8 @@ class WaybillService:
 
     # ============================================================================ helpers
     async def _by_code(self, tracking_code: str) -> Order:
+        if not re.fullmatch(TRACKING_PATTERN, tracking_code):  # also keeps "/" out of the document path
+            raise NotFound("Tracking number not found")
         doc = await self.repos.store.get(self.repos.waybill_code_path(tracking_code))
         order = await self.repos.orders.get(str(doc["order_id"])) if doc else None
         if order is None or order.waybill is None:

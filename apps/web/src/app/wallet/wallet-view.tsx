@@ -1,10 +1,10 @@
 "use client";
 
-import { ApiError, formatDateTime, formatNaira, newIdempotencyKey, type WalletTransaction } from "@gudmeal/api-client";
+import { ApiError, formatDateTime, formatNaira, idempotentCalls, type WalletTransaction } from "@gudmeal/api-client";
 import { Button, Card, ErrorState, Field, Input, Skeleton, Toggle, cn } from "@gudmeal/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownLeft, ArrowUpRight, Banknote, Landmark, ShieldCheck, Wallet } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useApi } from "@/lib/api";
 
 const QUICK_AMOUNTS = [100_000, 200_000, 500_000, 1_000_000]; // ₦1,000 – ₦10,000
@@ -17,12 +17,13 @@ export function WalletView() {
   const qc = useQueryClient();
   const wallet = useQuery({ queryKey: ["wallet"], queryFn: () => api.wallet.get() });
   const [amount, setAmount] = useState("");
-  const topUpKey = useRef(newIdempotencyKey("topup"));
+  // The same amount keeps its key only until the API answers: another amount, or trying again after a refusal, is
+  // a new request (see `idempotentCalls`).
+  const [sendTopUp] = useState(() => idempotentCalls("topup"));
 
   const topUp = useMutation({
-    mutationFn: (kobo: number) => api.wallet.topUp(kobo, topUpKey.current),
+    mutationFn: (kobo: number) => sendTopUp({ kobo }, (key) => api.wallet.topUp(kobo, key)),
     onSuccess: (res) => {
-      topUpKey.current = newIdempotencyKey("topup");
       if (res.authorization_url) window.location.assign(res.authorization_url);
     },
   });
@@ -129,21 +130,26 @@ function SellerSection() {
   const seller = useQuery({ queryKey: ["seller"], queryFn: () => api.seller.balance() });
   const [move, setMove] = useState("");
   const [bank, setBank] = useState({ bank_name: "", account_number: "", account_name: "", amount: "" });
-  const moveKey = useRef(newIdempotencyKey("cod-move"));
-  const payoutKey = useRef(newIdempotencyKey("payout"));
+  const [sendMove] = useState(() => idempotentCalls("cod-move"));
+  const [sendPayout] = useState(() => idempotentCalls("payout"));
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["seller"] }), qc.invalidateQueries({ queryKey: ["wallet"] })]);
 
   const moveToWallet = useMutation({
-    mutationFn: () => api.seller.moveToWallet(toKobo(move), moveKey.current),
-    onSuccess: async () => { moveKey.current = newIdempotencyKey("cod-move"); setMove(""); await refresh(); },
+    mutationFn: () => {
+      const kobo = toKobo(move);
+      return sendMove({ kobo }, (key) => api.seller.moveToWallet(kobo, key));
+    },
+    onSuccess: async () => { setMove(""); await refresh(); },
   });
   const payout = useMutation({
-    mutationFn: () => api.seller.requestPayout({
-      amount_kobo: toKobo(bank.amount), bank_name: bank.bank_name.trim(),
-      account_number: bank.account_number.trim(), account_name: bank.account_name.trim(),
-    }, payoutKey.current),
+    mutationFn: () => {
+      const body = {
+        amount_kobo: toKobo(bank.amount), bank_name: bank.bank_name.trim(),
+        account_number: bank.account_number.trim(), account_name: bank.account_name.trim(),
+      };
+      return sendPayout(body, (key) => api.seller.requestPayout(body, key));
+    },
     onSuccess: async () => {
-      payoutKey.current = newIdempotencyKey("payout");
       setBank((b) => ({ ...b, amount: "" }));
       await refresh();
     },

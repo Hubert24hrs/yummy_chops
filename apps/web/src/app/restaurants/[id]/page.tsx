@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { GroupOrderButton } from "@/components/group-order-button";
 import { MerchantArt, ShopBadge } from "@/components/storefront";
+import { jsonForScript } from "@/lib/json-ld";
 import { safe, serverApi } from "@/lib/server-api";
 import { serviceCopy } from "@/lib/services";
 import { Menu } from "./menu";
@@ -54,7 +55,7 @@ export default async function RestaurantPage({ params, searchParams }: Props) {
 
   return (
     <div>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonForScript(jsonLd) }} />
       <MerchantArt card={r} className="h-40 w-full sm:h-56" />
       <div className="container-page">
         <div className="-mt-10 rounded-xl border border-border bg-surface p-5 shadow-card sm:p-6">

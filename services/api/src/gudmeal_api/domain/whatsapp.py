@@ -17,11 +17,17 @@ MAX_BODY = 1024  # interactive message body limit
 MAX_BUTTON_TITLE = 20
 MAX_INBOUND_CHARS = 1000
 
+# A yes or no is the whole message (a polite word and a full stop allowed): "Ok, how long will it take?" is a
+# question, not a yes.
+_POLITE = r"(?:[\s,]+(?:please|pls|thanks|thank you|o|sir|ma))*"
 YES = re.compile(
-    r"^\s*(yes|y|yeah|yep|ok|okay|sure|go ahead|confirm|place it|book it|oya|ee|beeni|eh)\b", re.I
+    r"^\s*(?:yes|y|yeah|yep|ok|okay|sure|go ahead|confirm|place it|book it|oya|ee|beeni)"
+    + _POLITE
+    + r"\s*[.!]*\s*$",
+    re.I,
 )
-NO = re.compile(r"^\s*(no|n|nope|cancel|not now|stop it|mba|rara|a'a)\b", re.I)
-LINK_COMMAND = re.compile(r"^\s*link\s*[:#-]?\s*(\d{6})\s*$", re.I)
+NO = re.compile(r"^\s*(?:no|n|nope|cancel|not now|stop it|mba|rara|a'a)" + _POLITE + r"\s*[.!]*\s*$", re.I)
+LINK_COMMAND = re.compile(r"^\s*link\s*[:#-]?\s*(\d{8})\s*$", re.I)
 STOP_COMMAND = re.compile(r"^\s*(stop|unlink|disconnect)\s*$", re.I)
 HELP_COMMAND = re.compile(r"^\s*(help|menu|\?)\s*$", re.I)
 
@@ -54,7 +60,7 @@ def signature(app_secret: str, raw: bytes) -> str:
 def signature_ok(app_secret: str, raw: bytes, header: str | None) -> bool:
     if not header or not header.startswith("sha256="):
         return False
-    return hmac.compare_digest(signature(app_secret, raw), header)
+    return hmac.compare_digest(signature(app_secret, raw).encode(), header.encode())
 
 
 @dataclass(frozen=True)

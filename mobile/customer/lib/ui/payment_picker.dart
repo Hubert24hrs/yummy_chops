@@ -7,6 +7,43 @@ import '../providers.dart';
 
 enum PayMethod { card, wallet, cash }
 
+/// For a screen that sends the customer to the provider's payment page (a top-up, Plus, a share of a group order).
+/// When they come back to the app, the server is asked to check the payment with the provider (the redirect is
+/// never trusted), the way the order screen does, and the screen shows what changed.
+mixin PaymentReturn<W extends ConsumerStatefulWidget> on ConsumerState<W>, WidgetsBindingObserver {
+  String? _reference;
+
+  /// Call when the payment page for [reference] has been opened.
+  void paymentPageOpened(String reference) => _reference = reference;
+
+  /// The payment was checked: read again what it changes (the wallet, the membership, the group).
+  void paymentChecked();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final reference = _reference;
+    if (state != AppLifecycleState.resumed || reference == null) return;
+    ref.read(apiProvider).verifyPayment(reference).then((status) {
+      // Paid: nothing left to check. Not paid yet: the next return to the app checks again.
+      if (status == 'succeeded' && _reference == reference) _reference = null;
+    }, onError: (_) {}).whenComplete(() {
+      if (mounted) paymentChecked();
+    });
+  }
+}
+
 extension PayMethodCheckout on PayMethod {
   /// Value sent to checkout: none for card (the server picks the gateway and fails over if it is down).
   String? get provider => switch (this) {

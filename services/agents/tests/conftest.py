@@ -123,7 +123,10 @@ async def offline_stack() -> AsyncIterator[dict[str, Any]]:
 
 
 @asynccontextmanager
-async def make_stack(models: Any) -> AsyncIterator[dict[str, Any]]:
+async def make_stack(
+    models: Any, *, app_check: Any = None, **agent_settings: Any
+) -> AsyncIterator[dict[str, Any]]:
+    """`agent_settings` override the agents service's settings (budgets, limits) for one test."""
     api_settings = ApiSettings(
         environment="test",
         database_url="sqlite+aiosqlite:///:memory:",
@@ -146,11 +149,14 @@ async def make_stack(models: Any) -> AsyncIterator[dict[str, Any]]:
     api_http = httpx.AsyncClient(transport=httpx.ASGITransport(app=api_app), base_url="http://api.test")
 
     settings = Settings(
-        environment="test",
-        api_base_url="http://api.test",
-        checkpointer="memory",
-        database_url="sqlite+aiosqlite:///:memory:",
-        chat_rate_per_minute=100,
+        **{
+            "environment": "test",
+            "api_base_url": "http://api.test",
+            "checkpointer": "memory",
+            "database_url": "sqlite+aiosqlite:///:memory:",
+            "chat_rate_per_minute": 100,
+            **agent_settings,
+        }
     )
     callers = {
         tok: Caller(uid=p.uid, roles=p.roles, restaurant_roles=dict(p.restaurant_roles), name=p.name)
@@ -165,6 +171,7 @@ async def make_stack(models: Any) -> AsyncIterator[dict[str, Any]]:
         http=api_http,
         checkpointer=saver,
         store=store,
+        app_check=app_check,
     )
     await app.state.wire(app, None)
     client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://agents.test")
@@ -176,6 +183,7 @@ async def make_stack(models: Any) -> AsyncIterator[dict[str, Any]]:
             "container": container,
             "saver": saver,
             "store": store,
+            "app": app,
         }
     finally:
         await client.aclose()

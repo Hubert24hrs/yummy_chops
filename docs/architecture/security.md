@@ -21,9 +21,9 @@
 
 | Boundary | Enforcement |
 |---|---|
-| Customer ↔ customer | API ownership checks; Firestore rules `resource.data.customer_id == request.auth.uid` |
-| Restaurant ↔ restaurant | `restaurant_roles` claim must contain the order's `restaurant_id` (API + rules) |
-| Rider ↔ rider | `order.rider_id == uid`; riders see only the drop-off details needed for the active delivery |
+| Customer ↔ customer | API ownership checks (others get 404); clients cannot read Firestore at all |
+| Restaurant ↔ restaurant | `restaurant_roles` claim must contain the order's `restaurant_id`; a shop sees the delivery area, never the customer's address, phone or live pin |
+| Rider ↔ rider | `order.rider_id == uid`; the live map and drop-off pin are for the order's customer, its rider and staff only |
 | Staff | permission-based; every privileged mutation writes an `audit_events` row |
 | AI threads | thread ownership table checked on every call; memory never shared across users |
 | Group orders | only members can read a group (others get 404); members change only their own items; the host alone locks, checks out, cancels or removes people; joining by code is rate-limited per user and groups expire |
@@ -33,17 +33,25 @@
 
 ## Platform controls
 
-- **Firestore rules**: deny-by-default; clients can only write `carts/{uid}` (schema-validated) and
-  nothing else. All other writes go through the API (Admin SDK).
-- **Storage rules**: size and content-type limits; restaurant documents readable only by the owner and staff.
-- **App Check**: enforced on Firestore/Storage; the API verifies App Check tokens (`X-Firebase-AppCheck`)
-  when `APP_CHECK_ENFORCED=true`. The websites send tokens from reCAPTCHA Enterprise once
+- **Firestore and Storage rules**: closed to every client (`allow read, write: if false`). Every read and write
+  goes through the API (Admin SDK), which gives each person their own view; riders' KYC documents are uploaded
+  and opened through the API only. Opening a collection for live listeners needs a purpose-made collection
+  and a rules test (`firebase/tests`).
+- **App Check**: the API verifies App Check tokens (`X-Firebase-AppCheck`) when `APP_CHECK_ENFORCED=true`
+  (required in production), and so does Yummy for chats. The websites send tokens from reCAPTCHA Enterprise once
   `APP_CHECK_SITE_KEY` is set; the mobile apps do not send them yet, which blocks production for them.
   Yummy Chops' own agents service proves itself instead with a Google-signed OIDC
   token (`X-Service-Authorization`, audience and service account checked; the shared internal secret locally),
   and still needs the user's own token on every call.
 - **Secrets**: Secret Manager only; `.env` files are git-ignored; the repo is public.
-- **IAM**: one service account per service with least-privilege roles (see `infra/scripts/bootstrap-gcp.sh`).
+- **IAM**: one service account per service with least-privilege roles, and each service may read only its own
+  secrets (see `infra/scripts/bootstrap-gcp.sh`).
+- **Start-up checks**: every service in the cloud refuses to start with an emulator switch set, a default or
+  short secret, local KYC storage, a live Paystack key outside production or a test key in production
+  (`Settings.validate_for_environment` in the API and in Yummy).
+- **Public test link** (ADR-0024, the owner's computer only): the gateway passes only sessions that signed in
+  through it with the tester's password, refuses encoded or dotted paths, staff, internal and developer routes,
+  and slows down wrong passwords.
 - **Internal endpoints** (`/internal/*`): Google-signed OIDC tokens from Pub/Sub / Cloud Tasks / Scheduler,
   audience and service-account email verified.
 - **Webhooks**: signature verification (constant time), optional source IP allow-list, idempotent processing.

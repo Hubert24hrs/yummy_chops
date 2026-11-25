@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gud_meal_core/gud_meal_core.dart';
@@ -170,6 +171,8 @@ void main() {
       expect(moved.apiUrl, 'http://$_hotspot:8000');
       expect(moved.agentsUrl, 'http://$_hotspot:8100');
       expect(moved.emulatorHost, _hotspot);
+      expect(moved.emulatorPort, 9099); // the emulator's own port on the computer that was found
+      expect(_config.emulatorPort, 9099); // no AUTH_EMULATOR_PORT in this build
       expect(moved.serverHost, _hotspot);
       expect(moved.findTestServer, isTrue);
       expect(moved.testServerHosts, [_hotspot]);
@@ -186,6 +189,12 @@ void main() {
       final config = AppConfig.fromEnvironment();
       expect(config.findTestServer, isFalse);
       expect(config.testServerHosts, isEmpty);
+    });
+
+    test('the sign-in emulator is the default in a debug run only', () {
+      // Tests run in debug mode, like `flutter run`. In a release build `kDebugMode` is false: the emulator is
+      // then used only when the build asks for it (USE_FIREBASE_EMULATORS=true), never by forgetting a setting.
+      expect(AppConfig.fromEnvironment().useEmulators, kDebugMode);
     });
   });
 

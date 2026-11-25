@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from ...domain.models import RestaurantStatus, RiderStatus, Voucher
 from ...domain.order_state import OrderStatus
 from ...domain.pricing import PricingConfig
+from ...errors import Conflict, ValidationFailed
 from ...security.rbac import Permission, require
 from ...services.admin import FlagInput, RolesInput
 from ...services.cash import PayOnDeliveryBlockInput, RemittanceInput
@@ -211,6 +212,12 @@ async def refund_decision(
     return await c.payments.decide_refund(principal, refund_id, approve=data.approve, note=data.note)
 
 
+@router.post("/refunds/{refund_id}/retry")
+async def retry_refund(refund_id: str, c: Ctr, principal: CurrentPrincipal) -> Any:
+    """Send a refund that failed at the payment provider again (finance)."""
+    return await c.payments.retry_refund(principal, refund_id)
+
+
 @router.get("/payments")
 async def payments(c: Ctr, principal: CurrentPrincipal, status: str | None = None) -> Any:
     return await c.payments.list_payments(principal, status)
@@ -351,11 +358,40 @@ async def vouchers(c: Ctr, principal: CurrentPrincipal) -> Any:
     return await c.repos.vouchers.find(limit=500)
 
 
+class VoucherInput(BaseModel):
+    """What the Command Centre may set on a campaign voucher: not its use count, owner or origin."""
+
+    description: str = Field(default="", max_length=300)
+    kind: Literal["percent", "fixed"]
+    value: int = Field(gt=0)  # bps for percent, kobo for fixed
+    max_discount_kobo: int | None = Field(default=None, gt=0)
+    target: Literal["subtotal", "delivery_fee"] = "subtotal"
+    min_subtotal_kobo: int = Field(default=0, ge=0)
+    funded_by: Literal["platform", "restaurant"] = "platform"
+    restaurant_id: str | None = Field(default=None, max_length=64)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    usage_limit: int | None = Field(default=None, gt=0)
+    per_customer_limit: int = Field(default=1, gt=0)
+    is_active: bool = True
+
+
 @router.put("/vouchers/{code}")
-async def upsert_voucher(code: str, data: Voucher, c: Ctr, principal: CurrentPrincipal) -> Voucher:
+async def upsert_voucher(code: str, data: VoucherInput, c: Ctr, principal: CurrentPrincipal) -> Voucher:
     require(principal, Permission.PROMOTIONS_MANAGE)
-    voucher = data.model_copy(update={"code": code.upper()})
-    await c.repos.vouchers.save(Voucher.model_validate(voucher.model_dump()))
+    existing = await c.repos.vouchers.get(code.upper())
+    if existing is not None and (existing.customer_id or existing.source != "campaign"):
+        raise Conflict("That code is a customer's personal voucher. Choose another code.")
+    if data.funded_by == "restaurant" and not data.restaurant_id:
+        raise ValidationFailed("A voucher the shop pays for needs the shop (restaurant_id).")
+    voucher = Voucher.model_validate(
+        {
+            **data.model_dump(),
+            "code": code.upper(),
+            "used_count": existing.used_count if existing else 0,
+        }
+    )
+    await c.repos.vouchers.save(voucher)
     await c.audit.record(
         actor_id=principal.uid,
         actor_roles=principal.audit_roles(),

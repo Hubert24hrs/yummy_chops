@@ -23,7 +23,7 @@ from ..domain.order_state import ActorType, OrderStatus
 from ..errors import InvalidTransition, NotFound, PermissionDenied, ValidationFailed
 from ..logging_setup import log_event
 from ..maps import MapsService
-from ..repositories import Repositories, Transaction, to_doc
+from ..repositories import Repositories, Transaction, to_doc, valid_doc_id
 from ..security.rbac import Permission, Principal, require, require_rider
 from .infra import Emitter, Notifier, TaskQueue
 from .orders import OrderService
@@ -45,11 +45,19 @@ RADIUS_STEP_KM = 3.0
 MAX_PICKUP_RADIUS_KM = 30.0
 #: Idle online riders are kept at this geohash precision (6 ≈ 1.2 km x 0.6 km cell), never more precisely.
 COARSE_GEOHASH = 6
+#: What is kept of where an offline rider with no delivery is: nothing (no tracking outside active deliveries).
+NO_LOCATION: dict[str, Any] = {"last_location": None, "last_location_at": None, "geohash": None}
 #: How often a live delivery's road ETA is re-measured (Routes calls cost money; pings arrive every few seconds).
 
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def coarse_cell(point: GeoPoint) -> GeoPoint:
+    """The centre of the coarse cell a point is in: all that is kept of an online rider who is not on a delivery."""
+    lat, lng, _, _ = geohash_decode(geohash_encode(point.lat, point.lng, COARSE_GEOHASH))
+    return GeoPoint(lat=round(lat, 5), lng=round(lng, 5))
 
 
 class DispatchService:
@@ -89,38 +97,46 @@ class DispatchService:
             raise NotFound("Rider profile not found")
         return profile
 
+    async def _active_deliveries(self, profile: RiderProfile) -> list[Order]:
+        """The rider's deliveries in progress (each id on the profile is checked against its order)."""
+        active: list[Order] = []
+        for order_id in profile.active_order_ids[:3]:
+            order = await self.repos.orders.get(order_id)
+            if order and order.status in ACTIVE_DELIVERY and order.rider_id == profile.uid:
+                active.append(order)
+        return active
+
     async def set_availability(self, principal: Principal, online: bool) -> RiderProfile:
         profile = await self.rider_profile(principal)
         if online and profile.status != RiderStatus.ACTIVE:
             raise PermissionDenied("You can go online once the team has verified your KYC")
-        await self.repos.riders.update(principal.uid, {"is_online": online})
+        changes: dict[str, Any] = {"is_online": online}
+        if not online and not await self._active_deliveries(profile):
+            changes.update(NO_LOCATION)  # with a delivery in progress it goes when that delivery ends
+        await self.repos.riders.update(principal.uid, changes)
         if online and not profile.is_online:
             await self.sweep()  # jobs waiting for a rider are offered now, not at the next retry
-        return profile.model_copy(update={"is_online": online})
+        return profile.model_copy(update=changes)
 
     async def update_location(
         self, principal: Principal, point: GeoPoint, accuracy_m: float | None = None
     ) -> None:
-        """Rider location pings, with privacy rules:
+        """Rider location pings, with privacy rules (no tracking outside active deliveries):
 
-        * offline riders are not tracked at all (pings are rejected);
+        * offline riders with no delivery are not tracked at all (pings are rejected);
         * online without a delivery, only a coarse cell (~600 m) is kept, enough to offer nearby jobs;
-        * the precise position is stored and shown to the customer only during an active delivery.
+        * the precise position is stored and shown to the customer only during an active delivery, and for all
+          of it: a rider who switches to offline on the way is still followed until that delivery ends.
         """
         profile = await self.rider_profile(principal)
-        if not profile.is_online:
+        active = await self._active_deliveries(profile)
+        if not profile.is_online and not active:
             raise InvalidTransition("Go online to share your location")
         now = utcnow()
-        active: list[Order] = []
-        for order_id in profile.active_order_ids[:3]:
-            order = await self.repos.orders.get(order_id)
-            if order and order.status in ACTIVE_DELIVERY and order.rider_id == principal.uid:
-                active.append(order)
         if active:
             stored, precision = point, 7
         else:
-            cell_lat, cell_lng, _, _ = geohash_decode(geohash_encode(point.lat, point.lng, COARSE_GEOHASH))
-            stored, precision = GeoPoint(lat=round(cell_lat, 5), lng=round(cell_lng, 5)), COARSE_GEOHASH
+            stored, precision = coarse_cell(point), COARSE_GEOHASH
         was_stale = (
             profile.last_location_at is None
             or (now - profile.last_location_at).total_seconds() > self.cfg.max_location_age_seconds
@@ -298,6 +314,8 @@ class DispatchService:
 
     async def accept_offer(self, principal: Principal, assignment_id: str) -> Order:
         require_rider(principal)
+        if not valid_doc_id(assignment_id):
+            raise NotFound("Offer not found")
         now = utcnow()
         captured: dict[str, Any] = {}
 
@@ -314,6 +332,11 @@ class DispatchService:
                 raise NotFound("Order not found")
             order = Order.model_validate(odoc)
             rider = RiderProfile.model_validate(rdoc)
+            if rider.status != RiderStatus.ACTIVE:
+                # Suspended (or KYC turned down) after the offer went out: the same test going online uses.
+                raise PermissionDenied(
+                    "Your rider account is not active, so you cannot take deliveries. Please contact support."
+                )
             if assignment.status != AssignmentStatus.OFFERED or assignment.expires_at <= now:
                 raise InvalidTransition("This offer is no longer available")
             if order.rider_id:
@@ -492,11 +515,19 @@ class DispatchService:
             if doc is None:
                 return
             rider = RiderProfile.model_validate(doc)
-            changes: dict[str, Any] = {
-                "active_order_ids": [o for o in rider.active_order_ids if o != order_id]
-            }
+            remaining = [o for o in rider.active_order_ids if o != order_id]
+            changes: dict[str, Any] = {"active_order_ids": remaining}
             if completed:
                 changes["completed_deliveries"] = rider.completed_deliveries + 1
+            if not remaining and rider.last_location is not None:
+                # No delivery left: the exact position goes. An online rider keeps the coarse cell dispatch needs;
+                # one who switched to offline on the way keeps nothing.
+                if rider.is_online:
+                    cell = coarse_cell(rider.last_location)
+                    changes["last_location"] = to_doc(cell)
+                    changes["geohash"] = geohash_encode(cell.lat, cell.lng, COARSE_GEOHASH)
+                else:
+                    changes.update(NO_LOCATION)
             tx.update(f"rider_profiles/{rider_id}", changes)
 
         await self.repos.store.run_transaction(fn)
@@ -520,24 +551,30 @@ class DispatchService:
             )
 
     async def on_order_called_off(self, payload: dict[str, Any]) -> None:
-        """Cancelled or refunded before delivery: free the rider and tell them not to pick up."""
+        """Cancelled or refunded before delivery, or put under review by staff on the way (a dispute): free the
+        rider, who could otherwise take no more jobs, and tell them."""
         if payload.get("from") not in (S.RIDER_ASSIGNED.value, S.PICKED_UP.value, S.IN_TRANSIT.value):
             return
         order = await self.repos.orders.get(str(payload["order_id"]))
         if order is None or not order.rider_id:
             return
+        disputed = payload.get("to") == S.DISPUTED.value
         await self.release_rider(order.rider_id, order.id, completed=False)
         if order.assignment_id:
             await self.repos.assignments.update(
                 order.assignment_id,
-                {"status": AssignmentStatus.CANCELLED.value, "decline_reason": "order called off"},
+                {
+                    "status": AssignmentStatus.CANCELLED.value,
+                    "decline_reason": "order under review" if disputed else "order called off",
+                },
             )
-        await self.notifier.notify_user(
-            order.rider_id,
-            "Delivery cancelled",
-            f"Order {order.short_code} was cancelled. Please contact support if you already collected it.",
-            {"order_id": order.id},
-        )
+        if disputed:
+            title = "Delivery stopped"
+            body = f"Order {order.short_code} is being reviewed by support. Please contact support about what you are carrying."
+        else:
+            title = "Delivery cancelled"
+            body = f"Order {order.short_code} was cancelled. Please contact support if you collected it."
+        await self.notifier.notify_user(order.rider_id, title, body, {"order_id": order.id})
 
     async def on_order_delivered(self, payload: dict[str, Any]) -> None:
         order = await self.repos.orders.get(str(payload["order_id"]))

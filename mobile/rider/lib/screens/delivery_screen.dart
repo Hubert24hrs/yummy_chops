@@ -370,6 +370,13 @@ class _Detail extends StatelessWidget {
   );
 }
 
+/// The number to dial: its digits and one leading +, nothing else. A customer types this number, so codes that make
+/// a phone do something (they use * and #) must never reach the rider's dialer.
+Uri dialUri(String phone) {
+  final digits = phone.replaceAll(RegExp(r'\D'), '');
+  return Uri(scheme: 'tel', path: phone.trim().startsWith('+') ? '+$digits' : digits);
+}
+
 /// Riders call customers, senders and recipients of packages (numbers come from the order or the booking).
 class _CallButton extends StatelessWidget {
   const _CallButton({required this.phone, required this.who});
@@ -380,8 +387,7 @@ class _CallButton extends StatelessWidget {
   Widget build(BuildContext context) => IconButton(
     tooltip: 'Call $who',
     icon: const Icon(Icons.call_rounded),
-    onPressed: () =>
-        launchUrl(Uri(scheme: 'tel', path: phone.replaceAll(' ', ''))),
+    onPressed: () => launchUrl(dialUri(phone)),
   );
 }
 

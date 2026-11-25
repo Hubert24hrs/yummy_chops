@@ -21,6 +21,7 @@
 - Paystack TEST mode on the phone test: preview server `phone-test-paystack` (`dev.mjs ... --paystack`; the key comes from the
   git-ignored `.env.paystack`, live keys are refused; docs/PAYSTACK_TEST_MODE.md). Phones come back to `/v1/dev/payment-return`.
   The e2e check approves card payments on the sandbox page, so run it against `phone-test`, not `phone-test-paystack`
+- Public test link for a tester elsewhere (ADR-0024): ngrok domain + tester password in the git-ignored `.env.remote-link`; preview server `remote-link` (`node scripts/dev.mjs gateway tunnel`) next to `phone-test`; build with `node scripts/build-test-apk.mjs --remote --arm64`; gateway rules: `node --test scripts/remote-gateway.test.mjs`
 - Brand files: `python scripts/make-brand-assets.py` (needs Pillow and numpy) makes the logo cut-outs, launch screens, app icons and favicons from `assets/brand/yummychops-logo.webp` (the logo) and `yummychops-app-icon.png` (the app icon; ADR-0022, ADR-0029). The platform is called **Yummy Chops** (renamed from GudMeals on 2026-11-19, ADR-0023; its domain is yummy247.com: websites on Vercel, mail on Zoho, docs/DEPLOYMENT.md §5a–5b); colours come from the logo via `packages/tokens/tokens.json`
 
 ## Gotchas

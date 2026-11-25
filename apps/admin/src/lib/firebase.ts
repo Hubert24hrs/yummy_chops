@@ -2,7 +2,7 @@
 
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import { getToken, initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from "firebase/app-check";
-import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
+import { browserSessionPersistence, connectAuthEmulator, getAuth, setPersistence, type Auth } from "firebase/auth";
 
 let app: FirebaseApp | undefined;
 let auth: Auth | undefined;
@@ -37,6 +37,9 @@ export function firebaseAuth(): Auth {
   if (process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS === "true") {
     connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
   }
+  // The Command Centre keeps staff signed in only while the browser is open: closing it signs them out, so a shared
+  // computer is not left signed in. (After the emulator line: that one must come before anything else uses `auth`.)
+  void setPersistence(auth, browserSessionPersistence).catch(() => undefined);
   return auth;
 }
 

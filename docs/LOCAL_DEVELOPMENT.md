@@ -34,7 +34,7 @@ npm install
 | Partner dashboard | `npm run dev:partner` | http://localhost:3001 |
 | Command Centre | `npm run dev:admin` | http://localhost:3002 |
 | Flutter customer app | `cd mobile/customer && flutter run` | Android emulator reaches the API at 10.0.2.2 |
-| Customer app in a browser | `flutter build web` in `mobile/customer`, then `node scripts/dev.mjs customer-web` | http://localhost:5050 (add `--port=5051` if that address stays blank: the browser holds broken site data for it) |
+| Customer app in a browser | `flutter build web --dart-define=USE_FIREBASE_EMULATORS=true` in `mobile/customer`, then `node scripts/dev.mjs customer-web` | http://localhost:5050 (add `--port=5051` if that address stays blank: the browser holds broken site data for it) |
 
 Copy each `apps/*/.env.example` to `.env.local` (emulator mode is the default).
 
@@ -156,7 +156,7 @@ offline again at the end.
 | `RIDER_CASH_LIMIT_KOBO=100000000` | Riders keep getting cash jobs until they hold N1,000,000 | N50,000; cash is handed in on the Command Centre's Cash page |
 
 The rider app also runs in a browser (no GPS there, so pin a position):
-`flutter build web --dart-define=RIDER_TEST_LOCATION=6.4478,3.4723` in `mobile/rider`.
+`flutter build web --dart-define=USE_FIREBASE_EMULATORS=true --dart-define=RIDER_TEST_LOCATION=6.4478,3.4723` in `mobile/rider`.
 
 In a browser, both apps keep you signed in for one page load only while they use the sign-in emulator: reload
 the page and you sign in again. (Once the Firebase web SDK has checked a remembered session with Google, the
@@ -165,3 +165,27 @@ emulator can no longer be attached, and every sign-in would fail.) Phones are no
 "Continue with Google" on the test server: the sign-in emulator has no Google account chooser, so the app asks
 which Google address to use and signs in with it. The live app will open Google's chooser once the Firebase
 project exists.
+
+## 7. Let someone elsewhere try the app (a temporary public link)
+
+The phone-test apps only work on the same Wi-Fi as this computer. For a tester somewhere else, a free ngrok
+account brings the internet to this computer through one fixed address (docs/adr/0024-public-test-link.md).
+
+1. **Once:** sign up at dashboard.ngrok.com, then in PowerShell run `ngrok config add-authtoken <your token>`
+   (never commit or share the token). Your free domain is under **Domains** (e.g. `something.ngrok-free.app`).
+2. Put it in `.env.remote-link` at the repository root (git-ignored), next to the tester's password that is
+   already there:
+   ```
+   REMOTE_LINK_DOMAIN=something.ngrok-free.app
+   REMOTE_TESTER_PASSWORD=...
+   ```
+   The link lets only `tester@yummychops.test` sign in, with that password (the demo accounts' password is public).
+3. Run the phone test and the link: preview servers `phone-test` and `remote-link`, or in two terminals
+   `node scripts/dev.mjs auth api agents downloads --lan --seed` and `node scripts/dev.mjs gateway tunnel`.
+4. Build the tester's app once: `node scripts/build-test-apk.mjs --remote --arm64` (makes
+   `mobile/dist/yummy-chops-remote.apk`; rebuild only if the domain changes).
+5. Send the tester `https://<your domain>` and, separately, the password. The page has the download; they sign in
+   as `tester@yummychops.test`. Browsers show ngrok's "Visit Site" notice the first time.
+
+The app works only while this computer is on and both servers run. Stop `remote-link` when testing is done.
+The gateway's rules are tested with `node --test scripts/remote-gateway.test.mjs`.

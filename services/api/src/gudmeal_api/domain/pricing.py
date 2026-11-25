@@ -392,15 +392,26 @@ def parcel_rider_pay(
     )
 
 
-def cod_fee(cod_amount_kobo: int | None, cfg: PricingConfig) -> int:
+def cod_limit(cfg: PricingConfig, rider_cash_limit_kobo: int | None = None) -> int:
+    """The most a rider may collect for a sender: the cash-on-delivery limit, or what a rider may carry
+    (RIDER_CASH_LIMIT_KOBO) when that is lower. Dispatch never offers a job that would take a rider past what
+    they may carry, so a package above it would be paid for and never get a rider."""
+    limit = cfg.parcel.cod_max_kobo
+    return limit if rider_cash_limit_kobo is None else min(limit, rider_cash_limit_kobo)
+
+
+def cod_fee(
+    cod_amount_kobo: int | None, cfg: PricingConfig, *, rider_cash_limit_kobo: int | None = None
+) -> int:
     """Fee for collecting cash from the recipient on the sender's behalf (0 when there is no COD)."""
     if not cod_amount_kobo:
         return 0
     p = cfg.parcel
-    if cod_amount_kobo > p.cod_max_kobo:
+    limit = cod_limit(cfg, rider_cash_limit_kobo)
+    if cod_amount_kobo > limit:
         raise ValidationFailed(
             "Cash-on-delivery amount is above the limit riders can carry",
-            details={"cod_amount_kobo": cod_amount_kobo, "max_kobo": p.cod_max_kobo},
+            details={"cod_amount_kobo": cod_amount_kobo, "max_kobo": limit},
         )
     fee = max(p.cod_fee_min_kobo, apply_bps(cod_amount_kobo, p.cod_fee_bps))
     return round_to(fee, p.cod_fee_round_to_kobo)
@@ -414,6 +425,7 @@ def compute_parcel_price(
     surge_bps: int = 10_000,
     cod_amount_kobo: int | None = None,
     measured_road_km: float | None = None,
+    rider_cash_limit_kobo: int | None = None,
 ) -> PricingResult:
     """Price a courier job. There is no merchant: the whole fee is platform revenue less rider pay."""
     if distance_km > cfg.parcel.max_distance_km:
@@ -423,7 +435,7 @@ def compute_parcel_price(
         )
     fee = parcel_fee(distance_km, size, cfg, surge_bps, measured_km=measured_road_km)
     s_fee = cfg.parcel.service_fee_kobo
-    c_fee = cod_fee(cod_amount_kobo, cfg)
+    c_fee = cod_fee(cod_amount_kobo, cfg, rider_cash_limit_kobo=rider_cash_limit_kobo)
     vat = apply_bps(fee + s_fee + c_fee, cfg.vat_bps)
     breakdown = PriceBreakdown(
         subtotal_kobo=0,
@@ -474,6 +486,7 @@ def compute_waybill_price(
     delivery_km: float | None,
     cod_amount_kobo: int | None,
     cfg: PricingConfig,
+    rider_cash_limit_kobo: int | None = None,
 ) -> PricingResult:
     """Price an interstate shipment: line haul + optional home pickup + optional door delivery + booking fee
     + cash-on-delivery fee, with VAT on all of it. Home pickup and door delivery are priced like a same-city
@@ -492,7 +505,7 @@ def compute_waybill_price(
     linehaul = waybill_linehaul_fee(lane, size, weight_kg)
     pickup = parcel_fee(pickup_km, size, cfg) if pickup_km is not None else 0
     delivery = parcel_fee(delivery_km, size, cfg) if delivery_km is not None else 0
-    c_fee = cod_fee(cod_amount_kobo, cfg)
+    c_fee = cod_fee(cod_amount_kobo, cfg, rider_cash_limit_kobo=rider_cash_limit_kobo)
     taxable = linehaul + pickup + delivery + service_fee_kobo + c_fee
     vat = apply_bps(taxable, cfg.vat_bps)
     breakdown = PriceBreakdown(

@@ -61,6 +61,14 @@ class _RiderHomeScreenState extends ConsumerState<RiderHomeScreen> {
     super.dispose();
   }
 
+  /// Signing out ends the shift first: the phone stops sharing its position and the server stops offering jobs.
+  /// The rider is signed out even when the server cannot be told (no connection).
+  Future<void> _signOut() async {
+    final auth = ref.read(authRepositoryProvider);
+    await setRiderOnline(ref.read(apiProvider), ref.read(locationReporterProvider), false);
+    await auth.signOut();
+  }
+
   Future<void> _setOnline(bool online) async {
     final message = await setRiderOnline(ref.read(apiProvider), ref.read(locationReporterProvider), online);
     ref.invalidate(riderProfileProvider);
@@ -93,7 +101,7 @@ class _RiderHomeScreenState extends ConsumerState<RiderHomeScreen> {
         ]),
         actions: [
           IconButton(tooltip: 'Earnings', onPressed: () => context.push('/earnings'), icon: const Icon(Icons.account_balance_wallet_rounded)),
-          IconButton(tooltip: 'Sign out', onPressed: () => ref.read(authRepositoryProvider).signOut(), icon: const Icon(Icons.logout_rounded)),
+          IconButton(tooltip: 'Sign out', onPressed: _signOut, icon: const Icon(Icons.logout_rounded)),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -176,25 +184,33 @@ class _RiderHomeScreenState extends ConsumerState<RiderHomeScreen> {
   }
 
   Future<void> _sos(BuildContext context) async {
-    final controller = TextEditingController();
+    var typed = '';
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Report an emergency'),
-        content: TextField(controller: controller, decoration: const InputDecoration(hintText: 'What is happening?'), maxLines: 3),
+        content: TextField(onChanged: (text) => typed = text.trim(), decoration: const InputDecoration(hintText: 'What is happening?'), maxLines: 3),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Send to Yummy Chops')),
         ],
       ),
     );
-    if (ok == true && controller.text.trim().length >= 3) {
-      await ref.read(apiProvider).emergency(controller.text.trim(), ref.read(locationReporterProvider).last);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Our operations team has been alerted. If you are in danger, call 112.')));
-      }
+    if (ok != true || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    // Always sent, and always answered on screen: a rider in trouble may type little or nothing.
+    final description = typed.length >= 3 ? typed : 'Emergency (the rider did not say more)';
+    try {
+      // Where the rider is: the last shared position, or a fresh one when they are offline.
+      final at = ref.read(locationReporterProvider).last ?? (await ref.read(locationSourceProvider).current())?.$1;
+      await ref.read(apiProvider).emergency(description, at);
+      messenger.showSnackBar(const SnackBar(content: Text('Our operations team has been alerted. If you are in danger, call 112.')));
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(
+        duration: Duration(seconds: 10),
+        content: Text('We could not send your alert. Call 112 now if you are in danger, then try again.'),
+      ));
     }
-    controller.dispose();
   }
 }
 
@@ -268,8 +284,18 @@ class _OfferCardState extends ConsumerState<OfferCard> {
               onPressed: expired || _busy
                   ? null
                   : () async {
-                      await ref.read(apiProvider).declineOffer(o.id, 'Declined in app');
-                      ref.invalidate(offersProvider);
+                      final messenger = ScaffoldMessenger.of(context);
+                      setState(() => _busy = true);
+                      try {
+                        await ref.read(apiProvider).declineOffer(o.id, 'Declined in app');
+                      } on ApiException catch (e) {
+                        messenger.showSnackBar(SnackBar(content: Text(e.message)));
+                      } finally {
+                        if (mounted) {
+                          setState(() => _busy = false);
+                          ref.invalidate(offersProvider);
+                        }
+                      }
                     },
               child: const Text('Decline'),
             ),

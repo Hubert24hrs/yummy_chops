@@ -19,7 +19,11 @@ export default function OrderDetail({ params }: { params: Promise<{ id: string }
   const [rider, setRider] = useState("");
   const refresh = () => qc.invalidateQueries({ queryKey: ["admin-order", id] });
   const transition = useMutation({
-    mutationFn: () => api.admin.transition(id, { to, reason, liability, refund_amount_kobo: amount ? nairaToKobo(Number(amount)) : undefined }),
+    // A part refund is only possible once the order is completed: before that the API always refunds in full.
+    mutationFn: () => api.admin.transition(id, {
+      to, reason, liability,
+      refund_amount_kobo: to === "refund_pending" && d.data?.order.completed_at && amount ? nairaToKobo(Number(amount)) : undefined,
+    }),
     onSuccess: () => { setReason(""); refresh(); },
   });
   const assign = useMutation({ mutationFn: () => api.admin.assignRider(id, rider, reason || "Manual dispatch"), onSuccess: refresh });
@@ -73,7 +77,9 @@ export default function OrderDetail({ params }: { params: Promise<{ id: string }
               </Select>
             </Field>
             {to === "refund_pending" && <>
-              <Field label="Refund amount (₦, optional)" htmlFor="amt"><Input id="amt" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+              {o.completed_at
+                ? <Field label="Refund amount (₦, optional)" htmlFor="amt"><Input id="amt" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+                : <p className="self-end text-sm text-muted">This order is not completed yet, so the customer is refunded in full ({formatNaira(o.breakdown.total_kobo)}).</p>}
               <Field label="Liability" htmlFor="lia"><Select id="lia" value={liability} onChange={(e) => setLiability(e.target.value)}>
                 <option value="platform">Platform</option><option value="restaurant">Restaurant</option></Select></Field>
             </>}

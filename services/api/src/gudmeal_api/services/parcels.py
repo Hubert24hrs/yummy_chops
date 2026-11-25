@@ -27,9 +27,17 @@ PICKUP_HOURS = (7, 21)  # scheduled pickups between 07:00 and 21:00 Lagos time
 
 class ParcelService:
     def __init__(
-        self, repos: Repositories, *, ttl_seconds: int = 900, maps: MapsService | None = None
+        self,
+        repos: Repositories,
+        *,
+        ttl_seconds: int = 900,
+        maps: MapsService | None = None,
+        rider_cash_limit_kobo: int | None = None,
     ) -> None:
         self.repos = repos
+        self.rider_cash_limit_kobo = (
+            rider_cash_limit_kobo  # cash a rider collects stays within what they may carry
+        )
         self.ttl = timedelta(seconds=ttl_seconds)
         self.maps = maps or MapsService(None)
 
@@ -83,6 +91,7 @@ class ParcelService:
             surge_bps=surge,
             cod_amount_kobo=req.cod_amount_kobo or None,
             measured_road_km=route.distance_km if route.source == "google" else None,
+            rider_cash_limit_kobo=self.rider_cash_limit_kobo,
         )
         details = ParcelDetails(
             pickup=req.pickup,

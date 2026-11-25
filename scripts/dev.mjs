@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Local development launcher: `node scripts/dev.mjs <api|agents|auth|customer-web|downloads> [--lan]`.
+// Local development launcher: `node scripts/dev.mjs <api|agents|auth|customer-web|downloads|gateway|tunnel> [--lan]`.
 // Uses safe local defaults (memory data + payment sandbox + Firebase Auth emulator). Real keys go in .env files.
 // --lan: also listen on this computer's Wi-Fi address so a phone on the same Wi-Fi can use a test APK
 // (see docs/LOCAL_DEVELOPMENT.md, "Test on your phone"). Set LAN_IP to choose the address yourself.
@@ -34,6 +34,21 @@ function lanFirebaseConfig() {
   writeFileSync(join(root, "firebase/firebase.lan.json"), JSON.stringify(config, null, 2));
   return ["--config", "firebase.lan.json"];
 }
+
+// The public test link (docs/adr/0024-public-test-link.md) keeps its settings out of the repository, in the
+// git-ignored .env.remote-link: REMOTE_LINK_DOMAIN (the ngrok domain) and REMOTE_TESTER_PASSWORD (the tester
+// account's own password; the demo accounts' password is public in this repository).
+function remoteLinkSettings() {
+  const file = join(root, ".env.remote-link");
+  if (!existsSync(file)) return {};
+  const settings = {};
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const found = /^\s*([A-Z_]+)\s*=\s*(.*?)\s*$/.exec(line);
+    if (found && !line.trimStart().startsWith("#")) settings[found[1]] = found[2];
+  }
+  return settings;
+}
+const remoteLink = remoteLinkSettings();
 
 const shared = {
   ENVIRONMENT: "local",
@@ -98,6 +113,22 @@ const targets = {
     env: {},
     shell: isWin,
   },
+  // The public test link: `gateway` hands requests from the internet to the services above (and refuses what a
+  // tester's app never needs); `tunnel` is ngrok, bringing them from REMOTE_LINK_DOMAIN over http and https (the
+  // sign-in emulator only speaks http). Run them next to the phone test: `node scripts/dev.mjs gateway tunnel`.
+  gateway: {
+    cmd: process.execPath,
+    args: [join(root, "scripts/remote-gateway.mjs")],
+    cwd: root,
+    env: {},
+  },
+  tunnel: {
+    cmd: isWin ? "ngrok.cmd" : "ngrok",
+    args: ["http", "8088", "--domain", remoteLink.REMOTE_LINK_DOMAIN ?? "", "--scheme", "http,https", "--log", "stdout"],
+    cwd: root,
+    env: {},
+    shell: isWin,
+  },
 };
 
 // One name runs that service. Several names run together and stop together: the phone test is
@@ -111,7 +142,21 @@ if (names.includes("customer-web") && !WEB_APP_PORTS.includes(webPort)) {
   console.error(`customer-web runs on ${WEB_APP_PORTS.join(" or ")}: the local API and Yummy allow only those addresses`);
   process.exit(2);
 }
-if (lan) console.log(`LAN mode: phones on this Wi-Fi reach ${names.join(", ")} at http://${ip} (allow it if Windows Firewall asks)`);
+// The domain goes into a command line (through a shell on Windows): only a plain host name is accepted.
+if (remoteLink.REMOTE_LINK_DOMAIN && !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(remoteLink.REMOTE_LINK_DOMAIN)) {
+  console.error("REMOTE_LINK_DOMAIN in .env.remote-link must be a plain domain such as something.ngrok-free.app");
+  process.exit(2);
+}
+if (names.includes("tunnel") && !remoteLink.REMOTE_LINK_DOMAIN) {
+  console.error("The test link needs your ngrok domain: put REMOTE_LINK_DOMAIN=<it> in .env.remote-link (docs/LOCAL_DEVELOPMENT.md §7)");
+  process.exit(2);
+}
+if (names.includes("tunnel")) console.log(`Test link: https://${remoteLink.REMOTE_LINK_DOMAIN} (the phone test must be running too)`);
+if (lan) {
+  console.log(`LAN mode: phones on this Wi-Fi reach ${names.join(", ")} at http://${ip} (allow it if Windows Firewall asks)`);
+  // The sign-in emulator believes any token, so everyone on the Wi-Fi can act as any test account.
+  console.log("Use a Wi-Fi you trust (home, not a cafe): anyone on it can reach these test services.");
+}
 for (const name of names) {
   const { cmd, cwd } = targets[name];
   if ((cmd.endsWith("python.exe") || cmd.endsWith("/python")) && !existsSync(cmd)) {
@@ -175,8 +220,10 @@ async function seedDemoAccounts() {
   for (let waited = 0; ; waited += 2) {
     try {
       if ((await fetch(`http://${shared.FIREBASE_AUTH_EMULATOR_HOST}/`)).ok) {
+        // With .env.remote-link, the public test link's tester account is created too (with its own password).
+        const tester = remoteLink.REMOTE_TESTER_PASSWORD ? { REMOTE_TESTER_PASSWORD: remoteLink.REMOTE_TESTER_PASSWORD } : {};
         const seed = spawn(py("api"), ["scripts/seed_auth_emulator.py"], {
-          cwd: join(root, "services/api"), stdio: "inherit", env: { ...process.env, ...shared },
+          cwd: join(root, "services/api"), stdio: "inherit", env: { ...process.env, ...shared, ...tester },
         });
         seed.on("error", (error) => console.error(`The demo accounts were not created: ${error.message}`));
         return;

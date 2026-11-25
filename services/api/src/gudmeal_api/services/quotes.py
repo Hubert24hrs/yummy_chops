@@ -68,6 +68,13 @@ class QuoteService:
             raise VoucherInvalid("Voucher code not recognised")  # personal vouchers belong to one account
         used = await self.repos.store.get(f"vouchers/{voucher.code}/redemptions/{customer_id}")
         if used and int(used.get("count", 0)) >= voucher.per_customer_limit:
+            # A voucher is counted when its order is created and given back if that order is never paid.
+            held = await self.repos.orders.get_many(list(used.get("order_ids", [])))
+            if any(o.status.value in ("draft", "pending_payment") for o in held.values()):
+                raise VoucherInvalid(
+                    "This voucher is on an order you have not paid for yet. "
+                    "Pay for that order or cancel it, then use the voucher again."
+                )
             raise VoucherInvalid("You have already used this voucher")
         return voucher
 

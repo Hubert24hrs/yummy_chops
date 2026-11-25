@@ -139,6 +139,7 @@ void main() {
   cashTests();
   hubLegTests();
   customerTests();
+  safetyTests();
   testWidgets('offer shows countdown, payout and disables actions once expired', (tester) async {
     final now = DateTime.utc(2026, 11, 14, 20, 0, 0);
     await tester.pumpWidget(ProviderScope(
@@ -326,6 +327,84 @@ class _DashboardApi extends GudMealApi {
   Future<void> sendLocation(GeoPoint p, {double? accuracyM}) async {
     pings++;
   }
+
+  final events = <String>[];
+  final emergencies = <(String, GeoPoint?)>[];
+  bool emergencyFails = false;
+
+  @override
+  Future<RiderProfile> setOnline(bool online) async {
+    events.add(online ? 'online' : 'offline');
+    return RiderProfile(uid: 'demo-rider-1', name: 'Chidi Okafor', status: 'active', isOnline: online);
+  }
+
+  @override
+  Future<void> emergency(String description, GeoPoint? at) async {
+    if (emergencyFails) throw ApiException(0, 'network_error', 'offline');
+    emergencies.add((description, at));
+  }
+}
+
+Future<void> _dashboard(WidgetTester tester, _DashboardApi api, AuthRepository auth) async {
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      authRepositoryProvider.overrideWithValue(auth),
+      apiProvider.overrideWithValue(api),
+      locationSourceProvider.overrideWithValue(FakeLocation(fix: (const GeoPoint(lat: 6.4478, lng: 3.4723), 5.0))),
+    ],
+    child: MaterialApp(theme: buildGudMealTheme(Brightness.light), home: const RiderHomeScreen()),
+  ));
+  await tester.pumpAndSettle();
+}
+
+void safetyTests() {
+  test('only digits and one leading + reach the dialer', () {
+    expect(dialUri('+234 801 111 1111').toString(), 'tel:+2348011111111');
+    expect(dialUri('0803-123-4567').toString(), 'tel:08031234567');
+    expect(dialUri('*901*500*0123456789#').toString(), 'tel:9015000123456789'); // no longer a code the phone acts on
+  });
+
+  testWidgets('signing out goes offline and stops sharing the position first', (tester) async {
+    final api = _DashboardApi();
+    final auth = FakeAuthRepository(const GmUser(uid: 'demo-rider-1'));
+    await _dashboard(tester, api, auth);
+    final reporter = ProviderScope.containerOf(tester.element(find.byType(RiderHomeScreen))).read(locationReporterProvider);
+    expect(reporter.active, isTrue); // online on open
+
+    await tester.tap(find.byTooltip('Sign out'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50))); // the position stream closes
+    await tester.pumpAndSettle();
+    expect(api.events, ['offline']);
+    expect(reporter.active, isFalse);
+    expect(auth.currentUser, isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the Emergency button always sends and always answers', (tester) async {
+    final api = _DashboardApi();
+    await _dashboard(tester, api, FakeAuthRepository(const GmUser(uid: 'demo-rider-1')));
+
+    // Nothing typed: the alert still goes, with where the rider is.
+    await tester.tap(find.text('Emergency'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Send to Yummy Chops'));
+    await tester.pumpAndSettle();
+    expect(api.emergencies.single.$1, 'Emergency (the rider did not say more)');
+    expect(api.emergencies.single.$2?.lat, 6.4478);
+    expect(find.textContaining('Our operations team has been alerted'), findsOneWidget);
+
+    // It could not be sent: the rider is told, and told to call 112.
+    api.emergencyFails = true;
+    await tester.pump(const Duration(seconds: 5)); // the first message goes away
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Emergency'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Accident on Admiralty Way');
+    await tester.tap(find.text('Send to Yummy Chops'));
+    await tester.pumpAndSettle();
+    expect(find.text('We could not send your alert. Call 112 now if you are in danger, then try again.'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
 }
 
 class _ParcelApi extends GudMealApi {

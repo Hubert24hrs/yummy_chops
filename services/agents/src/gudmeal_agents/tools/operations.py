@@ -8,7 +8,7 @@ from typing import Any, Literal
 from pydantic import Field
 
 from .customer import EVERYONE, chat_channel, naira, order_summary
-from .registry import ToolArgs, ToolContext, ToolError, ToolOutput, ToolRegistry, ToolSpec
+from .registry import ToolArgs, ToolContext, ToolError, ToolId, ToolOutput, ToolRegistry, ToolSpec
 
 RESTAURANT_ROLES = frozenset({"restaurant_owner", "restaurant_manager", "restaurant_staff"})
 RESTAURANT_MANAGERS = frozenset({"restaurant_owner", "restaurant_manager"})
@@ -78,14 +78,14 @@ class TicketArgs(ToolArgs):
         "missing_item", "wrong_order", "late_delivery", "payment", "quality", "rider", "account", "other"
     ]
     description: str = Field(min_length=5, max_length=1500)
-    order_id: str | None = Field(default=None, max_length=64)
-    missing_item_ids: list[str] = Field(default_factory=list, max_length=20)
+    order_id: ToolId | None = None
+    missing_item_ids: list[ToolId] = Field(default_factory=list, max_length=20)
 
 
 class RefundReviewArgs(ToolArgs):
-    order_id: str = Field(min_length=6, max_length=64)
+    order_id: ToolId
     reason: str = Field(min_length=5, max_length=1000)
-    missing_item_ids: list[str] = Field(default_factory=list, max_length=20)
+    missing_item_ids: list[ToolId] = Field(default_factory=list, max_length=20)
 
 
 class HelpArgs(ToolArgs):
@@ -93,11 +93,11 @@ class HelpArgs(ToolArgs):
 
 
 class OrderArg(ToolArgs):
-    order_id: str = Field(min_length=6, max_length=64)
+    order_id: ToolId
 
 
 class RestaurantOrdersArgs(ToolArgs):
-    restaurant_id: str | None = None
+    restaurant_id: ToolId | None = None
     status: (
         Literal[
             "submitted_to_restaurant",
@@ -111,31 +111,31 @@ class RestaurantOrdersArgs(ToolArgs):
 
 
 class AcceptArgs(ToolArgs):
-    order_id: str = Field(min_length=6, max_length=64)
+    order_id: ToolId
     prep_minutes: int = Field(ge=1, le=180)
-    restaurant_id: str | None = None
+    restaurant_id: ToolId | None = None
 
 
 class RejectArgs(ToolArgs):
-    order_id: str = Field(min_length=6, max_length=64)
+    order_id: ToolId
     reason: str = Field(min_length=3, max_length=300)
-    restaurant_id: str | None = None
+    restaurant_id: ToolId | None = None
 
 
 class AvailabilityArgs(ToolArgs):
-    item_id: str
+    item_id: ToolId
     available: bool
-    restaurant_id: str | None = None
+    restaurant_id: ToolId | None = None
 
 
 class AnalyticsArgs(ToolArgs):
     days: int = Field(default=14, ge=1, le=90)
-    restaurant_id: str | None = None
+    restaurant_id: ToolId | None = None
 
 
 class AssignArgs(ToolArgs):
-    order_id: str = Field(min_length=6, max_length=64)
-    rider_uid: str = Field(min_length=2, max_length=128)
+    order_id: ToolId
+    rider_uid: ToolId
     reason: str = Field(min_length=3, max_length=300)
 
 

@@ -24,9 +24,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   Quote? _quote;
   String? _error;
   bool _busy = false;
-  final _orderKey = newIdempotencyKey('order');
+  final _orderKey = IdempotencyKey('order');
   // One key per method: switching method after a refusal is a new request, a retry is not.
-  final _checkoutKeys = <PayMethod, String>{};
+  final _checkoutKeys = <PayMethod, IdempotencyKey>{};
   PayMethod _method = PayMethod.card;
 
   /// Exact address from the map picker (search, GPS or a saved address). Without it the neighbourhood centre is used.
@@ -115,7 +115,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             address: _address,
             voucher: _voucher.text.trim().toUpperCase(),
           );
-      setState(() => _quote = q);
+      setState(() {
+        _quote = q;
+        // A new price is a new order: it never goes out with the keys of the last one.
+        _orderKey.renew();
+        _checkoutKeys.clear();
+      });
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } finally {
@@ -129,9 +134,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     setState(() => _busy = true);
     try {
       final api = ref.read(apiProvider);
-      final order = await api.createOrder(quote.id, _orderKey, contactPhone: _phone.text.trim().isEmpty ? null : _phone.text.trim());
-      final key = _checkoutKeys.putIfAbsent(_method, () => newIdempotencyKey('checkout'));
-      final checkout = await api.checkout(order.id, key, provider: _method.provider);
+      final phone = _phone.text.trim().isEmpty ? null : _phone.text.trim();
+      // The key goes with this price and this phone number: a retry keeps it, a changed order gets a new one.
+      final order = await _orderKey.send((quote.id, phone), (key) => api.createOrder(quote.id, key, contactPhone: phone));
+      final checkout = await _checkoutKeys
+          .putIfAbsent(_method, () => IdempotencyKey('checkout'))
+          .send(order.id, (key) => api.checkout(order.id, key, provider: _method.provider));
       ref.read(cartProvider.notifier).clear();
       ref.invalidate(walletProvider);
       final url = checkout.authorizationUrl;
@@ -145,7 +153,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
       if (mounted) context.go('/orders/${order.id}?ref=${checkout.reference}');
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      setState(() {
+        _error = e.message;
+        // The price is no longer held: the button goes back to "Review total" for a new one.
+        if (e.needsNewQuote) _quote = null;
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -37,7 +37,7 @@ with Paystack): each payment says how much the main account keeps (`transaction_
    - A new branch stays hidden until its owner switches on **Accepting orders** in that branch's dashboard. It must be
      in one of our delivery zones (its address is picked from the address search) and belongs to that zone's city.
      After that, its address and pin change only through the kitchen location checks every shop has (Settings,
-     Kitchen location: the pin near the address, bigger moves checked by Yummy Chops). A business has at most 30
+     Kitchen location: the pin near the address, bigger moves checked by Yummy Chops). A business has at most 25
      branches.
 3. **Items carry the business ID** (`MenuItem.business_id`), set when the business is created and on every new item.
 4. **Sign-up** (the website's `/partner-with-us` and the customer app's **Register your business**): the kind of

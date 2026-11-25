@@ -1,131 +1,14 @@
 rules_version = '2';
 
-// Yummy Chops — Cloud Firestore security rules.
-// Principle: deny by default. Clients READ what they are entitled to; all business WRITES go through
-// gudmeal-api (Admin SDK bypasses rules). The only client-writable documents are a user's own cart and
-// the read-receipt on their own notifications.
-
+// Yummy Chops: Firestore rules. The apps and websites never read or write Firestore themselves: everything goes
+// through the API (Admin SDK), which shows each person only their own view of an order. A shop sees the area, not
+// the customer's address or phone; a rider sees a job only while it is theirs; settlement figures stay with staff.
+// Direct client access would go around those views, so it is closed. When an app needs a live listener, open one
+// purpose-made collection here that holds only what its readers may see, with a test in tests/.
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // ---------------------------------------------------------------- helpers
-    function signedIn() { return request.auth != null; }
-    function uid() { return request.auth.uid; }
-    function roles() { return request.auth.token.get('roles', []); }
-    function isStaff() {
-      return signedIn() && roles().hasAny(['support_agent', 'operations_manager', 'finance_manager',
-                                           'marketing_manager', 'super_admin']);
-    }
-    function restaurantRole(rid) {
-      return signedIn() ? request.auth.token.get('restaurant_roles', {}).get(rid, '') : '';
-    }
-    function worksAt(rid) { return restaurantRole(rid) in ['owner', 'manager', 'staff']; }
-    function canReadOrder(o) {
-      return signedIn() && (o.customer_id == uid() || worksAt(o.restaurant_id)
-                            || o.get('rider_id', null) == uid() || isStaff());
-    }
-
-    // ---------------------------------------------------------------- default deny
     match /{document=**} {
       allow read, write: if false;
-    }
-
-    // ---------------------------------------------------------------- public catalog (read-only)
-    match /restaurant_profiles/{rid} {
-      allow read: if resource.data.status == 'active' || worksAt(rid) || isStaff();
-    }
-    match /restaurant_locations/{rid} { allow read: if true; }
-    match /restaurant_menus/{rid} { allow read: if true; }
-    match /food_items/{itemId} { allow read: if true; }
-    match /food_customisations/{groupId} { allow read: if true; }
-    match /food_categories/{categoryId} { allow read: if true; }
-    match /promotions/{promotionId} { allow read: if resource.data.get('is_active', false) == true || isStaff(); }
-    match /feature_flags/{flag} { allow read: if true; }
-    match /platform_configuration/{docId} { allow read: if docId == 'public' || isStaff(); }
-
-    // ---------------------------------------------------------------- people
-    match /users/{userId} {
-      allow read: if signedIn() && (uid() == userId || isStaff());
-    }
-    match /customer_profiles/{userId} {
-      allow read: if signedIn() && (uid() == userId || isStaff());
-      match /addresses/{addressId} {
-        allow read: if signedIn() && uid() == userId;
-      }
-    }
-    match /rider_profiles/{riderId} {
-      allow read: if signedIn() && (uid() == riderId || isStaff());
-    }
-    match /loyalty_accounts/{userId} {
-      allow read: if signedIn() && uid() == userId;
-    }
-
-    // ---------------------------------------------------------------- carts (client-writable, convenience only)
-    function validCart(d) {
-      return d.keys().hasOnly(['restaurant_id', 'lines', 'updated_at'])
-        && d.restaurant_id is string && d.restaurant_id.size() <= 64
-        && d.lines is list && d.lines.size() <= 50
-        && d.updated_at == request.time;
-    }
-    match /carts/{userId} {
-      allow read, delete: if signedIn() && uid() == userId;
-      allow create, update: if signedIn() && uid() == userId && validCart(request.resource.data);
-    }
-
-    // ---------------------------------------------------------------- quotes & orders (API-written)
-    match /quotes/{quoteId} {
-      allow read: if signedIn() && resource.data.customer_id == uid();
-    }
-    match /orders/{orderId} {
-      allow read: if canReadOrder(resource.data);
-      allow write: if false;
-      match /customer_private/{docId} {
-        // Delivery & pickup codes: the customer only — never the rider or restaurant.
-        allow read: if signedIn()
-          && get(/databases/$(database)/documents/orders/$(orderId)).data.customer_id == uid();
-      }
-    }
-    match /order_events/{eventId} {
-      allow read: if signedIn()
-        && canReadOrder(get(/databases/$(database)/documents/orders/$(resource.data.order_id)).data);
-    }
-
-    // ---------------------------------------------------------------- delivery
-    match /delivery_assignments/{assignmentId} {
-      allow read: if signedIn() && (resource.data.rider_id == uid() || isStaff());
-    }
-    match /delivery_tracking/{orderId} {
-      allow read: if signedIn() && (resource.data.customer_id == uid() || isStaff());
-    }
-
-    // ---------------------------------------------------------------- engagement & support
-    match /reviews/{reviewId} {
-      // Customers read reviews through the API (which hides reviewer identity).
-      allow read: if signedIn() && (resource.data.customer_id == uid() || worksAt(resource.data.restaurant_id)
-                                    || isStaff());
-    }
-    match /notifications/{notificationId} {
-      allow read: if signedIn() && resource.data.recipient_uid == uid();
-      allow update: if signedIn() && resource.data.recipient_uid == uid()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read_at'])
-        && request.resource.data.read_at == request.time;
-    }
-    match /support_tickets/{ticketId} {
-      allow read: if signedIn() && (resource.data.opened_by == uid() || isStaff());
-    }
-    match /applications/{applicationId} {
-      allow read: if signedIn() && (resource.data.applicant_uid == uid() || isStaff());
-    }
-    match /vouchers/{code} {
-      allow read: if isStaff();
-    }
-
-    // ---------------------------------------------------------------- AI
-    match /agent_conversations/{threadId} {
-      allow read: if signedIn() && resource.data.uid == uid();
-    }
-    match /agent_activity_logs/{logId} {
-      allow read: if isStaff();
     }
   }
 }

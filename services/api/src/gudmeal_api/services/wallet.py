@@ -138,7 +138,11 @@ class WalletService:
                 f"Your wallet can hold up to {format_naira(self.max_balance)}",
                 details={"balance_kobo": balance, "max_topup_now_kobo": max(0, room)},
             )
-        return await self.payments.start_wallet_topup(principal, amount_kobo, provider, idempotency_key)
+        # The limit is checked again as the top-up is recorded, under the wallet's lock and counting top-ups
+        # that are on their way, so several started at once cannot pass it together.
+        return await self.payments.start_wallet_topup(
+            principal, amount_kobo, provider, idempotency_key, max_balance_kobo=self.max_balance
+        )
 
     async def set_refund_preference(self, principal: Principal, refund_to_wallet: bool) -> dict[str, Any]:
         profile = await self.repos.customers.get(principal.uid)
@@ -310,6 +314,7 @@ class WalletService:
                     "Amount is more than your available cash-on-delivery balance",
                     details={"available_kobo": max(0, available)},
                 )
+            await self.ledger.lock_account(s, wallet)
             wallet_balance = await self.ledger.balance(s, wallet)
             if wallet_balance + amount_kobo > self.max_balance:
                 raise ValidationFailed(

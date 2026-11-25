@@ -68,6 +68,18 @@ describe("A rider's KYC on the website (docs/adr/0027-rider-kyc.md)", () => {
     expect(await screen.findByRole("heading", { name: "With the team for review" })).toBeTruthy();
   });
 
+  it("a file that is too large is refused before it is read or sent", async () => {
+    show();
+    await screen.findByRole("heading", { name: "Complete your KYC" });
+    const read = vi.spyOn(FileReader.prototype, "readAsDataURL");
+    const scan = new File([new Uint8Array(5 * 1024 * 1024 + 1)], "form.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByLabelText("Upload: guarantor_1_form"), { target: { files: [scan] } });
+    expect(await screen.findByText("This file is too large (at most 5 MB). Choose a smaller file.")).toBeTruthy();
+    expect(read).not.toHaveBeenCalled();
+    expect(api.riderKyc.upload).not.toHaveBeenCalled();
+    read.mockRestore();
+  });
+
   it("a rider who signed up a moment ago gets a fresh sign-in token, then their KYC", async () => {
     api.riderKyc.get.mockRejectedValueOnce(new ApiError(403, "forbidden", "Riders only"));
     show();

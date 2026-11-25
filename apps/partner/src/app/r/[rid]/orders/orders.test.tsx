@@ -41,8 +41,9 @@ const { default: OrdersBoard } = await import("./page");
 /** A promise React's `use` reads at once (as Next.js passes already-known route params), so nothing suspends. */
 const known = <T,>(value: T) => Object.assign(Promise.resolve(value), { status: "fulfilled", value });
 
+let qc: QueryClient;
 function show() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <Suspense fallback={<p>Loading</p>}><OrdersBoard params={known({ rid: "r-main" })} /></Suspense>
@@ -104,5 +105,35 @@ describe("the order board (ADR-0028)", () => {
     expect(gone.getByText(/Picked up by/)).toBeTruthy();
     expect(gone.getByText("Tunde Ade")).toBeTruthy();
     expect(gone.queryByText(/Arrives in/)).toBeNull();
+  });
+
+  it("keeps checking for orders in a background tab and sounds each alert through one audio output", async () => {
+    const made: { beeps: number }[] = [];
+    class FakeAudio {
+      state = "running"; currentTime = 0; destination = {}; beeps = 0;
+      constructor() { made.push(this); }
+      createOscillator() { this.beeps += 1; return { frequency: { value: 0 }, connect() {}, start() {}, stop() {} }; }
+      resume() { return Promise.resolve(); }
+      close() { return Promise.resolve(); }
+    }
+    vi.stubGlobal("AudioContext", FakeAudio);
+    try {
+      board = [order({ status: "submitted_to_restaurant", short_code: "AAA1" })];
+      show();
+      await screen.findByText("#AAA1");
+      const query = qc.getQueryCache().find({ queryKey: ["orders", "r-main"] })!;
+      expect(query.observers[0]!.options.refetchIntervalInBackground).toBe(true);
+
+      for (const code of ["BBB2", "CCC3"]) {
+        board = [...board, order({ status: "submitted_to_restaurant", short_code: code })];
+        await qc.invalidateQueries({ queryKey: ["orders", "r-main"] });
+        await screen.findAllByText(`#${code}`);
+      }
+      await waitFor(() => expect(made[0]?.beeps).toBe(2));
+      expect(made).toHaveLength(1); // one output, used again
+      expect(document.title).toBe("(3) New orders · Yummy Chops Partner");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

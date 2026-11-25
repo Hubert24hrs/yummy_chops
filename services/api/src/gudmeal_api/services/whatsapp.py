@@ -7,7 +7,6 @@ permissions and approvals as the app) → reply rendered for WhatsApp → Cloud 
 
 from __future__ import annotations
 
-import hmac
 import json
 import logging
 import secrets
@@ -39,6 +38,7 @@ from ..errors import Conflict, NotFound, PermissionDenied, RateLimited, Unauthen
 from ..ledger.audit import AuditLog
 from ..repositories import Repositories, Transaction
 from ..security.channel_tokens import mint
+from ..security.compare import same_secret
 from ..security.rate_limit import RateLimiter
 from ..security.rbac import Principal
 from .infra import TaskQueue
@@ -64,6 +64,10 @@ def _first(name: str | None) -> str:
 # ------------------------------------------------------------------------------------------- senders
 class WhatsAppSender(Protocol):
     async def send(self, to: str, message: dict[str, Any]) -> None: ...
+
+
+#: How long a yes-or-no question waits for its answer before a new message replaces it.
+PENDING_TTL = timedelta(minutes=15)
 
 
 class WhatsAppSendError(Exception):
@@ -199,7 +203,7 @@ class WhatsAppService:
         )
         if not self.enabled:
             raise NotFound("WhatsApp is not enabled")
-        if mode != "subscribe" or not expected or not hmac.compare_digest(expected, token or ""):
+        if mode != "subscribe" or not expected or not same_secret(expected, token):
             raise PermissionDenied("Webhook verification failed")
         return challenge or ""
 
@@ -313,6 +317,13 @@ class WhatsAppService:
         pending = link.get("pending")
         thread = link.get("thread_id")
         last = link.get("last_at")
+        asked_at = (pending or {}).get("at")
+        if pending and thread and asked_at and now - asked_at > PENDING_TTL and not button:
+            try:
+                await self.agents.approve(token, thread, False, pending.get("tool_call_id"))
+            except AgentsError:
+                thread = None  # the old conversation cannot be cleared: start a new one
+            pending = None
         try:
             if button.startswith(("approve:", "decline:")) and thread:
                 result = await self.agents.approve(
@@ -347,7 +358,7 @@ class WhatsAppService:
                         raise
         except AgentsError as exc:
             if exc.status == 409:
-                await self.repos.store.update(f"whatsapp_links/{wa_id}", {"pending": None})
+                await self.repos.store.update(f"whatsapp_links/{wa_id}", {"pending": None, "thread_id": None})
                 return await self._say(wa_id, "That request is out of date. Tell me again what you'd like.")
             if exc.status == 429:
                 return await self._say(
@@ -369,6 +380,7 @@ class WhatsAppService:
                 "pending": {
                     "tool_call_id": approval.get("tool_call_id"),
                     "title": (approval.get("preview") or {}).get("title"),
+                    "at": now,
                 }
                 if approval
                 else None,
@@ -483,7 +495,7 @@ class WhatsAppService:
         self.rate_limiter.check(f"whatsapp_code:{principal.uid}", capacity=5, refill_per_second=5 / 3600)
         now = utcnow()
         for _ in range(5):
-            code = f"{secrets.randbelow(10**6):06d}"
+            code = f"{secrets.randbelow(10**8):08d}"
             try:
                 await self.repos.store.create(
                     f"whatsapp_link_codes/{code}",

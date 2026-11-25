@@ -127,6 +127,8 @@ function ItemEditor({ rid, vertical, item, categories, onClose }: {
         dietary: item?.dietary ?? [], is_available: item?.is_available ?? true, spice_level: item?.spice_level ?? 0,
         brand: v.brand || null, unit_label: v.unit_label || null, emoji: v.emoji || null,
         requires_prescription: words.pharmacy && v.requires_prescription,
+        // Not on this form: sent back as they are, or saving would wipe the item's photo, prep time and place in the list.
+        image_url: item?.image_url ?? null, prep_minutes: item?.prep_minutes ?? null, position: item?.position ?? 0,
       };
       return item ? api.partner.updateItem(rid, item.id, body) : api.partner.createItem(rid, body);
     },

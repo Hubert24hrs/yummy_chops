@@ -1,10 +1,10 @@
 "use client";
 
-import { ApiError, formatNaira, newIdempotencyKey } from "@gudmeal/api-client";
+import { ApiError, formatNaira, idempotentCalls } from "@gudmeal/api-client";
 import { Button, Card, ErrorState, Skeleton, Toggle } from "@gudmeal/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { PlusSummary } from "@/components/growth";
 import { checkoutProvider, PaymentMethodPicker, type PayMethod } from "@/components/payment-method";
 import { useApi } from "@/lib/api";
@@ -17,12 +17,16 @@ export function PlusView() {
   const plus = useQuery({ queryKey: ["plus"], queryFn: () => api.plus.get() });
   const [method, setMethod] = useState<PayMethod>("wallet");
   const [autoRenew, setAutoRenew] = useState(true);
-  const joinKey = useRef(newIdempotencyKey("plus"));
+  // The key is kept only until the API answers: another payment method, or trying again after a refusal, is a
+  // new request (see `idempotentCalls`).
+  const [sendJoin] = useState(() => idempotentCalls("plus"));
 
   const join = useMutation({
-    mutationFn: () => api.plus.subscribe(joinKey.current, checkoutProvider(method), autoRenew),
+    mutationFn: () => {
+      const provider = checkoutProvider(method);
+      return sendJoin({ provider, autoRenew }, (key) => api.plus.subscribe(key, provider, autoRenew));
+    },
     onSuccess: (res) => {
-      joinKey.current = newIdempotencyKey("plus");
       if (res.payment.authorization_url) {
         window.location.assign(res.payment.authorization_url);
         return;

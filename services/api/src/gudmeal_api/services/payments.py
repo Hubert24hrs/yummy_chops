@@ -5,15 +5,17 @@ from __future__ import annotations
 
 import logging
 import secrets
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..domain.models import Order
-from ..domain.money import allocate
+from ..domain.money import allocate, format_naira
 from ..domain.pricing import vat_inclusive_split
 from ..errors import NotFound, PaymentProviderError, Unauthenticated, ValidationFailed
 from ..ledger import ledger as postings
@@ -30,12 +32,18 @@ from ..ledger.tables import (
     new_id,
 )
 from ..logging_setup import log_event
-from ..payments.base import PaymentProvider, SplitInstruction
+from ..payments.base import PaymentProvider, ProviderOutcomeUnknown, SplitInstruction
 from ..repositories import Repositories
 from ..security.rbac import Permission, Principal, require
 
 logger = logging.getLogger(__name__)
 REUSE_WINDOW = timedelta(minutes=25)
+# A checkout nobody finished, or that the gateway never answers for, stops being asked about after this long.
+GIVE_UP_AFTER = timedelta(days=1)
+# Refunds that are still owed or on their way: they hold their amount, so it cannot be refunded twice.
+OPEN_REFUNDS = ("requested", "approved", "processing")
+# Run inside the transaction that records a new checkout, before the record is written (it may refuse).
+CheckoutGuard = Callable[[AsyncSession], Awaitable[None]]
 # Top-level domains reserved for testing and examples (RFC 2606, RFC 6761): no mailbox exists there.
 _UNDELIVERABLE_TLDS = frozenset({"test", "example", "invalid", "localhost", "local"})
 
@@ -119,6 +127,7 @@ class PaymentService:
         refund_auto_approve_limit_kobo: int = 0,
         failover_provider: str | None = None,
         wallet_enabled: bool = True,
+        split_exposure_limit_kobo: int = 20_000_000,
     ) -> None:
         self.db = db
         self.ledger = ledger
@@ -132,6 +141,7 @@ class PaymentService:
         self.email_fallback_domain = email_fallback_domain
         self.refund_auto_approve_limit = refund_auto_approve_limit_kobo
         self.wallet_enabled = wallet_enabled
+        self.split_exposure_limit = split_exposure_limit_kobo
         self.health = ProviderHealth()
 
     def payer_email(self, principal: Principal) -> str:
@@ -217,7 +227,12 @@ class PaymentService:
     async def split_for(self, order: Order) -> SplitInstruction | None:
         """How an order's card payment is split when its business has a bank account at the provider: the business's
         earning goes straight to it, Yummy Chops keeps the rest (fees, commission, delivery). None when there is no
-        such account (docs/adr/0028-business-branches-and-split-payments.md)."""
+        such account (docs/adr/0028-business-branches-and-split-payments.md).
+
+        A split pays the shop before the order is finished, and a refund then comes out of Yummy Chops' own
+        balance. So the money a shop has had ahead of its earnings (its ledger balance below zero: splits of
+        unfinished orders, and shares of refunded ones it owes back) is capped: past the limit the payment is not
+        split and the shop is paid in its settlement, which first takes back what it owes."""
         restaurant = await self.repos.restaurants.get(order.restaurant_id) if order.restaurant_id else None
         if restaurant is None or not restaurant.business_id:
             return None
@@ -227,14 +242,62 @@ class PaymentService:
         share, total = order.settlement.restaurant_earning_kobo, order.breakdown.total_kobo
         if share <= 0 or share >= total:
             return None
+        async with self.db.session() as s:
+            balance = await self.ledger.balance(s, f"liability:restaurant:{restaurant.id}")
+        if balance - share < -self.split_exposure_limit:
+            log_event(
+                logger,
+                "payment not split: the shop is at its limit for money paid ahead",
+                restaurant_id=restaurant.id,
+                balance_kobo=balance,
+                share_kobo=share,
+            )
+            return None
         return SplitInstruction(subaccount=business.paystack_subaccount_code, platform_kobo=total - share)
 
     async def start_wallet_topup(
-        self, principal: Principal, amount_kobo: int, provider_name: str | None, idempotency_key: str
+        self,
+        principal: Principal,
+        amount_kobo: int,
+        provider_name: str | None,
+        idempotency_key: str,
+        *,
+        max_balance_kobo: int | None = None,
     ) -> dict[str, Any]:
-        """Hosted checkout that credits the customer's wallet once the gateway confirms the payment."""
+        """Hosted checkout that credits the customer's wallet once the gateway confirms the payment. With
+        `max_balance_kobo`, the wallet's limit is checked under the wallet's account lock as the top-up is
+        recorded, counting top-ups already on their way, so several started at once cannot pass it together."""
         if not self.wallet_enabled:
             raise ValidationFailed("The Yummy Chops wallet is not available right now")
+
+        async def room_in_wallet(s: AsyncSession) -> None:
+            if max_balance_kobo is None:
+                return
+            account = postings.wallet_account(principal.uid)
+            await self.ledger.lock_account(s, account)
+            balance = await self.ledger.balance(s, account)
+            on_the_way = await s.scalar(
+                select(func.coalesce(func.sum(PaymentRecord.amount_kobo), 0)).where(
+                    PaymentRecord.customer_id == principal.uid,
+                    PaymentRecord.purpose == "wallet_topup",
+                    PaymentRecord.status.in_(("initialized", "pending")),
+                )
+            )
+            on_the_way = int(on_the_way or 0)
+            room = max_balance_kobo - balance - on_the_way
+            if amount_kobo > room:
+                fits_alone = amount_kobo <= max_balance_kobo - balance
+                raise ValidationFailed(
+                    "You already have a top-up on the way. Finish it, or try again in a little while."
+                    if fits_alone
+                    else f"Your wallet can hold up to {format_naira(max_balance_kobo)}",
+                    details={
+                        "balance_kobo": balance,
+                        "topups_on_the_way_kobo": on_the_way,
+                        "max_topup_now_kobo": max(0, room),
+                    },
+                )
+
         return await self._hosted_checkout(
             self.gateways(provider_name),
             purpose="wallet_topup",
@@ -246,6 +309,7 @@ class PaymentService:
             principal=principal,
             callback_url=self._return_to("purpose=wallet_topup"),
             metadata={"purpose": "wallet_topup", "customer_id": principal.uid},
+            guard=room_in_wallet,
         )
 
     async def start_plus_checkout(
@@ -455,9 +519,11 @@ class PaymentService:
         callback_url: str,
         metadata: dict[str, Any],
         split: SplitInstruction | None = None,
+        guard: CheckoutGuard | None = None,
     ) -> dict[str, Any]:
         """Start a gateway checkout, failing over to the next gateway when one cannot start it. A `split` is used only
-        by gateways that can split (the backup gateway takes the whole payment; the business is paid out later)."""
+        by gateways that can split (the backup gateway takes the whole payment; the business is paid out later).
+        A `guard` runs in the transaction that records the checkout and may refuse it."""
         email = self.payer_email(principal)
         last_error: PaymentProviderError | None = None
         for attempt, name in enumerate(names):
@@ -471,6 +537,8 @@ class PaymentService:
                     return self._init_view(prior)  # same request retried
                 if prior is not None:  # an earlier attempt failed: this retry gets its own record
                     key = f"{key}:{secrets.token_hex(3)}"
+                if guard is not None:
+                    await guard(s)
                 rec = PaymentRecord(
                     id=new_id(),
                     order_id=order_id,
@@ -659,11 +727,13 @@ class PaymentService:
             s.add(rec)
             return self._init_view(rec)
 
-    async def record_cash_collection(self, order: Order, rider_id: str) -> int:
+    async def record_cash_collection(
+        self, order: Order, rider_id: str, *, recorded_by: str | None = None
+    ) -> int:
         """The rider confirmed the cash at the door. Posts it once (idempotent); returns the rider's cash held.
 
         Amounts come from the server's records (the order's cash payment and the parcel's COD amount), never
-        from the rider's request.
+        from the rider's request. `recorded_by` is the staff member who marked the order delivered for the rider.
         """
         now = utcnow()
         async with self.db.transaction() as s:
@@ -712,12 +782,12 @@ class PaymentService:
                 )
             AuditLog.add(
                 s,
-                actor_id=rider_id,
-                actor_roles=["rider"],
+                actor_id=recorded_by or rider_id,
+                actor_roles=["staff"] if recorded_by else ["rider"],
                 action="cash.collected",
                 resource_type="order",
                 resource_id=order.id,
-                details={"pay_on_delivery_kobo": pod_kobo, "cod_kobo": cod_kobo},
+                details={"pay_on_delivery_kobo": pod_kobo, "cod_kobo": cod_kobo, "rider_id": rider_id},
             )
             return await self.ledger.balance(s, postings.rider_cash_account(rider_id))
 
@@ -956,7 +1026,7 @@ class PaymentService:
                 await self.verify_reference(event.reference, source="webhook")
             except NotFound:
                 log_event(logger, "webhook for unknown reference", logging.WARNING, reference=event.reference)
-        elif event.event_type in ("refund.processed", "refund.failed"):
+        elif event.event_type in ("refund.processed", "refund.failed", "refund.pending"):
             await self._apply_refund_webhook(event.event_type, event.data)
 
         try:
@@ -977,31 +1047,50 @@ class PaymentService:
     async def reconcile_stale(
         self, older_than: timedelta = timedelta(minutes=10), limit: int = 100
     ) -> dict[str, int]:
-        cutoff = utcnow() - older_than
+        now = utcnow()
+        cutoff = now - older_than
         async with self.db.session() as s:
-            refs = list(
-                (
-                    await s.execute(
-                        select(PaymentRecord.reference)
-                        .where(
-                            PaymentRecord.status.in_(("initialized", "pending")),
-                            PaymentRecord.provider.not_in(INTERNAL_PROVIDERS),  # cash waits for the rider
-                            PaymentRecord.created_at < cutoff,
-                        )
-                        .order_by(PaymentRecord.created_at)
-                        .limit(limit)
+            rows = (
+                await s.execute(
+                    select(PaymentRecord.reference, PaymentRecord.created_at)
+                    .where(
+                        PaymentRecord.status.in_(("initialized", "pending")),
+                        PaymentRecord.provider.not_in(INTERNAL_PROVIDERS),  # cash waits for the rider
+                        PaymentRecord.created_at < cutoff,
                     )
-                ).scalars()
-            )
-        checked = errors = 0
-        for ref in refs:
+                    .order_by(PaymentRecord.created_at)
+                    .limit(limit)
+                )
+            ).all()
+        checked = errors = abandoned = 0
+        for ref, created_at in rows:
+            still_open = True
             try:
-                await self.verify_reference(ref, source="reconcile")
+                view = await self.verify_reference(ref, source="reconcile")
                 checked += 1
+                still_open = view["status"] in ("initialized", "pending")
             except Exception:
                 errors += 1
                 logger.exception("reconcile failed", extra={"extra_fields": {"reference": ref}})
-        return {"checked": checked, "errors": errors}
+            # The oldest rows are asked about first: one that never gets an answer (the gateway does not know
+            # it, or keeps failing) would hold its place for ever and newer payments would never be reached.
+            if still_open and now - _aware(created_at) > GIVE_UP_AFTER:
+                abandoned += await self._abandon(ref)
+        return {"checked": checked, "errors": errors, "abandoned": abandoned}
+
+    async def _abandon(self, reference: str) -> int:
+        """Stop asking about a checkout nobody finished. If it is paid after all, the gateway's webhook (or the
+        payer's app) still verifies it, and money for an order that has gone is refunded as usual."""
+        async with self.db.transaction() as s:
+            row = await s.scalar(
+                select(PaymentRecord).where(PaymentRecord.reference == reference).with_for_update()
+            )
+            if row is None or row.status not in ("initialized", "pending"):
+                return 0
+            row.status = "abandoned"
+            row.failure_reason = "No payment was confirmed within a day"
+            row.updated_at = utcnow()
+            return 1
 
     # ============================================================================ refunds
     async def create_refund(
@@ -1216,6 +1305,41 @@ class PaymentService:
         await self.relay.relay_pending()
         return view
 
+    async def retry_refund(self, principal: Principal, refund_id: str) -> dict[str, Any]:
+        """Finance sends a failed refund again (the provider refused it, or could not be reached). A refund that is
+        still `processing` is not sent twice: the provider may already have made it."""
+        require(principal, Permission.REFUNDS_APPROVE)
+        async with self.db.transaction() as s:
+            rec = await s.get(RefundRecord, refund_id, with_for_update=True)
+            if rec is None:
+                raise NotFound("Refund not found")
+            if rec.status != "failed":
+                raise ValidationFailed(f"Only a failed refund can be tried again; this one is {rec.status}")
+            payment = await s.get(PaymentRecord, rec.payment_id, with_for_update=True)
+            assert payment is not None
+            open_total = await s.scalar(
+                select(func.coalesce(func.sum(RefundRecord.amount_kobo), 0)).where(
+                    RefundRecord.payment_id == payment.id, RefundRecord.status.in_(OPEN_REFUNDS)
+                )
+            )
+            refundable = payment.amount_kobo - payment.refunded_kobo - int(open_total or 0)
+            if rec.amount_kobo > refundable:
+                raise ValidationFailed(
+                    "This payment has since been refunded another way",
+                    details={"refundable_kobo": refundable},
+                )
+            rec.status = "approved"
+            AuditLog.add(
+                s,
+                actor_id=principal.uid,
+                actor_roles=principal.audit_roles(),
+                action="refund.retried",
+                resource_type="refund",
+                resource_id=rec.id,
+                details={"order_id": rec.order_id, "amount_kobo": rec.amount_kobo},
+            )
+        return await self.process_refund(refund_id)
+
     async def process_refund(self, refund_id: str) -> dict[str, Any]:
         async with self.db.transaction() as s:
             rec = await s.get(RefundRecord, refund_id, with_for_update=True)
@@ -1240,6 +1364,15 @@ class PaymentService:
             result = await self.provider(provider_name).refund(
                 reference=ref, provider_transaction_id=txid, amount_kobo=amount
             )
+        except ProviderOutcomeUnknown as exc:
+            # Sent, but no answer (a timeout, a dropped connection): the provider may have made the refund. It
+            # stays `processing`, holding its amount, until the provider's refund event settles it either way.
+            log_event(logger, "refund sent, no answer from the provider", logging.ERROR, refund_id=refund_id)
+            async with self.db.transaction() as s:
+                rec = await s.get(RefundRecord, refund_id)
+                assert rec is not None
+                rec.decision_note = f"no answer from the payment provider: {exc.message}"[:1000]
+                return refund_view(rec)
         except PaymentProviderError as exc:
             async with self.db.transaction() as s:
                 rec = await s.get(RefundRecord, refund_id)
@@ -1352,22 +1485,58 @@ class PaymentService:
         }
 
     async def _apply_refund_webhook(self, event_type: str, data: dict[str, Any]) -> None:
-        provider_refund_id = str(data.get("id")) if data.get("id") is not None else None
-        if not provider_refund_id:
-            return
-        async with self.db.session() as s:
-            rec = await s.scalar(
-                select(RefundRecord).where(RefundRecord.provider_refund_id == provider_refund_id)
-            )
+        rec = await self._refund_for_event(data)
         if rec is None:
+            log_event(
+                logger,
+                "refund event matches no refund",
+                logging.WARNING,
+                event=event_type,
+                reference=data.get("transaction_reference") or data.get("reference"),
+            )
             return
         if event_type == "refund.processed":
             await self.complete_refund(rec.id)
-        else:
-            async with self.db.transaction() as s:
-                row = await s.get(RefundRecord, rec.id)
-                if row is not None and row.status == "processing":
-                    row.status = "failed"
+            return
+        async with self.db.transaction() as s:
+            row = await s.get(RefundRecord, rec.id)
+            if row is None or row.status != "processing":
+                return
+            if event_type == "refund.failed":
+                row.status = "failed"
+            else:  # refund.pending: the provider has the refund and is working on it
+                row.decision_note = "the payment provider is processing the refund"
+
+    async def _refund_for_event(self, data: dict[str, Any]) -> RefundRecord | None:
+        """The refund a provider's refund event is about. Paystack's events name the payment
+        (`transaction_reference`) and the amount, not the refund: they match the oldest refund of that payment
+        and amount that is still `processing`. An `id` (other providers, older payloads) is matched first,
+        against the id the provider gave when the refund was made."""
+        async with self.db.session() as s:
+            if data.get("id") is not None:
+                rec = await s.scalar(
+                    select(RefundRecord).where(RefundRecord.provider_refund_id == str(data["id"]))
+                )
+                if rec is not None:
+                    return rec
+            reference = data.get("transaction_reference") or data.get("reference")
+            try:
+                amount = Decimal(str(data.get("amount")))
+            except InvalidOperation:
+                return None
+            if not reference or not amount.is_finite() or amount != amount.to_integral_value():
+                return None
+            return await s.scalar(
+                select(RefundRecord)
+                .join(PaymentRecord, PaymentRecord.id == RefundRecord.payment_id)
+                .where(
+                    PaymentRecord.reference == str(reference),
+                    RefundRecord.status == "processing",
+                    RefundRecord.amount_kobo == int(amount),
+                )
+                .order_by(RefundRecord.created_at)
+                .limit(1)
+            )
 
     async def list_refunds(
         self, principal: Principal, status: str | None = None, limit: int = 100
@@ -1400,18 +1569,74 @@ class PaymentService:
             ).scalars()
             return [payment_view(r) for r in rows]
 
+    async def orders_with_refunds(self, order_ids: list[str]) -> set[str]:
+        """Which of these orders have a refund on record, in any state (used by the sweep)."""
+        if not order_ids:
+            return set()
+        async with self.db.session() as s:
+            rows = await s.execute(
+                select(RefundRecord.order_id).where(RefundRecord.order_id.in_(order_ids)).distinct()
+            )
+            return set(rows.scalars())
+
+    async def unrefunded_payments(self, order_ids: list[str]) -> list[dict[str, Any]]:
+        """Money still held for these orders that no refund (in any state) points at (used by the sweep)."""
+        if not order_ids:
+            return []
+        has_refund = select(RefundRecord.id).where(RefundRecord.payment_id == PaymentRecord.id).exists()
+        async with self.db.session() as s:
+            rows = (
+                await s.execute(
+                    select(PaymentRecord)
+                    .where(
+                        PaymentRecord.order_id.in_(order_ids),
+                        PaymentRecord.status == "succeeded",
+                        PaymentRecord.refunded_kobo < PaymentRecord.amount_kobo,
+                        ~has_refund,
+                    )
+                    .order_by(PaymentRecord.created_at)
+                )
+            ).scalars()
+            return [
+                {
+                    "id": r.id,
+                    "order_id": r.order_id,
+                    "amount_kobo": r.amount_kobo,
+                    "refunded_kobo": r.refunded_kobo,
+                }
+                for r in rows
+            ]
+
     # ============================================================================ settlement
     async def settle_completed_order(self, order: Order) -> bool:
         if order.is_leg:
             return await self._settle_leg(order)
         async with self.db.transaction() as s:
             captured = await s.scalar(
-                select(func.count())
-                .select_from(PaymentRecord)
-                .where(PaymentRecord.order_id == order.id, PaymentRecord.status == "succeeded")
+                select(func.coalesce(func.sum(PaymentRecord.amount_kobo), 0)).where(
+                    PaymentRecord.order_id == order.id, PaymentRecord.status == "succeeded"
+                )
             )
             if not captured:  # never recognise revenue for money that was not received
                 log_event(logger, "settlement skipped: no captured payment", logging.ERROR, order_id=order.id)
+                return False
+            # Nor for money that is going back: a refund started before the order completed (asked for, on its
+            # way, made or failed and waiting to be tried again) is not the shop's or the rider's to earn. A
+            # second payment refunded as a duplicate leaves the first one whole, so the order still settles.
+            going_back = await s.scalar(
+                select(func.coalesce(func.sum(RefundRecord.amount_kobo), 0)).where(
+                    RefundRecord.order_id == order.id,
+                    RefundRecord.stage == "before_completion",
+                    RefundRecord.status != "rejected",
+                )
+            )
+            if int(captured) - int(going_back or 0) < order.breakdown.total_kobo:
+                log_event(
+                    logger,
+                    "settlement skipped: the order was refunded before it completed",
+                    logging.ERROR,
+                    order_id=order.id,
+                )
                 return False
             _, created = await self.ledger.post(
                 s,

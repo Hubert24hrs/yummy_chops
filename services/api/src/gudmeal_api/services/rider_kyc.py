@@ -17,7 +17,6 @@ from __future__ import annotations
 import base64
 import binascii
 import re
-import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -186,7 +185,8 @@ class RiderKycService:
         except (binascii.Error, ValueError) as exc:
             raise ValidationFailed("The file could not be read") from exc
         content_type = check_upload(raw, FORMS if kind.endswith("_form") else IMAGES)
-        path = f"applications/{kyc.uid}/kyc/{kind}-{uuid.uuid4().hex[:12]}.{EXTENSIONS[content_type]}"
+        # One file per document (a new photo replaces the old one), so storage cannot grow with every upload.
+        path = f"applications/{kyc.uid}/kyc/{kind}.{EXTENSIONS[content_type]}"
         await self.files.put(path, raw, content_type)
         documents = {key: doc.model_dump(mode="json") for key, doc in kyc.documents.items()}
         documents[kind] = KycDocument(

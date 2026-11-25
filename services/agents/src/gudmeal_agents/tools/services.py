@@ -13,7 +13,7 @@ from pydantic import Field
 
 from ..api_client import ApiError
 from .customer import EVERYONE, LAGOS, chat_channel, delivery_address, lagos_time, naira
-from .registry import ToolArgs, ToolContext, ToolError, ToolOutput, ToolRegistry, ToolSpec
+from .registry import ToolArgs, ToolContext, ToolError, ToolId, ToolOutput, ToolRegistry, ToolSpec
 
 SERVICE_NAMES = {
     "food": "Order Food",
@@ -83,12 +83,12 @@ class NoArgs(ToolArgs):
 
 class OpenScreenArgs(ToolArgs):
     screen: Screen = Field(description="Which part of the app to open for the customer")
-    merchant_id: str | None = Field(default=None, max_length=64, description="For screen='merchant'")
-    order_id: str | None = Field(default=None, max_length=64, description="For screen='order'")
-    category: str | None = Field(
+    merchant_id: ToolId | None = Field(default=None, description="For screen='merchant'")
+    order_id: ToolId | None = Field(default=None, description="For screen='order'")
+    # The apps put the category into a link, so it is held to the same characters as an id.
+    category: ToolId | None = Field(
         default=None,
-        max_length=30,
-        description="Optional browse category for a shop service, e.g. 'local', 'drinks', 'pain'",
+        description="Optional browse category id for a shop service, e.g. 'local', 'drinks', 'pain'",
     )
 
 
@@ -123,7 +123,7 @@ class ParcelQuoteArgs(ToolArgs):
 
 
 class QuoteIdArgs(ToolArgs):
-    quote_id: str = Field(min_length=6, max_length=64)
+    quote_id: ToolId
 
 
 # ------------------------------------------------------------------------------------------------
@@ -303,8 +303,8 @@ async def track_waybill(args: TrackWaybillArgs, ctx: ToolContext) -> ToolOutput:
 
 
 class OptionalOrderArgs(ToolArgs):
-    order_id: str | None = Field(
-        default=None, max_length=64, description="Order to pay for; defaults to the latest order in this chat"
+    order_id: ToolId | None = Field(
+        default=None, description="Order to pay for; defaults to the latest order in this chat"
     )
 
 

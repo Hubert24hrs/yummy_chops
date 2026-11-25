@@ -19,6 +19,7 @@ from typing import Any
 
 from ..errors import Unauthenticated
 from .auth import TokenVerifier
+from .compare import same_secret
 from .rbac import Principal
 
 PREFIX = "gmc1"
@@ -75,7 +76,7 @@ def verify(secret: str, token: str, now: float | None = None) -> dict[str, Any]:
     if len(parts) != 3 or parts[0] != PREFIX:
         raise ValueError("Not a channel token")
     signed = f"{parts[0]}.{parts[1]}"
-    if not hmac.compare_digest(_sign(secret, signed), parts[2]):
+    if not same_secret(_sign(secret, signed), parts[2]):
         raise ValueError("Bad signature")
     try:
         claims = json.loads(_unb64(parts[1]))

@@ -7,12 +7,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..domain.catalog_groups import CATEGORIES_BY_VERTICAL, PROMOTIONS, category_matches, find_category
 from ..domain.cities import CITIES
 from ..domain.geo import GeoPoint, geohash_encode, haversine_km
-from ..domain.hours import OpeningHours, is_open, next_opening
+from ..domain.hours import OpeningHours, is_open, known_zone, next_opening
 from ..domain.models import (
     MERCHANT_VERTICALS,
     ItemKind,
@@ -25,8 +25,8 @@ from ..domain.models import (
     Vertical,
     Voucher,
 )
-from ..domain.pricing import delivery_fee, estimate_minutes
-from ..errors import NotFound, ValidationFailed
+from ..domain.pricing import PricingConfig, delivery_fee, estimate_minutes
+from ..errors import NotFound, PermissionDenied, ValidationFailed
 from ..repositories import Repositories
 from ..security.rbac import Principal, require_restaurant
 
@@ -163,17 +163,29 @@ class RestaurantSettingsInput(BaseModel):
     cover_url: str | None = Field(default=None, max_length=500)
     phone: str | None = Field(default=None, max_length=20)
 
+    @field_validator("opening_hours")
+    @classmethod
+    def _known_time_zone(cls, v: OpeningHours | None) -> OpeningHours | None:
+        if v is not None and known_zone(v.timezone) is None:
+            raise ValueError('Unknown time zone: use a name such as "Africa/Lagos"')
+        return v
+
 
 class CatalogService:
     def __init__(self, repos: Repositories) -> None:
         self.repos = repos
 
     # ---------------------------------------------------------------- discovery ----------------
-    async def _active_promotions(self, now: datetime) -> dict[str, list[PromoBadge]]:
-        """Merchant-specific vouchers that a customer can use right now, keyed by merchant id."""
+    async def _active_promotions(
+        self, now: datetime, restaurant_id: str | None = None
+    ) -> dict[str, list[PromoBadge]]:
+        """Merchant-specific vouchers that a customer can use right now, keyed by merchant id. Only vouchers tied
+        to a merchant are read (one merchant's when `restaurant_id` is given), never every customer's personal
+        reward vouchers."""
+        tied = ("restaurant_id", "==", restaurant_id) if restaurant_id else ("restaurant_id", "!=", None)
         promos: dict[str, list[PromoBadge]] = {}
-        for v in await self.repos.vouchers.find():
-            if not _voucher_live(v, now) or not v.restaurant_id:
+        for v in await self.repos.vouchers.find(where=[tied]):
+            if not _voucher_live(v, now) or not v.restaurant_id or v.customer_id:
                 continue
             promos.setdefault(v.restaurant_id, []).append(
                 PromoBadge(code=v.code, label=v.description or v.code)
@@ -186,10 +198,13 @@ class CatalogService:
         location: GeoPoint | None,
         now: datetime,
         promotions: dict[str, list[PromoBadge]] | None = None,
+        cfg: PricingConfig | None = None,
     ) -> RestaurantCard:
+        """`promotions` and `cfg` (the pricing configuration) are passed by pages that show many cards, so each
+        is read once per request, not once per card."""
         open_now = is_open(r.opening_hours, now)
         if promotions is None:
-            promotions = await self._active_promotions(now)
+            promotions = await self._active_promotions(now, r.id)
         card = RestaurantCard(
             id=r.id,
             vertical=r.vertical.value,
@@ -217,7 +232,7 @@ class CatalogService:
             badge=MERCHANT_BADGES.get(r.vertical),
         )
         if location is not None:
-            cfg = await self.repos.get_pricing_config()
+            cfg = cfg or await self.repos.get_pricing_config()
             distance = haversine_km(r.location, location)
             zone = cfg.zone_for(location)
             card.distance_km = round(distance, 2)
@@ -256,6 +271,7 @@ class CatalogService:
             where=[("status", "==", RestaurantStatus.ACTIVE.value)]
         )
         promotions = await self._active_promotions(now)
+        cfg = await self.repos.get_pricing_config() if location is not None else None
         cards: list[RestaurantCard] = []
         branch_of: dict[str, tuple[str, bool]] = {}  # card id -> (business, is the main branch)
         q = (query or "").lower().strip()
@@ -276,7 +292,7 @@ class CatalogService:
                 continue
             if q and q not in r.name.lower() and not any(q in c.lower() for c in r.cuisines + r.tags):
                 continue
-            card = await self._card(r, location, now, promotions)
+            card = await self._card(r, location, now, promotions, cfg)
             if open_now and not card.is_open:
                 continue
             if location is not None and card.distance_km is not None and card.distance_km > 25:
@@ -350,18 +366,33 @@ class CatalogService:
         tokens = [t for t in search_keywords(query) if len(t) >= 3][:10] or search_keywords(query)[:10]
         if not tokens:
             raise ValidationFailed("Search query is too short")
-        active = {
-            r.id: r
-            for r in await self.repos.restaurants.find(where=[("status", "==", "active")])
-            if (vertical is None or r.vertical.value == vertical) and (city is None or r.city == city)
-        }
+        now = datetime.now(UTC)
+        # An item names the menu it is on (`item.restaurant_id`), which for a business with branches is its main
+        # branch's. The shop to show for it is one that sells that menu: the open branch nearest the customer
+        # (the lists' choice, `one_branch_each`), which need not be the main branch.
+        sellers: dict[str, list[Restaurant]] = {}
+        for r in await self.repos.restaurants.find(where=[("status", "==", "active")]):
+            if (vertical is None or r.vertical.value == vertical) and (city is None or r.city == city):
+                sellers.setdefault(r.menu_id, []).append(r)
+
+        def shop_for(menu_id: str) -> Restaurant:
+            return min(
+                sellers[menu_id],
+                key=lambda r: (
+                    not (is_open(r.opening_hours, now) and r.is_accepting_orders),
+                    haversine_km(r.location, location) if location is not None else 0.0,
+                    r.menu_restaurant_id is not None,
+                    r.id,
+                ),
+            )
+
         items = await self.repos.items.find(
             where=[("search_keywords", "array_contains_any", tokens)], limit=200
         )
         q_tokens = set(_TOKEN.findall(query.lower()))
         scored: list[tuple[float, MenuItem]] = []
         for item in items:
-            if item.restaurant_id not in active or not item.is_active or item.requires_prescription:
+            if item.restaurant_id not in sellers or not item.is_active or item.requires_prescription:
                 continue
             hits = len(q_tokens & set(item.search_keywords))
             name_bonus = 2 if query.lower() in item.name.lower() else 0
@@ -370,15 +401,16 @@ class CatalogService:
         restaurants = await self.list_restaurants(
             location=location, query=query, limit=10, vertical=vertical, city=city
         )
+        found = [(item, shop_for(item.restaurant_id)) for _, item in scored[:limit]]
         return {
             "items": [
                 {
                     "item": item,
-                    "restaurant_id": item.restaurant_id,
-                    "restaurant_name": active[item.restaurant_id].name,
-                    "vertical": active[item.restaurant_id].vertical.value,
+                    "restaurant_id": shop.id,
+                    "restaurant_name": shop.name,
+                    "vertical": shop.vertical.value,
                 }
-                for _, item in scored[:limit]
+                for item, shop in found
             ],
             "restaurants": restaurants,
         }
@@ -470,6 +502,12 @@ class CatalogService:
                 raise ValidationFailed(
                     "Add at least one available item to your menu before opening for orders"
                 )
+            # A suspended business cannot carry on through a branch that has not opened yet.
+            if restaurant.business_id and await suspended_branch(self.repos, restaurant.business_id):
+                raise PermissionDenied(
+                    "A branch of this business is suspended, so this one cannot open for orders. "
+                    "Please contact partner support."
+                )
             changes["status"] = RestaurantStatus.ACTIVE.value
         await self.repos.restaurants.update(restaurant_id, changes)
         return await self.get_restaurant(restaurant_id, include_inactive=True)
@@ -538,12 +576,13 @@ class CatalogService:
         r = await self.get_restaurant(restaurant_id, include_inactive=True)
         current = await self._owned_item(restaurant_id, item_id)
         await self._validate_item_refs(r.menu_id, data)
-        item = current.model_copy(
+        # Only what the request sent changes: an edit that leaves out the photo, prep time or position keeps them.
+        item = current.model_copy(update=data.model_dump(exclude_unset=True))
+        item = item.model_copy(
             update={
-                **data.model_dump(),
                 "search_keywords": search_keywords(
-                    data.name, data.description, " ".join(data.tags), " ".join(r.cuisines)
-                ),
+                    item.name, item.description, " ".join(item.tags), " ".join(r.cuisines)
+                )
             }
         )
         await self.repos.items.save(MenuItem.model_validate(item.model_dump()))
@@ -614,6 +653,13 @@ def one_branch_each(
         if business not in best or rank(card) < rank(best[business]):
             best[business] = card
     return out + list(best.values())
+
+
+async def suspended_branch(repos: Repositories, business_id: str) -> bool:
+    """Whether any shop of the business is suspended. While one is, the business cannot add a branch or open one
+    that has not opened yet (services/business.py)."""
+    shops = await repos.restaurants.find(where=[("business_id", "==", business_id)], limit=100)
+    return any(shop.status == RestaurantStatus.SUSPENDED for shop in shops)
 
 
 def restaurant_geohash(r: Restaurant) -> Restaurant:

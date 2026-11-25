@@ -234,6 +234,8 @@ class CashService:
                     "That is more than the cash this rider holds", details={"cash_held_kobo": held}
                 )
             if data.method == "earnings_offset":
+                # The same earnings cannot be paid out and used to clear cash at the same moment.
+                await self.ledger.lock_account(s, postings.rider_account(rider_id))
                 earned = await self.ledger.balance(s, postings.rider_account(rider_id))
                 if data.amount_kobo > earned:
                     raise ValidationFailed(

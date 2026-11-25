@@ -130,6 +130,40 @@ class TestReachableBaseUrl:
         monkeypatch.setattr(lan, "current_lan_address", lambda: None)
         assert lan.reachable_base_url(8000, "http://start:8000") == "http://start:8000"
 
+    def test_each_user_pays_at_their_own_devices_address(self) -> None:
+        # The owner's phone is on the Wi-Fi; a tester elsewhere comes in through the public test link.
+        owner_wifi, test_link = "http://192.168.100.8:8000", "https://yummy-test.ngrok-free.app"
+        lan.forget_request(lan.remember_request(owner_wifi + "/", "demo-customer-1"))
+        lan.forget_request(lan.remember_request(test_link + "/", "demo-tester-1"))
+        # Yummy, the assistant, asks through localhost on behalf of each of them.
+        for user, expected in (("demo-customer-1", owner_wifi), ("demo-tester-1", test_link)):
+            token = lan.remember_request("http://localhost:8000/", user)
+            try:
+                assert lan.reachable_base_url(8000, "http://start:8000") == expected
+            finally:
+                lan.forget_request(token)
+        # Someone the API has not seen on a device yet gets the address any device used last.
+        token = lan.remember_request("http://localhost:8000/", "someone-new")
+        try:
+            assert lan.reachable_base_url(8000, "http://start:8000") == test_link
+        finally:
+            lan.forget_request(token)
+
+    def test_only_a_verified_user_is_remembered(self) -> None:
+        # The middleware knows only the address; the user is added once the API has verified the sign-in.
+        token = lan.remember_request("http://192.168.100.8:8000/")
+        try:
+            lan.remember_user("demo-customer-1")
+        finally:
+            lan.forget_request(token)
+        token = lan.remember_request("http://localhost:8000/")  # Yummy asks for that user, through localhost
+        try:
+            lan.remember_user("demo-customer-1")
+            assert lan.reachable_base_url(8000, "http://start:8000") == "http://192.168.100.8:8000"
+        finally:
+            lan.forget_request(token)
+        lan.remember_user("nobody")  # outside a request: nothing to remember, and no error
+
 
 class TestSandboxPageAddress:
     async def test_a_fixed_address_stays_fixed(self) -> None:

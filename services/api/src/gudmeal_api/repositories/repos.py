@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from datetime import UTC, datetime
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
 
+from ..domain.geo import GeoPoint
 from ..domain.growth import GroupOrder, GrowthConfig, Membership, RewardsAccount
 from ..domain.logistics import WaybillNetwork, default_network
 from ..domain.models import (
@@ -32,9 +34,25 @@ from ..domain.models import (
     WaybillQuote,
 )
 from ..domain.pricing import PricingConfig
+from ..errors import NotFound, ValidationFailed
 from .store import DocumentStore, Filter, OrderBy, to_doc
 
 M = TypeVar("M", bound=BaseModel)
+MAX_ID_BYTES = 1500  # Firestore's limit for a document id
+
+
+def valid_doc_id(doc_id: Any) -> bool:
+    """Whether `doc_id` can name a document. Ids also arrive in request bodies and query strings: one with a "/"
+    would point at another document's path, and Firestore refuses "", ".", ".." and "__x__". No document has
+    such an id, so callers treat it as not found instead of sending it to the store."""
+    if not isinstance(doc_id, str) or not doc_id or "/" in doc_id or doc_id in (".", ".."):
+        return False
+    if doc_id.startswith("__") and doc_id.endswith("__"):
+        return False
+    try:
+        return len(doc_id.encode()) <= MAX_ID_BYTES
+    except UnicodeEncodeError:  # half of a surrogate pair, from a JSON escape
+        return False
 
 
 class TypedCollection(Generic[M]):
@@ -45,6 +63,8 @@ class TypedCollection(Generic[M]):
         self.key = key
 
     def path(self, doc_id: str) -> str:
+        if not valid_doc_id(doc_id):
+            raise NotFound("Document not found")
         return f"{self.collection}/{doc_id}"
 
     def parse(self, data: dict[str, Any]) -> M:
@@ -54,11 +74,13 @@ class TypedCollection(Generic[M]):
         return str(getattr(obj, self.key))
 
     async def get(self, doc_id: str) -> M | None:
+        if not valid_doc_id(doc_id):
+            return None
         data = await self.store.get(self.path(doc_id))
         return self.parse(data) if data is not None else None
 
     async def get_many(self, ids: Sequence[str]) -> dict[str, M]:
-        unique = list(dict.fromkeys(ids))
+        unique = [i for i in dict.fromkeys(ids) if valid_doc_id(i)]
         docs = await self.store.get_many([self.path(i) for i in unique])
         return {i: self.parse(d) for i, d in zip(unique, docs, strict=True) if d is not None}
 
@@ -72,7 +94,8 @@ class TypedCollection(Generic[M]):
         await self.store.update(self.path(doc_id), to_doc(fields))
 
     async def delete(self, doc_id: str) -> None:
-        await self.store.delete(self.path(doc_id))
+        if valid_doc_id(doc_id):  # nothing to delete otherwise
+            await self.store.delete(self.path(doc_id))
 
     async def find(
         self,
@@ -163,6 +186,24 @@ class Repositories:
     async def get_tracking(self, order_id: str) -> dict[str, Any] | None:
         return await self.store.get(f"delivery_tracking/{order_id}")
 
+    # --- kitchen pins checked by Yummy Chops (services/locations.py) ---------------------------
+    async def get_verified_pin(self, restaurant_id: str) -> GeoPoint | None:
+        """The pin staff last set for this shop (or the pin it had before its first own move): partners' own
+        moves are measured from it, so small moves cannot add up to a big one."""
+        doc = await self.store.get(f"restaurant_verified_pins/{restaurant_id}")
+        return GeoPoint.model_validate(doc["location"]) if doc else None
+
+    async def set_verified_pin(self, restaurant_id: str, location: GeoPoint, verified_by: str | None) -> None:
+        await self.store.set(
+            f"restaurant_verified_pins/{restaurant_id}",
+            {
+                "restaurant_id": restaurant_id,
+                "location": to_doc(location),
+                "verified_by": verified_by,  # the staff member; None for the pin a shop started from
+                "at": datetime.now(UTC),
+            },
+        )
+
     # --- platform configuration ----------------------------------------------------------------
     async def get_pricing_config(self) -> PricingConfig:
         doc = await self.store.get("platform_configuration/pricing")
@@ -194,6 +235,8 @@ class Repositories:
         return {d["key"]: d for d in docs}
 
     async def set_feature_flag(self, key: str, enabled: bool, description: str, updated_by: str) -> None:
+        if not valid_doc_id(key):
+            raise ValidationFailed('A flag name cannot be empty, "." or "..", or contain "/"')
         await self.store.set(
             f"feature_flags/{key}",
             {"key": key, "enabled": enabled, "description": description, "updated_by": updated_by},

@@ -33,6 +33,15 @@ class ApiException implements Exception {
     return ApiException(res.statusCode ?? 0, 'error', 'Something went wrong (${res.statusCode})');
   }
 
+  /// True when the server has answered the request, even with a "no": sending it again with the same idempotency
+  /// key only gets that answer again, so the next attempt needs a new key. False when the app cannot know what
+  /// happened (no connection, a timeout, a failure on the server, too many requests, or the server still working on
+  /// the first attempt): the same key then makes sure the request is not carried out twice.
+  bool get isFinalAnswer => status >= 400 && status < 500 && status != 401 && status != 429 && code != 'conflict';
+
+  /// True when the price the customer was shown can no longer be used: they need a new one.
+  bool get needsNewQuote => code == 'quote_expired' || code == 'price_changed';
+
   @override
   String toString() => message;
 }
@@ -51,6 +60,50 @@ String newIdempotencyKey([String prefix = 'app']) {
   final r = Random.secure();
   final hex = List.generate(16, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
   return '$prefix-$hex';
+}
+
+/// The idempotency key of one request a screen can send: an order, a withdrawal, a payment.
+///
+/// The API carries out a key only once: it repeats its stored answer when the key comes back, and refuses a key that
+/// comes back with a different request. So the key stays the same while the app does not know what happened (trying
+/// again then cannot place an order or move money twice), and a new one is made once the server has answered, yes
+/// or no, or the request itself has changed.
+class IdempotencyKey {
+  IdempotencyKey(this.prefix) : _key = newIdempotencyKey(prefix);
+
+  final String prefix;
+  String _key;
+  bool _sent = false;
+  Object? _request;
+
+  /// The key to send with [request]: what is being asked (a quote's id, an amount, a bank account), as a value
+  /// that is equal for equal requests, such as a string or a record.
+  String keyFor(Object? request) {
+    if (_sent && request != _request) renew();
+    _sent = true;
+    _request = request;
+    return _key;
+  }
+
+  /// Makes the next attempt a new request.
+  void renew() {
+    _key = newIdempotencyKey(prefix);
+    _sent = false;
+    _request = null;
+  }
+
+  /// Sends [request] with its key, and renews the key once the server has answered
+  /// (see [ApiException.isFinalAnswer]).
+  Future<T> send<T>(Object? request, Future<T> Function(String key) run) async {
+    try {
+      final result = await run(keyFor(request));
+      renew();
+      return result;
+    } on ApiException catch (e) {
+      if (e.isFinalAnswer) renew();
+      rethrow;
+    }
+  }
 }
 
 /// Typed client for gudmeal-api. Every request carries the user's Firebase ID token.

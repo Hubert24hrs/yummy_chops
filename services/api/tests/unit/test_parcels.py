@@ -150,3 +150,16 @@ def test_every_listed_neighbourhood_is_inside_a_zone_of_its_city():
     for area in AREAS:
         zone = PRICING.zone_for(area.location)
         assert zone is not None and zone.city == area.city, area.name
+
+
+def test_cash_on_delivery_is_capped_by_what_a_rider_may_carry():
+    import pytest
+
+    from gudmeal_api.domain.pricing import PricingConfig, cod_fee, cod_limit
+    from gudmeal_api.errors import ValidationFailed
+
+    cfg = PricingConfig()
+    assert cod_limit(cfg) == cfg.parcel.cod_max_kobo and cod_limit(cfg, 5_000_000) == 5_000_000
+    assert cod_fee(6_000_000, cfg) > 0
+    with pytest.raises(ValidationFailed):
+        cod_fee(6_000_000, cfg, rider_cash_limit_kobo=5_000_000)

@@ -452,6 +452,7 @@ async def test_reconcile_and_settlement_leave_cash_alone(flow, client, container
     assert await container.payments.reconcile_stale(older_than=timedelta(seconds=-60)) == {
         "checked": 0,
         "errors": 0,
+        "abandoned": 0,
     }
 
     # A completed order whose cash was never recorded is not settled (no revenue without money received).

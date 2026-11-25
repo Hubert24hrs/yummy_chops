@@ -32,11 +32,12 @@ function ChatInner() {
   const params = useSearchParams();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
-  const [text, setText] = useState("");
+  // A question in the link (?q=..., "Ask Yummy" on a dish) is put in the message box and the customer presses Send.
+  // It is never sent by itself: a link from somewhere else must not make someone say something to Yummy.
+  const [text, setText] = useState(() => (params.get("q") ?? "").slice(0, 2000));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
-  const started = useRef(false);
   const bottom = useRef<HTMLDivElement>(null);
   const addresses = useQuery({ queryKey: ["addresses"], queryFn: () => api.me.addresses() });
 
@@ -94,15 +95,6 @@ function ChatInner() {
     setListening(true);
     rec.start();
   }
-
-  useEffect(() => {
-    const q = params.get("q");
-    if (q && !started.current && !addresses.isLoading) {
-      started.current = true;
-      void send(q);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params, addresses.isLoading]);
 
   return (
     <div className="container-page flex max-w-3xl flex-col py-6" style={{ minHeight: "calc(100dvh - 4rem)" }}>

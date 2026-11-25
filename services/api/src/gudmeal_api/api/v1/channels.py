@@ -18,7 +18,7 @@ async def whatsapp_status(c: Ctr, principal: CurrentPrincipal) -> dict[str, Any]
 
 @router.post("/link-code", status_code=201)
 async def whatsapp_link_code(c: Ctr, principal: CurrentPrincipal) -> dict[str, Any]:
-    """A 6-digit code (10 minutes, single use) and a wa.me link that pre-fills 'LINK <code>'."""
+    """An 8-digit code (10 minutes, single use) and a wa.me link that pre-fills 'LINK <code>'."""
     return await c.whatsapp.create_link_code(principal)
 
 

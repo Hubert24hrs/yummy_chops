@@ -18,10 +18,13 @@ import socket
 from contextvars import ContextVar, Token
 from urllib.parse import urlsplit
 
-#: The address (scheme://host:port) the current request reached this API at; set by the API's middleware.
-_request_base: ContextVar[str | None] = ContextVar("lan_request_base", default=None)
-#: The last address a device on the network (the test phone) reached this API at.
+#: The current request: the address (scheme://host:port) it reached this API at (set by the API's middleware), and
+#: who sent it once the API has verified their sign-in (`remember_user`).
+_request: ContextVar[tuple[str, str | None] | None] = ContextVar("lan_request", default=None)
+#: The last address a device on the network (the test phone) reached this API at...
 _last_network_base: str | None = None
+#: ...and each user's own last address: the owner's phone on the Wi-Fi, a tester through the public test link.
+_by_user: dict[str, str] = {}
 
 
 def _on_the_network(host: str) -> bool:
@@ -35,37 +38,58 @@ def _on_the_network(host: str) -> bool:
     return not (ip.is_loopback or ip.is_unspecified or ip.is_link_local)
 
 
-def remember_request(base_url: str) -> Token[str | None]:
-    """Called by the API for every request: the address the client used to reach it (`request.base_url`)."""
+def remember_request(base_url: str, user: str | None = None) -> Token[tuple[str, str | None] | None]:
+    """Called by the API for every request: the address the client used to reach it (`request.base_url`), and
+    (tests) who sent it."""
     global _last_network_base
     base = base_url.rstrip("/")
     if _on_the_network(urlsplit(base).hostname or ""):
         _last_network_base = base
-    return _request_base.set(base)
+        if user:
+            _by_user[user] = base
+    return _request.set((base, user))
 
 
-def forget_request(token: Token[str | None]) -> None:
-    _request_base.reset(token)
+def remember_user(user: str) -> None:
+    """Called once the API has verified who sent the current request: where their own device reached it. Only a
+    verified sign-in counts, so nobody can point another person's payment page at an address of their choosing."""
+    current = _request.get()
+    if current is None:
+        return
+    base = current[0]
+    _request.set((base, user))
+    if _on_the_network(urlsplit(base).hostname or ""):
+        _by_user[user] = base
+
+
+def forget_request(token: Token[tuple[str, str | None] | None]) -> None:
+    _request.reset(token)
 
 
 def forget_devices() -> None:
-    """Forget the last device's address (tests; a new phone test starts fresh anyway)."""
+    """Forget every device's address (tests; a new phone test starts fresh anyway)."""
     global _last_network_base
     _last_network_base = None
+    _by_user.clear()
 
 
 def reachable_base_url(port: int, fallback: str) -> str:
     """Where a device on the Wi-Fi can open a page served by this API, best answer first:
 
     1. the address the current request came in on, when it is a network address (the phone is asking);
-    2. the address a device last reached this API at (Yummy, the assistant, or a website on this computer asks
-       for the phone, through `localhost`);
-    3. this computer's guess of its own Wi-Fi address;
-    4. `fallback` (PUBLIC_BASE_URL, the address the server was started with).
+    2. for a request through `localhost` (Yummy, the assistant, asking for a user), the address that user's
+       device last reached this API at: the Wi-Fi for the owner's phone, the public test link for a tester;
+    3. the address any device last reached this API at (a website on this computer asks);
+    4. this computer's guess of its own Wi-Fi address;
+    5. `fallback` (PUBLIC_BASE_URL, the address the server was started with).
     """
-    current = _request_base.get()
-    if current and _on_the_network(urlsplit(current).hostname or ""):
-        return current
+    current = _request.get()
+    if current:
+        base, user = current
+        if _on_the_network(urlsplit(base).hostname or ""):
+            return base
+        if user and user in _by_user:
+            return _by_user[user]
     if _last_network_base:
         return _last_network_base
     address = current_lan_address()

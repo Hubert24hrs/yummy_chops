@@ -8,17 +8,24 @@ Tools never accept identity arguments; identity comes from the verified token bo
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Annotated, Any, Protocol
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
 
 from ..api_client import ApiError, GudMealApi
 from ..identity import Caller
+
+logger = logging.getLogger(__name__)
+
+# Every id a tool takes (order, shop, item, quote, rider...) ends up in the path of an API call, so it may only
+# hold letters, digits, "_" and "-": an id such as "abc/cancel#" can never turn one API call into another.
+ToolId = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{2,64}$")]
 
 
 class ToolArgs(BaseModel):
@@ -172,25 +179,44 @@ class ToolRegistry:
         except ToolError as exc:
             status, error = "error", exc.code
             raise
+        except Exception as exc:
+            # Anything else (an API answer in an unexpected shape, a bug in a handler) still ends as a tool
+            # result, so the conversation is never left with a tool call that has no answer.
+            status, error = "error", "internal_error"
+            logger.exception("tool %s failed unexpectedly", spec.name)
+            raise ToolError("internal_error", "Something went wrong on our side; please try again") from exc
         finally:
             if audit is not None:
-                await audit.record_tool(
-                    {
-                        "thread_id": ctx.thread_id,
-                        "tool_call_id": ctx.tool_call_id,
-                        "uid": ctx.caller.uid,
-                        "tool": spec.name,
-                        "status": status,
-                        "error": error,
-                        "mutating": spec.mutating,
-                        "latency_ms": round((time.perf_counter() - started) * 1000, 1),
-                        "args": _redact(args.model_dump(mode="json")),
-                    }
-                )
+                try:
+                    await audit.record_tool(
+                        {
+                            "thread_id": ctx.thread_id,
+                            "tool_call_id": ctx.tool_call_id,
+                            "uid": ctx.caller.uid,
+                            "tool": spec.name,
+                            "status": status,
+                            "error": error[:64] if error else None,
+                            "mutating": spec.mutating,
+                            "latency_ms": round((time.perf_counter() - started) * 1000, 1),
+                            "args": _redact(args.model_dump(mode="json")),
+                        }
+                    )
+                except (
+                    Exception
+                ):  # the action itself is finished: a failed audit write must not undo its answer
+                    logger.exception("could not record the audit entry for tool %s", spec.name)
 
 
-def _redact(args: dict[str, Any]) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for k, v in args.items():
-        out[k] = "[redacted]" if any(s in k.lower() for s in ("phone", "code", "note")) else v
-    return out
+_PRIVATE_KEYS = ("phone", "code", "note", "address", "name")
+
+
+def _redact(value: Any) -> Any:
+    """Tool arguments for the audit, without personal details at any depth (e.g. ``items[].notes``)."""
+    if isinstance(value, dict):
+        return {
+            k: "[redacted]" if any(s in k.lower() for s in _PRIVATE_KEYS) else _redact(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact(v) for v in value]
+    return value

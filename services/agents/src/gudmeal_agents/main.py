@@ -14,8 +14,17 @@ from pydantic import BaseModel, Field
 
 from .config import Settings, get_settings
 from .graph import build_graph
-from .identity import AuthError, Caller, ChannelTokenVerifier, FirebaseVerifier, Verifier
-from .llm import GeminiFactory, ModelFactory
+from .identity import (
+    CHANNEL_PREFIX,
+    AppCheckVerifier,
+    AuthError,
+    Caller,
+    ChannelTokenVerifier,
+    FirebaseAppCheckVerifier,
+    FirebaseVerifier,
+    Verifier,
+)
+from .llm import BudgetedModels, GeminiFactory, ModelFactory
 from .offline import OfflineModels
 from .service import AgentService, NoPendingApprovalError, RateLimitedError
 from .store import AgentStore, ThreadAccessError
@@ -36,12 +45,24 @@ def build_registry() -> ToolRegistry:
 async def make_checkpointer(settings: Settings, stack: AsyncExitStack) -> Any:
     if settings.checkpointer == "postgres":
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        from psycopg.rows import dict_row
+        from psycopg_pool import AsyncConnectionPool
 
         if settings.checkpoint_postgres_url is None:
             raise RuntimeError("CHECKPOINT_POSTGRES_URL is required for CHECKPOINTER=postgres")
-        saver = await stack.enter_async_context(
-            AsyncPostgresSaver.from_conn_string(settings.checkpoint_postgres_url.get_secret_value())
+        # A pool, not one connection: a connection the database dropped is checked and replaced, where a single
+        # connection would fail every chat until the instance restarts. The connection settings are the ones
+        # LangGraph documents for its Postgres saver.
+        pool = AsyncConnectionPool(
+            settings.checkpoint_postgres_url.get_secret_value(),
+            min_size=1,
+            max_size=settings.checkpoint_pool_max_size,
+            kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+            check=AsyncConnectionPool.check_connection,
+            open=False,
         )
+        await stack.enter_async_context(pool)  # opened here, closed on shutdown
+        saver = AsyncPostgresSaver(pool)
         await saver.setup()
         return saver
     if settings.checkpointer == "sqlite":
@@ -55,13 +76,20 @@ async def make_checkpointer(settings: Settings, stack: AsyncExitStack) -> Any:
     return InMemorySaver()
 
 
+class ChatLocation(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+
+
 class ChatAddress(BaseModel):
+    """Same shape and limits as gudmeal-api's DeliveryAddress (it is kept with the conversation)."""
+
     label: str | None = Field(default=None, max_length=40)
     line1: str = Field(min_length=3, max_length=200)
     area: str | None = Field(default=None, max_length=80)
-    city: str = "Lagos"
-    state: str = "Lagos"
-    location: dict[str, float]
+    city: str = Field(default="Lagos", max_length=60)
+    state: str = Field(default="Lagos", max_length=60)
+    location: ChatLocation
     instructions: str | None = Field(default=None, max_length=300)
     contact_phone: str | None = Field(default=None, max_length=20)
 
@@ -75,14 +103,27 @@ class ChatInput(BaseModel):
 
 class ApprovalInput(BaseModel):
     approved: bool
-    tool_call_id: str | None = Field(default=None, max_length=128)
+    # Required: an approval always names the action the customer was shown, never "whatever is waiting".
+    tool_call_id: str = Field(min_length=1, max_length=128)
 
 
-async def caller_dep(request: Request, authorization: Annotated[str | None, Header()] = None) -> Caller:
+async def caller_dep(
+    request: Request,
+    authorization: Annotated[str | None, Header()] = None,
+    x_firebase_appcheck: Annotated[str | None, Header()] = None,
+) -> Caller:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(401, "Sign in required")
+    token = authorization[7:].strip()
+    app_check: AppCheckVerifier | None = request.app.state.app_check
     try:
-        return await request.app.state.verifier.verify(authorization[7:].strip())
+        # App Check proves a genuine Yummy Chops app or website, as on the API. The API's own WhatsApp calls
+        # carry a channel token instead; it is signed with the shared secret and verified below like any token.
+        if app_check is not None and not token.startswith(f"{CHANNEL_PREFIX}."):
+            if not x_firebase_appcheck:
+                raise AuthError("App Check token required")
+            await app_check.verify(x_firebase_appcheck)
+        return await request.app.state.verifier.verify(token)
     except AuthError as exc:
         raise HTTPException(401, str(exc)) from exc
 
@@ -98,6 +139,7 @@ def create_app(
     http: httpx.AsyncClient | None = None,
     checkpointer: Any = None,
     store: AgentStore | None = None,
+    app_check: AppCheckVerifier | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
 
@@ -119,13 +161,15 @@ def create_app(
         if model_factory is None:
             # No Gemini key: Yummy still works in rule-based offline mode (same tools, approvals and audit).
             model_factory = OfflineModels()
+        offline_only = isinstance(model_factory, OfflineModels)
         saver = checkpointer
         if saver is None:
             assert stack is not None
             saver = await make_checkpointer(settings, stack)
         client = http or httpx.AsyncClient(timeout=settings.api_timeout_seconds)
         graph = build_graph(
-            models=model_factory,
+            # A turn whose daily spend budget is used up is answered by the rule-based models (AgentService).
+            models=model_factory if offline_only else BudgetedModels(model_factory, OfflineModels()),
             registry=build_registry(),
             audit=agent_store,
             settings=settings,
@@ -136,6 +180,10 @@ def create_app(
             settings.channel_token_secret.get_secret_value(),
             verifier or FirebaseVerifier(settings.firebase_project_id, settings.check_token_revocation),
         )
+        # As in the API: App Check is on when APP_CHECK_ENFORCED is set (or a verifier is handed in).
+        app.state.app_check = app_check or (
+            FirebaseAppCheckVerifier(settings.firebase_project_id) if settings.app_check_enforced else None
+        )
         app.state.service = AgentService(
             settings=settings,
             graph=graph,
@@ -143,8 +191,8 @@ def create_app(
             http=client,
             model_name=model_factory.model_name if model_factory else "unconfigured",
         )
-        app.state.llm_ready = not isinstance(model_factory, OfflineModels)
-        app.state.ai_mode = "offline" if isinstance(model_factory, OfflineModels) else "llm"
+        app.state.llm_ready = not offline_only
+        app.state.ai_mode = "offline" if offline_only else "llm"
 
     app = FastAPI(
         title="Yummy Chops Agents",
@@ -156,7 +204,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_methods=["GET", "POST", "DELETE"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "X-Firebase-AppCheck"],
         allow_credentials=False,
     )
     app.state.wire = _wire
@@ -230,8 +278,7 @@ def create_app(
     @app.delete("/v1/threads/{thread_id}", status_code=204)
     async def delete_thread(thread_id: str, caller: CallerDep, request: Request) -> None:
         try:
-            await request.app.state.store.delete_thread(thread_id, caller.uid)
-            await request.app.state.service.graph.checkpointer.adelete_thread(thread_id)
+            await service(request).delete_thread(caller, thread_id)
         except ThreadAccessError as exc:
             raise HTTPException(404, str(exc)) from exc
 

@@ -7,7 +7,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal, Protocol
 
+from ..errors import PaymentProviderError
+
 VerifyStatus = Literal["success", "failed", "abandoned", "pending", "reversed", "unknown"]
+
+
+class ProviderOutcomeUnknown(PaymentProviderError):
+    """The provider may have received the request but gave no usable answer (a timeout, a dropped connection, a
+    server error): what was asked may or may not have happened, so the caller must not treat it as refused."""
 
 
 @dataclass(frozen=True)

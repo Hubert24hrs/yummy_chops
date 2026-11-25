@@ -189,3 +189,54 @@ class TestFlutterwave:
             json.dumps({"event": "charge.completed", "data": {"id": 9, "status": "failed"}}).encode()
         )
         assert failed.event_type == "charge.failed" and failed.dedupe_key != ev.dedupe_key
+
+
+def test_paystack_refund_events_name_the_payment_not_the_refund():
+    p = PaystackProvider(SK, http=httpx.AsyncClient())
+    data = {
+        "status": "processed",
+        "transaction_reference": "YC-1",
+        "refund_reference": "1320",
+        "amount": "5000",
+    }
+    event = p.parse_webhook(json.dumps({"event": "refund.processed", "data": data}).encode())
+    assert (event.event_type, event.reference, event.dedupe_key) == (
+        "refund.processed",
+        "YC-1",
+        "refund.processed:1320",
+    )
+    assert event.data["transaction_reference"] == "YC-1" and event.data["amount"] == "5000"
+    pending = p.parse_webhook(json.dumps({"event": "refund.pending", "data": data}).encode())
+    assert pending.event_type == "refund.pending"
+
+
+def test_signatures_outside_ascii_are_wrong_not_an_error():
+    body = b"{}"
+    assert not PaystackProvider(SK, http=httpx.AsyncClient()).verify_webhook(
+        body, {"x-paystack-signature": "caf\u00e9"}, None
+    )
+    assert not FlutterwaveProvider("k", "hash", http=httpx.AsyncClient()).verify_webhook(
+        body, {"verif-hash": "caf\u00e9"}, None
+    )
+
+
+async def test_a_timeout_is_an_unknown_outcome_but_a_failed_connection_is_a_refusal():
+    from gudmeal_api.payments.base import ProviderOutcomeUnknown
+
+    def timeout(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow", request=request)
+
+    def unreachable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down", request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(timeout)) as http:
+        with pytest.raises(ProviderOutcomeUnknown):
+            await PaystackProvider(SK, http=http).refund(
+                reference="r", provider_transaction_id="1", amount_kobo=1
+            )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(unreachable)) as http:
+        with pytest.raises(PaymentProviderError) as caught:
+            await PaystackProvider(SK, http=http).refund(
+                reference="r", provider_transaction_id="1", amount_kobo=1
+            )
+        assert not isinstance(caught.value, ProviderOutcomeUnknown)

@@ -8,6 +8,8 @@
 //   node scripts/build-test-apk.mjs                  # both apps, for every Android phone
 //   node scripts/build-test-apk.mjs rider --arm64    # one app, 64-bit phones only (smaller; needs less disk to build)
 //   node scripts/build-test-apk.mjs --page           # only rewrite the download page for the APKs already built
+//   node scripts/build-test-apk.mjs --remote --arm64 # the customer app for the public test link: it reaches this
+//       computer through https://<REMOTE_LINK_DOMAIN> from anywhere (docs/adr/0024-public-test-link.md)
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -20,6 +22,23 @@ const args = process.argv.slice(2);
 const wanted = args.filter((a) => !a.startsWith("-"));
 const arm64 = args.includes("--arm64");
 const pageOnly = args.includes("--page");
+// --remote[=domain]: the domain comes from .env.remote-link (REMOTE_LINK_DOMAIN) unless given here.
+const remoteArg = args.find((a) => a === "--remote" || a.startsWith("--remote="));
+const remoteDomain = remoteArg ? remoteArg.split("=")[1] || readRemoteDomain() : null;
+// The domain goes into the build's command line (through a shell on Windows): only a plain host name.
+if (remoteDomain && !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(remoteDomain)) {
+  console.error(`--remote needs a plain domain such as something.ngrok-free.app, not "${remoteDomain}"`);
+  process.exit(2);
+}
+function readRemoteDomain() {
+  const file = join(root, ".env.remote-link");
+  const found = existsSync(file) && /^[ \t]*REMOTE_LINK_DOMAIN[ \t]*=[ \t]*(\S+)[ \t]*$/m.exec(readFileSync(file, "utf8"));
+  if (!found) {
+    console.error("--remote needs your ngrok domain: put REMOTE_LINK_DOMAIN=<it> in .env.remote-link");
+    process.exit(2);
+  }
+  return found[1];
+}
 const apps = [
   { id: "customer", file: "yummy-chops.apk", title: "Yummy Chops", note: "Order food, supplements and skin care, and send packages" },
   { id: "rider", file: "yummy-chops-rider.apk", title: "Yummy Chops Rider", note: "Accept deliveries and confirm them with the customer's code" },
@@ -39,20 +58,38 @@ try {
 }
 const isAddress = (host) => typeof host === "string" && /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
 const hosts = [ip, ...(Array.isArray(earlier) ? earlier : []).filter((host) => isAddress(host) && host !== ip)].slice(0, 6);
-if (!pageOnly) writeFileSync(hostsFile, `${JSON.stringify(hosts, null, 2)}\n`);
+if (!pageOnly && !remoteDomain) writeFileSync(hostsFile, `${JSON.stringify(hosts, null, 2)}\n`);
 
-for (const app of pageOnly ? [] : apps.filter((a) => wanted.length === 0 || wanted.includes(a.id))) {
-  console.log(`\n== Building ${app.title} for http://${ip} ...`);
+// What each kind of build is told about the test server.
+const lanDefines = [
+  `--dart-define=API_URL=http://${ip}:8000`,
+  `--dart-define=AGENTS_URL=http://${ip}:8100`,
+  `--dart-define=AUTH_EMULATOR_HOST=${ip}`,
+  "--dart-define=FIND_TEST_SERVER=true",
+  `--dart-define=TEST_SERVER_HOSTS=${hosts.join("+")}`,
+];
+// Through the link: the API and Yummy over https, the sign-in emulator over plain http on port 80 (the only way
+// Firebase talks to an emulator). The gateway behind the link hands each to its service.
+const remoteDefines = [
+  `--dart-define=API_URL=https://${remoteDomain}`,
+  `--dart-define=AGENTS_URL=https://${remoteDomain}/agents`,
+  `--dart-define=AUTH_EMULATOR_HOST=${remoteDomain}`,
+  "--dart-define=AUTH_EMULATOR_PORT=80",
+  "--dart-define=FIND_TEST_SERVER=false",
+];
+// A test-link build is for a tester elsewhere: the customer app unless an app is named, saved as *-remote.apk so
+// the Wi-Fi builds stay as they are.
+const chosen = remoteDomain && wanted.length === 0 ? ["customer"] : wanted;
+const outputFile = (app) => (remoteDomain ? app.file.replace(/\.apk$/, "-remote.apk") : app.file);
+
+for (const app of pageOnly ? [] : apps.filter((a) => chosen.length === 0 || chosen.includes(a.id))) {
+  console.log(`\n== Building ${app.title} for ${remoteDomain ? `https://${remoteDomain}` : `http://${ip}`} ...`);
   const result = spawnSync(
     "flutter",
     [
       "build", "apk", "--release",
-      `--dart-define=API_URL=http://${ip}:8000`,
-      `--dart-define=AGENTS_URL=http://${ip}:8100`,
-      `--dart-define=AUTH_EMULATOR_HOST=${ip}`,
+      ...(remoteDomain ? remoteDefines : lanDefines),
       "--dart-define=USE_FIREBASE_EMULATORS=true",
-      "--dart-define=FIND_TEST_SERVER=true",
-      `--dart-define=TEST_SERVER_HOSTS=${hosts.join("+")}`,
       ...(arm64 ? ["--target-platform", "android-arm64"] : []),
     ],
     // Plain http to this computer is allowed only in these test builds (see android/app/build.gradle.kts).
@@ -60,9 +97,15 @@ for (const app of pageOnly ? [] : apps.filter((a) => wanted.length === 0 || want
       env: { ...process.env, GUDMEAL_ALLOW_CLEARTEXT: "true" } },
   );
   if (result.status !== 0) process.exit(result.status ?? 1);
-  copyFileSync(join(root, "mobile", app.id, "build/app/outputs/flutter-apk/app-release.apk"), join(dist, app.file));
+  copyFileSync(join(root, "mobile", app.id, "build/app/outputs/flutter-apk/app-release.apk"), join(dist, outputFile(app)));
   // The Android build leaves ~0.5-1 GB of intermediates; they are rebuilt next time, so free the disk now.
   rmSync(join(root, "mobile", app.id, "build/app"), { recursive: true, force: true });
+}
+
+if (remoteDomain) {
+  // The link serves its own page and download (scripts/remote-gateway.mjs); the Wi-Fi download page stays as it is.
+  console.log(`\nReady: send https://${remoteDomain} to your tester (the phone test and the link must be running).`);
+  process.exit(0);
 }
 
 for (const app of apps) {

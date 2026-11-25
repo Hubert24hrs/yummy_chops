@@ -192,17 +192,19 @@ class DiscoverService:
         def is_new(r: Restaurant) -> bool:
             return r.created_at is not None and r.created_at >= new_since
 
-        def dish(item: MenuItem, eyebrow: str) -> DiscoverDish:
-            r, card = kitchens[item.restaurant_id], cards[item.restaurant_id]
-            return _to_dish(item, r, card, eyebrow=eyebrow, is_new_kitchen=is_new(r))
+        def dish(r: Restaurant, item: MenuItem, eyebrow: str) -> DiscoverDish:
+            # `r` is the kitchen the customer orders from. `item.restaurant_id` is the menu the dish is on, which
+            # for a branch is the main branch's: it is not the shop to show.
+            return _to_dish(item, r, cards[r.id], eyebrow=eyebrow, is_new_kitchen=is_new(r))
 
         sections: list[DiscoverSection] = []
 
         # Most loved: the single most ordered dish of each kitchen, ranked across the city.
-        signature = [d for rid in kitchens for d in _signature_dishes(menus[rid], 1)]
-        signature.sort(key=lambda i: (-i.popularity, i.name))
+        signature = [(r, d) for r in kitchens.values() for d in _signature_dishes(menus[r.id], 1)]
+        signature.sort(key=lambda s: (-s[1].popularity, s[1].name))
         loved = [
-            dish(item, f"#{rank} Most loved dish") for rank, item in enumerate(signature[:limit], start=1)
+            dish(r, item, f"#{rank} Most loved dish")
+            for rank, (r, item) in enumerate(signature[:limit], start=1)
         ]
         if loved:
             sections.append(
@@ -224,7 +226,7 @@ class DiscoverService:
         per_kitchen = 1 if len(newcomers) >= 3 else 2
         for r in newcomers:
             for item in _signature_dishes(menus[r.id], per_kitchen):
-                fresh.append(dish(item, f"New kitchen · {r.area}" if r.area else "New kitchen"))
+                fresh.append(dish(r, item, f"New kitchen · {r.area}" if r.area else "New kitchen"))
         if fresh:
             sections.append(
                 DiscoverSection(
@@ -244,7 +246,7 @@ class DiscoverService:
         for r in rated:
             best = _signature_dishes(menus[r.id], 1)
             if best:
-                top.append(dish(best[0], f"Top-rated kitchen · {r.rating:.1f}★"))
+                top.append(dish(r, best[0], f"Top-rated kitchen · {r.rating:.1f}★"))
         if top:
             sections.append(
                 DiscoverSection(

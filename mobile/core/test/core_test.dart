@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gud_meal_core/gud_meal_core.dart';
 
@@ -42,6 +43,26 @@ const orderJson = {
   'estimated_delivery_at': '2026-11-14T23:16:05.349906Z',
   'unknown_future_field': true,
 };
+
+/// Stands for what the app keeps in memory: counts how many times it was started.
+class _Memory extends StatefulWidget {
+  const _Memory({required this.onStart});
+  final VoidCallback onStart;
+
+  @override
+  State<_Memory> createState() => _MemoryState();
+}
+
+class _MemoryState extends State<_Memory> {
+  @override
+  void initState() {
+    super.initState();
+    widget.onStart();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox();
+}
 
 void main() {
   group('formatting', () {
@@ -204,5 +225,66 @@ void main() {
     expect(await auth.idToken(), startsWith('fake-token-'));
     await auth.signOut();
     expect(auth.currentUser, isNull);
+  });
+
+  group('an idempotency key lasts until the server answers', () {
+    ApiException error(int status, String code) => ApiException(status, code, code);
+
+    test('which errors are an answer', () {
+      expect(error(0, 'network_error').isFinalAnswer, isFalse); // no connection, a timeout
+      expect(error(503, 'service_unavailable').isFinalAnswer, isFalse);
+      expect(error(429, 'rate_limited').isFinalAnswer, isFalse);
+      expect(error(409, 'conflict').isFinalAnswer, isFalse); // the first attempt is still being worked on
+      expect(error(409, 'quote_expired').isFinalAnswer, isTrue);
+      expect(error(409, 'idempotency_conflict').isFinalAnswer, isTrue);
+      expect(error(422, 'validation_failed').isFinalAnswer, isTrue);
+      expect(error(409, 'quote_expired').needsNewQuote, isTrue);
+      expect(error(409, 'price_changed').needsNewQuote, isTrue);
+      expect(error(409, 'item_unavailable').needsNewQuote, isFalse);
+    });
+
+    test('a retry keeps the key; an answer or a changed request gets a new one', () async {
+      final key = IdempotencyKey('payout');
+      final sent = <String>[];
+      Future<void> attempt(Object request, [ApiException? fails]) => key.send(request, (k) async {
+            sent.add(k);
+            if (fails != null) throw fails;
+          });
+
+      await expectLater(attempt(('gtb', 500000), error(0, 'network_error')), throwsA(isA<ApiException>()));
+      await attempt(('gtb', 500000)); // the retry: the same request with the same key cannot happen twice
+      expect(sent[1], sent[0]);
+      await attempt(('gtb', 500000)); // the server answered: asking again is a second withdrawal
+      expect(sent[2], isNot(sent[1]));
+
+      await expectLater(attempt(('gtb', 500000), error(0, 'network_error')), throwsA(isA<ApiException>()));
+      await attempt(('gtb', 700000)); // a changed request: the API refuses an old key with a new request
+      expect(sent[4], isNot(sent[3]));
+
+      await expectLater(attempt(('gtb', 100), error(422, 'validation_failed')), throwsA(isA<ApiException>()));
+      await attempt(('gtb', 100)); // refused: the same key would only get the refusal again
+      expect(sent[6], isNot(sent[5]));
+      expect(sent.every((k) => k.startsWith('payout-')), isTrue);
+    });
+  });
+
+  testWidgets('what is in memory starts afresh when the signed-in user leaves, not when one signs in', (tester) async {
+    final auth = FakeAuthRepository();
+    var starts = 0;
+    await tester.pumpWidget(PerUserScope(auth: auth, child: _Memory(onStart: () => starts++)));
+    await tester.pump();
+    expect(starts, 1);
+
+    await auth.signInWithEmail('ada@example.com', 'secret1');
+    await tester.pump();
+    expect(starts, 1, reason: 'signing in keeps what a visitor chose, such as their cart');
+
+    await auth.signOut();
+    await tester.pump();
+    expect(starts, 2, reason: 'nothing of the last user is left for the next');
+
+    await auth.signInWithEmail('bayo@example.com', 'secret1');
+    await tester.pump();
+    expect(starts, 2);
   });
 }

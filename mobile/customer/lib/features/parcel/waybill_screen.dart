@@ -63,8 +63,8 @@ class _WaybillScreenState extends ConsumerState<WaybillScreen> {
   PayMethod _method = PayMethod.card;
   String? _error;
   bool _busy = false;
-  final _orderKey = newIdempotencyKey('waybill');
-  final _checkoutKeys = <PayMethod, String>{};
+  final _orderKey = IdempotencyKey('waybill');
+  final _checkoutKeys = <PayMethod, IdempotencyKey>{};
 
   @override
   void initState() {
@@ -135,7 +135,12 @@ class _WaybillScreenState extends ConsumerState<WaybillScreen> {
             description: _what.text.trim(),
             codAmountKobo: _cod && door ? _codKobo : null,
           );
-      setState(() => _quote = q);
+      setState(() {
+        _quote = q;
+        // A new price is a new booking: it never goes out with the keys of the last one.
+        _orderKey.renew();
+        _checkoutKeys.clear();
+      });
     } on ApiException catch (e) {
       setState(() => _error = e.message);
     } finally {
@@ -149,9 +154,10 @@ class _WaybillScreenState extends ConsumerState<WaybillScreen> {
     setState(() => _busy = true);
     try {
       final api = ref.read(apiProvider);
-      final order = await api.bookWaybill(quote.id, _orderKey);
-      final key = _checkoutKeys.putIfAbsent(_method, () => newIdempotencyKey('checkout'));
-      final checkout = await api.checkout(order.id, key, provider: _method.provider);
+      final order = await _orderKey.send(quote.id, (key) => api.bookWaybill(quote.id, key));
+      final checkout = await _checkoutKeys
+          .putIfAbsent(_method, () => IdempotencyKey('checkout'))
+          .send(order.id, (key) => api.checkout(order.id, key, provider: _method.provider));
       ref.invalidate(walletProvider);
       final url = checkout.authorizationUrl;
       if (url == null) {
@@ -161,7 +167,11 @@ class _WaybillScreenState extends ConsumerState<WaybillScreen> {
       await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
       if (mounted) context.go('/orders/${order.id}?ref=${checkout.reference}');
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      setState(() {
+        _error = e.message;
+        // The price is no longer held: the button goes back to asking for a new one.
+        if (e.needsNewQuote) _quote = null;
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }

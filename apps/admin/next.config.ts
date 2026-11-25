@@ -5,14 +5,8 @@ const config: NextConfig = {
   // server. Next.js finds the monorepo root from package-lock.json, so hoisted node_modules are traced in.
   output: process.env.BUILD_STANDALONE === "true" ? "standalone" : undefined,
   reactStrictMode: true,
+  poweredByHeader: false,
   transpilePackages: ["@gudmeal/ui", "@gudmeal/api-client", "@gudmeal/tokens"],
-  images: {
-    remotePatterns: [
-      { protocol: "https", hostname: "images.unsplash.com" },
-      { protocol: "https", hostname: "firebasestorage.googleapis.com" },
-      { protocol: "https", hostname: "storage.googleapis.com" },
-    ],
-  },
   async headers() {
     return [
       {
@@ -22,6 +16,12 @@ const config: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(self)" },
+          // Browsers that have seen the site use HTTPS only for two years (Vercel adds this too; other hosts do not).
+          { key: "Strict-Transport-Security", value: "max-age=63072000" },
+          // object-src allows this site's own blob: files: "Open the PDF" in Rider KYC shows one in the browser's viewer.
+          // Only the rules that cannot stop sign-in, maps or payments. A script-src rule needs a nonce for every page
+          // and a live Firebase project to test against: not done yet.
+          { key: "Content-Security-Policy", value: "base-uri 'self'; object-src 'self' blob:; frame-ancestors 'none'; form-action 'self'" },
         ],
       },
     ];

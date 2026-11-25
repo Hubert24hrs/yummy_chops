@@ -145,8 +145,8 @@ class TestWebhooks:
         assert parse_webhook({}) == []
 
     def test_commands_and_answers(self):
-        assert LINK_COMMAND.match("LINK 123456").group(1) == "123456"
-        assert LINK_COMMAND.match(" link: 123456 ") and not LINK_COMMAND.match("link 12345")
+        assert LINK_COMMAND.match("LINK 12345678").group(1) == "12345678"
+        assert LINK_COMMAND.match(" link: 12345678 ") and not LINK_COMMAND.match("link 123456")
         assert STOP_COMMAND.match("Stop") and not STOP_COMMAND.match("stop the order please")
         assert HELP_COMMAND.match("menu")
         for word in ("yes", "Yes please", "ok", "oya", "ee"):
@@ -154,6 +154,15 @@ class TestWebhooks:
         for word in ("no", "No thanks", "mba", "rara", "a'a"):
             assert NO.match(word), word
         assert not YES.match("nope") and not NO.match("yes")
+        # Only a whole-message answer counts: these are questions or other requests.
+        for text in (
+            "Ok how long will it take?",
+            "Eh? not that one",
+            "yes but change the address",
+            "no, wait",
+        ):
+            assert not YES.match(text) and not NO.match(text), text
+        assert YES.match("Okay, thanks!") and NO.match("No thank you.")
 
 
 class TestRendering:

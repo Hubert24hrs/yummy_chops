@@ -11,6 +11,15 @@ val mapsApiKey: String = Properties().run {
 // GUDMEAL_ALLOW_CLEARTEXT=true allow it (debug builds always do; store builds never do).
 val allowCleartext: String = if (System.getenv("GUDMEAL_ALLOW_CLEARTEXT") == "true") "true" else "false"
 
+// The upload key for store builds, never committed: android/key.properties with storeFile (a path from android/app),
+// storePassword, keyAlias and keyPassword. Without that file a release build is signed with the debug key, which is
+// what the test builds use.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val hasUploadKey: Boolean = keystoreProperties.getProperty("storeFile") != null
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -44,14 +53,25 @@ android {
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
+    signingConfigs {
+        if (hasUploadKey) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             manifestPlaceholders["usesCleartextTraffic"] = "true"
         }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // The upload key when android/key.properties exists (store builds); the debug key otherwise, so test
+            // builds and `flutter run --release` work without a keystore.
+            signingConfig = signingConfigs.getByName(if (hasUploadKey) "release" else "debug")
         }
     }
 }

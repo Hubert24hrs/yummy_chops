@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 from collections.abc import Mapping
 from datetime import datetime
@@ -18,7 +17,19 @@ import httpx
 
 from ..domain.money import kobo_to_naira_decimal, naira_decimal_to_kobo
 from ..errors import PaymentProviderError
-from .base import InitializeResult, RefundResult, SplitInstruction, VerifyResult, VerifyStatus, WebhookEvent
+from ..security.compare import same_secret
+from .base import (
+    InitializeResult,
+    ProviderOutcomeUnknown,
+    RefundResult,
+    SplitInstruction,
+    VerifyResult,
+    VerifyStatus,
+    WebhookEvent,
+)
+
+# The request never left this server, so nothing happened at the provider.
+NOT_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
 
 _STATUS_MAP: dict[str, VerifyStatus] = {
     "successful": "success",
@@ -52,14 +63,22 @@ class FlutterwaveProvider:
             resp = await self._http.request(
                 method, f"{self._base}{path}", headers={"Authorization": f"Bearer {self._secret}"}, **kwargs
             )
-        except httpx.HTTPError as exc:
+        except NOT_SENT as exc:
             raise PaymentProviderError(
                 "Flutterwave is unreachable", details={"error": type(exc).__name__}
+            ) from exc
+        except httpx.HTTPError as exc:  # sent, then no answer: Flutterwave may have done what was asked
+            raise ProviderOutcomeUnknown(
+                "Flutterwave did not answer", details={"error": type(exc).__name__}
             ) from exc
         try:
             body = resp.json()
         except ValueError as exc:
-            raise PaymentProviderError("Invalid response from Flutterwave") from exc
+            raise ProviderOutcomeUnknown("Invalid response from Flutterwave") from exc
+        if not isinstance(body, dict) or resp.status_code >= 500:
+            raise ProviderOutcomeUnknown(
+                "Flutterwave had an error", details={"status": resp.status_code, "path": path}
+            )
         if resp.status_code >= 400 or body.get("status") != "success":
             raise PaymentProviderError(
                 body.get("message") or "Flutterwave request failed", details={"path": path}
@@ -134,7 +153,7 @@ class FlutterwaveProvider:
 
     def verify_webhook(self, raw_body: bytes, headers: Mapping[str, str], client_ip: str | None) -> bool:
         provided = headers.get("verif-hash") or ""
-        return bool(provided) and hmac.compare_digest(provided, self._hash)
+        return bool(provided) and same_secret(self._hash, provided)
 
     def parse_webhook(self, raw_body: bytes) -> WebhookEvent:
         event = json.loads(raw_body)

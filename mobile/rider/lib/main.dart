@@ -22,13 +22,18 @@ Future<void> main() async {
     ),
   );
   if (config.useEmulators) {
-    await connectAuthEmulator(FirebaseAuth.instance, config.emulatorHost);
+    await connectAuthEmulator(FirebaseAuth.instance, config.emulatorHost, port: config.emulatorPort);
   }
-  runApp(ProviderScope(
-    overrides: [
-      configProvider.overrideWithValue(config),
-      authRepositoryProvider.overrideWithValue(FirebaseAuthRepository(FirebaseAuth.instance, usingEmulator: config.useEmulators)),
-    ],
-    child: const RiderApp(),
+  final auth = FirebaseAuthRepository(FirebaseAuth.instance, usingEmulator: config.useEmulators);
+  // What the app keeps in memory belongs to the signed-in rider: it all starts afresh when they sign out.
+  runApp(PerUserScope(
+    auth: auth,
+    child: ProviderScope(
+      overrides: [
+        configProvider.overrideWithValue(config),
+        authRepositoryProvider.overrideWithValue(auth),
+      ],
+      child: const RiderApp(),
+    ),
   ));
 }

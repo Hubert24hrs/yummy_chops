@@ -128,8 +128,12 @@ class AgentStore:
             ]
 
     async def delete_thread(self, thread_id: str, uid: str) -> None:
+        """Remove the conversation's audit rows (they hold tool arguments), then the owner row: if anything fails
+        on the way, the owner can still see the conversation and delete it again. Usage rows (agent_runs) hold
+        no content and stay, so deleting a conversation never resets a spend budget."""
         await self.assert_owner(thread_id, uid)
         async with self.sessions() as s, s.begin():
+            await s.execute(delete(ToolInvocation).where(ToolInvocation.thread_id == thread_id))
             await s.execute(delete(AgentThread).where(AgentThread.thread_id == thread_id))
 
     async def record_tool(self, entry: dict[str, Any]) -> None:
@@ -139,6 +143,18 @@ class AgentStore:
     async def record_run(self, **fields: Any) -> None:
         async with self.sessions() as s, s.begin():
             s.add(AgentRun(**fields))
+
+    async def usage_since(self, since: datetime, uid: str | None = None) -> tuple[int, float]:
+        """Tokens (input + output) and cost in USD recorded since `since`, for one account or for everyone."""
+        query = select(
+            func.coalesce(func.sum(AgentRun.input_tokens + AgentRun.output_tokens), 0),
+            func.coalesce(func.sum(AgentRun.cost_usd), 0.0),
+        ).where(AgentRun.created_at >= since)
+        if uid is not None:
+            query = query.where(AgentRun.uid == uid)
+        async with self.sessions() as s:
+            tokens, cost = (await s.execute(query)).one()
+        return int(tokens), float(cost)
 
     async def metrics(self, days: int = 7) -> dict[str, Any]:
         since = utcnow() - timedelta(days=days)

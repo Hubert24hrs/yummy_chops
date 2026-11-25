@@ -74,6 +74,7 @@ class _AssistantScreenState extends ConsumerState<AssistantScreen> {
 
   @override
   void dispose() {
+    _speech.cancel(); // leaving while Yummy listens: the microphone stops with the screen
     _input.dispose();
     _scroll.dispose();
     super.dispose();

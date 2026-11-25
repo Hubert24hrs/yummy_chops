@@ -14,12 +14,18 @@ class PlusScreen extends ConsumerStatefulWidget {
   ConsumerState<PlusScreen> createState() => _PlusScreenState();
 }
 
-class _PlusScreenState extends ConsumerState<PlusScreen> {
+class _PlusScreenState extends ConsumerState<PlusScreen> with WidgetsBindingObserver, PaymentReturn<PlusScreen> {
   PayMethod _method = PayMethod.wallet;
   bool _autoRenew = true;
   bool _busy = false;
   String? _error;
   String _key = newIdempotencyKey('plus');
+
+  @override
+  void paymentChecked() {
+    ref.invalidate(plusProvider);
+    ref.invalidate(walletProvider);
+  }
 
   Future<void> _join() async {
     setState(() {
@@ -31,9 +37,10 @@ class _PlusScreenState extends ConsumerState<PlusScreen> {
       _key = newIdempotencyKey('plus');
       final url = res.payment.authorizationUrl;
       if (url != null) {
-        // Provider-hosted page: the membership starts once the payment is verified on the server.
+        // Provider-hosted page: the membership starts once the payment is verified on the server. That is asked
+        // when the customer comes back to the app (there is nothing to check before they have paid).
+        paymentPageOpened(res.payment.reference);
         await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
-        await ref.read(apiProvider).verifyPayment(res.payment.reference);
       }
       ref.invalidate(plusProvider);
       ref.invalidate(walletProvider);

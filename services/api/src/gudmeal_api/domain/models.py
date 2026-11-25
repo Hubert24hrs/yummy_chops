@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from .geo import GeoPoint
 from .hours import OpeningHours
@@ -18,6 +18,19 @@ from .order_state import ActorType, OrderStatus
 
 class Model(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+
+def no_markup(value: str | None) -> str | None:
+    """Refuse the characters < and >, so a name or an address can never carry markup onto a page or a map."""
+    if value is not None and ("<" in value or ">" in value):
+        raise ValueError("Please remove the characters < and >")
+    return value
+
+
+#: What people type for a shop's or branch's name and address. Use these on request models only: stored documents
+#: are read with the plain models below, so a document saved before this rule still loads.
+PlainText = Annotated[str, AfterValidator(no_markup)]
+OptionalPlainText = Annotated[str | None, AfterValidator(no_markup)]
 
 
 # ----------------------------------------------------------------------------------------------

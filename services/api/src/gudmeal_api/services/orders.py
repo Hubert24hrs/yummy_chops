@@ -17,6 +17,7 @@ from ..domain.models import (
     OrderEvent,
     PaymentSummary,
     Vertical,
+    Voucher,
     WaybillStage,
 )
 from ..domain.money import format_naira
@@ -28,6 +29,7 @@ from ..errors import (
     PriceChanged,
     QuoteExpired,
     ValidationFailed,
+    VoucherInvalid,
 )
 from ..maps import RouteEstimate
 from ..repositories import Repositories, Transaction, to_doc
@@ -45,6 +47,7 @@ TASK_UNPAID_EXPIRY = "/internal/tasks/unpaid-order-expiry"
 TASK_PARCEL_RELEASE = "/internal/tasks/parcel-release"
 PARCEL_DISPATCH_LEAD = timedelta(minutes=30)  # start finding a rider this long before a scheduled pickup
 PARCEL_MERCHANT_ID = "gm-send"  # pseudo-merchant id for courier jobs (no partner owns it)
+REPAIR_WINDOW = timedelta(days=3)  # how far back the sweep looks for money paid on cancelled orders
 
 # Per-service wording; falls back to CUSTOMER_NOTIFY.
 NOTIFY_BY_VERTICAL: dict[Vertical, dict[OrderStatus, tuple[str, str]]] = {
@@ -201,6 +204,8 @@ class OrderService:
                 metadata=metadata,
                 now=now,
             )
+            if _frees_voucher(order, to):
+                await self._release_voucher(tx, order)  # reads first: a transaction reads before it writes
             self.write_transition(tx, order_id, updates, event)
             captured["from"] = order.status
             captured["event"] = event
@@ -211,16 +216,7 @@ class OrderService:
         return updated
 
     async def after_transition(self, order: Order, previous: OrderStatus, event: OrderEvent) -> None:
-        payload = {
-            "order_id": order.id,
-            "from": previous.value,
-            "to": order.status.value,
-            "event_id": event.id,
-            "metadata": {**event.metadata, "reason": event.reason},
-            "fulfillment": order.fulfillment.value,
-            "actor_type": event.actor_type.value,
-        }
-        await self.emitter.emit(f"order.{order.status.value}", payload)
+        await self.emitter.emit(f"order.{order.status.value}", _event_payload(order, previous, event))
         if order.is_leg:
             return  # internal rider job of a waybill: the waybill sends the customer its own updates
         template = NOTIFY_BY_VERTICAL.get(order.vertical, {}).get(order.status) or CUSTOMER_NOTIFY.get(
@@ -401,6 +397,7 @@ class OrderService:
             qdata = await tx.get(f"quotes/{quote.id}")
             if qdata and qdata.get("order_id"):
                 return str(qdata["order_id"])
+            await self._reserve_voucher(tx, order)  # may refuse; reads first, then its writes with the rest
             tx.update(f"quotes/{quote.id}", {"order_id": order_id})
             tx.create(f"orders/{order_id}", to_doc(order))
             tx.create(f"order_events/{event.id}", to_doc(event))
@@ -440,17 +437,18 @@ class OrderService:
         if provider == "cash":
             return await self._submit_pay_on_delivery(order, idempotency_key)
         payment = await self.payments.initiate(order, principal, provider, idempotency_key)
-        await self.repos.orders.update(
-            order_id,
-            {
-                "payment": to_doc(
-                    PaymentSummary(
-                        provider=payment["provider"], reference=payment["reference"], status="pending"
-                    )
-                ),
-                "updated_at": utcnow(),
-            },
+        summary = PaymentSummary(
+            provider=payment["provider"], reference=payment["reference"], status="pending"
         )
+
+        async def fn(tx: Transaction) -> None:
+            # Only while the order still waits for payment: the payer may have paid in the meantime (a checkout
+            # link opened earlier), and "pending" must never be written over "paid".
+            doc = await tx.get(f"orders/{order_id}")
+            if doc is not None and doc.get("status") in (S.DRAFT.value, S.PENDING_PAYMENT.value):
+                tx.update(f"orders/{order_id}", {"payment": to_doc(summary), "updated_at": utcnow()})
+
+        await self.repos.store.run_transaction(fn)
         return {"order_id": order_id, "status": S.PENDING_PAYMENT.value, **payment}
 
     async def _submit_pay_on_delivery(self, order: Order, idempotency_key: str) -> dict[str, Any]:
@@ -467,7 +465,6 @@ class OrderService:
             check=lambda o: _expect(o, {S.PENDING_PAYMENT}),
         )
         await self._issue_codes(order)
-        await self._record_voucher_use(order)
         await self._notify_merchant(order)
         return {"order_id": order.id, "status": order.status.value, **payment}
 
@@ -629,7 +626,6 @@ class OrderService:
                 metadata={"reference": payload.get("reference")},
             )
             await self._issue_codes(order)
-            await self._record_voucher_use(order)
         if order.status == S.PAID and order.is_parcel:
             await self._schedule_parcel_release(order)
             return
@@ -643,22 +639,58 @@ class OrderService:
             )
             await self._notify_merchant(order)
 
-    async def _record_voucher_use(self, order: Order) -> None:
+    async def _reserve_voucher(self, tx: Transaction, order: Order) -> None:
+        """Count the order's voucher as used, in the transaction that creates the order. Counting it only once
+        the order was paid let one voucher go on any number of orders opened before the first was paid. The
+        voucher's limits are enforced here; `_release_voucher` gives it back if the order comes to nothing."""
         code = order.breakdown.voucher_code
         if not code:
             return
+        used_path = f"vouchers/{code}/redemptions/{order.customer_id}"
+        vdoc = await tx.get(f"vouchers/{code}")
+        used = await tx.get(used_path) or {}
+        if vdoc is None:
+            raise VoucherInvalid("Voucher code not recognised")
+        voucher = Voucher.model_validate(vdoc)
+        holding = list(used.get("order_ids", []))
+        if order.id in holding:
+            return
+        if int(used.get("count", 0)) >= voucher.per_customer_limit:
+            raise VoucherInvalid("You have already used this voucher")
+        if voucher.usage_limit is not None and voucher.used_count >= voucher.usage_limit:
+            raise VoucherInvalid("This voucher has been fully redeemed")
+        tx.update(f"vouchers/{code}", {"used_count": voucher.used_count + 1})
+        tx.set(
+            used_path,
+            {
+                "count": int(used.get("count", 0)) + 1,
+                "last_order_id": order.id,
+                "order_ids": [*holding, order.id],
+            },
+        )
 
-        async def fn(tx: Transaction) -> None:
-            vdoc = await tx.get(f"vouchers/{code}")
-            rdoc = await tx.get(f"vouchers/{code}/redemptions/{order.customer_id}")
-            if vdoc is not None:
-                tx.update(f"vouchers/{code}", {"used_count": int(vdoc.get("used_count", 0)) + 1})
-            tx.set(
-                f"vouchers/{code}/redemptions/{order.customer_id}",
-                {"count": int((rdoc or {}).get("count", 0)) + 1, "last_order_id": order.id},
-            )
-
-        await self.repos.store.run_transaction(fn)
+    async def _release_voucher(self, tx: Transaction, order: Order) -> None:
+        """Give an order's voucher back (see `_frees_voucher`). Only an order that holds it gives it back, and
+        an order ends cancelled or refunded once, so a voucher is never handed back twice."""
+        code = order.breakdown.voucher_code
+        if not code:
+            return
+        used_path = f"vouchers/{code}/redemptions/{order.customer_id}"
+        vdoc = await tx.get(f"vouchers/{code}")
+        used = await tx.get(used_path) or {}
+        holding = list(used.get("order_ids", []))
+        if order.id not in holding:
+            return
+        tx.set(
+            used_path,
+            {
+                **used,
+                "count": max(0, int(used.get("count", 0)) - 1),
+                "order_ids": [oid for oid in holding if oid != order.id],
+            },
+        )
+        if vdoc is not None:
+            tx.update(f"vouchers/{code}", {"used_count": max(0, int(vdoc.get("used_count", 0)) - 1)})
 
     async def on_refund_succeeded(self, payload: dict[str, Any]) -> None:
         order = await self.get(str(payload["order_id"]))
@@ -1035,15 +1067,8 @@ class OrderService:
         now = utcnow()
         patch: dict[str, Any] = {"delivered_at": now}
         if due:
-            # Ledger first (idempotent): an order is never delivered without its cash being on the books.
-            cash_held = await self.payments.record_cash_collection(order, principal.uid)
-            patch["cash_collected_at"] = now
-            if order.awaiting_cash_payment:
-                patch["payment"] = to_doc(
-                    PaymentSummary(
-                        provider="cash", reference=order.payment.reference, status="paid", paid_at=now
-                    )
-                )
+            cash_patch, cash_held = await self._cash_at_the_door(order, principal.uid, now)
+            patch |= cash_patch
         order = await self.transition(
             order_id,
             S.DELIVERED,
@@ -1055,6 +1080,20 @@ class OrderService:
         if due:
             await self.repos.riders.update(principal.uid, {"cash_held_kobo": cash_held})
         return order
+
+    async def _cash_at_the_door(
+        self, order: Order, rider_id: str, now: datetime, *, recorded_by: str | None = None
+    ) -> tuple[dict[str, Any], int]:
+        """Put the cash the rider took at the door on the books, and return what the order then shows and the
+        cash the rider now holds. Ledger first (idempotent): an order is never delivered without its cash being
+        on the books, whoever marks it delivered."""
+        cash_held = await self.payments.record_cash_collection(order, rider_id, recorded_by=recorded_by)
+        patch: dict[str, Any] = {"cash_collected_at": now}
+        if order.awaiting_cash_payment:
+            patch["payment"] = to_doc(
+                PaymentSummary(provider="cash", reference=order.payment.reference, status="paid", paid_at=now)
+            )
+        return patch, cash_held
 
     async def verify_code(
         self, order_id: str, field: Literal["delivery_code", "pickup_code"], code: str
@@ -1106,19 +1145,40 @@ class OrderService:
         order = await self.get(order_id)
         metadata: dict[str, Any] = {"intervention": True}
         patch: dict[str, Any] = {}
+        cash_held: int | None = None
         if to == S.REFUND_PENDING:
             amount = refund_amount_kobo or order.breakdown.total_kobo - order.refund_total_kobo
             if amount <= 0 or amount > order.breakdown.total_kobo - order.refund_total_kobo:
                 raise ValidationFailed("Refund amount exceeds the refundable balance")
             stage = "after_completion" if order.completed_at else "before_completion"
             if stage == "before_completion":
+                if refund_amount_kobo is not None and refund_amount_kobo != order.breakdown.total_kobo:
+                    raise ValidationFailed(
+                        "An order that is not completed yet is refunded in full: leave the amount empty",
+                        details={"total_kobo": order.breakdown.total_kobo},
+                    )
                 amount = order.breakdown.total_kobo  # pre-completion refunds are always full
             metadata.update(refund_meta(amount, liability, stage, auto=False))
         if to == S.CANCELLED:
             patch = {"cancelled_at": utcnow(), "cancellation_reason": reason}
         if to == S.COMPLETED and order.status == S.DISPUTED:
             patch = {"completed_at": order.completed_at or utcnow()}
-        return await self.transition(
+        if to == S.DELIVERED and order.cash_to_collect_kobo:
+            # Delivered means the rider took the cash: it goes on the books as the rider's to hand in, the same
+            # way as when the rider confirms the delivery, so no rider holds cash nobody is tracking.
+            if not order.rider_id:
+                raise InvalidTransition(
+                    "This order has cash to collect and no rider. Assign a rider first, "
+                    "or cancel the order if the customer did not pay."
+                )
+            _expect(order, {S.PICKED_UP, S.IN_TRANSIT})
+            now = utcnow()
+            cash_patch, cash_held = await self._cash_at_the_door(
+                order, order.rider_id, now, recorded_by=principal.uid
+            )
+            patch = {"delivered_at": now, **cash_patch}
+            metadata["cash_recorded_kobo"] = order.cash_to_collect_kobo
+        updated = await self.transition(
             order_id,
             to,
             actor_type=A.STAFF,
@@ -1127,13 +1187,67 @@ class OrderService:
             patch=patch,
             metadata=metadata,
         )
+        if cash_held is not None and order.rider_id:
+            await self.repos.riders.update(order.rider_id, {"cash_held_kobo": cash_held})
+        return updated
 
     async def unsettled_completed(self, older_than: timedelta = timedelta(minutes=5)) -> list[Order]:
+        """Completed orders the ledger has not settled yet (their `order.completed` event was lost or failed)."""
         cutoff = utcnow() - older_than
         orders = await self.repos.orders.find(
-            where=[("status", "in", [S.COMPLETED.value, S.PARTIALLY_REFUNDED.value])], limit=500
+            where=[
+                ("status", "in", [S.COMPLETED.value, S.PARTIALLY_REFUNDED.value]),
+                ("settled_at", "==", None),
+            ],
+            limit=500,
         )
-        return [o for o in orders if o.settled_at is None and o.completed_at and o.completed_at < cutoff]
+        return [o for o in orders if o.completed_at and o.completed_at < cutoff]
+
+    async def repair_lost_events(self, older_than: timedelta = timedelta(minutes=5)) -> dict[str, int]:
+        """Order events are published after the order is saved; one that is lost would leave money stuck. The
+        sweep job calls this (safe to repeat: the refund paths are idempotent):
+
+        - an order waiting for a refund that nobody started gets its refund event again;
+        - money paid for an order that is cancelled, with no refund on record, is refunded like any payment
+          that arrives after a cancellation."""
+        now = utcnow()
+        cutoff = now - older_than
+        waiting = await self.repos.orders.find(where=[("status", "==", S.REFUND_PENDING.value)], limit=500)
+        waiting = [o for o in waiting if o.updated_at < cutoff]
+        started = await self.payments.orders_with_refunds([o.id for o in waiting])
+        restarted = 0
+        for order in waiting:
+            if order.id in started:
+                continue
+            events = await self.repos.order_events.find(
+                where=[("order_id", "==", order.id)], order_by=[("at", "asc")]
+            )
+            event = next((e for e in reversed(events) if e.to_status == S.REFUND_PENDING), None)
+            if event is None:
+                continue
+            await self.emitter.emit("order.refund_pending", _event_payload(order, event.from_status, event))
+            restarted += 1
+        cancelled = await self.repos.orders.find(
+            where=[("status", "==", S.CANCELLED.value), ("created_at", ">=", now - REPAIR_WINDOW)],
+            order_by=[("created_at", "desc")],
+            limit=500,
+        )
+        held = await self.payments.unrefunded_payments([o.id for o in cancelled if o.updated_at < cutoff])
+        for payment in held:
+            await self.emitter.emit(
+                "payment.orphaned",
+                {
+                    "order_id": payment["order_id"],
+                    "payment_id": payment["id"],
+                    **refund_meta(
+                        payment["amount_kobo"] - payment["refunded_kobo"],
+                        "platform",
+                        "before_completion",
+                        auto=True,
+                    ),
+                },
+            )
+        return {"refunds_restarted": restarted, "late_payments_refunded": len(held)}
 
 
 def refund_meta(amount_kobo: int, liability: str, stage: str, *, auto: bool) -> dict[str, Any]:
@@ -1148,6 +1262,24 @@ def refund_meta(amount_kobo: int, liability: str, stage: str, *, auto: bool) -> 
 def _expect(order: Order, allowed: set[OrderStatus]) -> None:
     if order.status not in allowed:
         raise InvalidTransition(f"Order is {order.status.value}")
+
+
+def _event_payload(order: Order, previous: OrderStatus | None, event: OrderEvent) -> dict[str, Any]:
+    return {
+        "order_id": order.id,
+        "from": previous.value if previous else None,
+        "to": order.status.value,
+        "event_id": event.id,
+        "metadata": {**event.metadata, "reason": event.reason},
+        "fulfillment": order.fulfillment.value,
+        "actor_type": event.actor_type.value,
+    }
+
+
+def _frees_voucher(order: Order, to: OrderStatus) -> bool:
+    """An order that comes to nothing gives its voucher back: cancelled (nothing was paid for it), or refunded
+    in full before it was ever completed."""
+    return to == S.CANCELLED or (to == S.REFUNDED and order.completed_at is None)
 
 
 def _money_guard(order: Order, to: OrderStatus, updates: dict[str, Any]) -> None:
@@ -1166,6 +1298,11 @@ def _money_guard(order: Order, to: OrderStatus, updates: dict[str, Any]) -> None
         raise InvalidTransition("Nothing has been paid for this order yet; cancel it instead")
     if to == S.SUBMITTED_TO_RESTAURANT and order.status == S.PENDING_PAYMENT and provider != "cash":
         raise InvalidTransition("Only pay-on-delivery orders go to the merchant before payment")
+    if order.status == S.REFUND_PENDING and to == S.COMPLETED and order.completed_at is None:
+        # Completing settles the order (the shop and the rider are credited) while its refund still pays out.
+        raise InvalidTransition(
+            "This order was never completed, so it cannot be marked completed while it is being refunded"
+        )
 
 
 def _flow_guard(order: Order, to: OrderStatus, actor: ActorType) -> None:

@@ -7,6 +7,7 @@ sized with that in mind. A shared Redis/Memorystore limiter can replace this beh
 from __future__ import annotations
 
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 
 from ..errors import RateLimited
@@ -19,8 +20,13 @@ class _Bucket:
 
 
 class RateLimiter:
-    def __init__(self) -> None:
-        self._buckets: dict[str, _Bucket] = {}
+    #: Most buckets kept at once: past it the least recently used go first (a new key per request, as a flood
+    #: with made-up addresses brings, cannot grow memory or slow every request down).
+    MAX_BUCKETS = 50_000
+
+    def __init__(self, max_buckets: int = MAX_BUCKETS) -> None:
+        self._buckets: OrderedDict[str, _Bucket] = OrderedDict()
+        self._max = max_buckets
 
     def check(self, key: str, *, capacity: int, refill_per_second: float) -> None:
         now = time.monotonic()
@@ -28,6 +34,10 @@ class RateLimiter:
         if bucket is None:
             bucket = _Bucket(tokens=capacity, updated=now)
             self._buckets[key] = bucket
+            while len(self._buckets) > self._max:
+                self._buckets.popitem(last=False)
+        else:
+            self._buckets.move_to_end(key)
         bucket.tokens = min(capacity, bucket.tokens + (now - bucket.updated) * refill_per_second)
         bucket.updated = now
         if bucket.tokens < 1:
@@ -36,9 +46,6 @@ class RateLimiter:
                 "Too many requests; please slow down", details={"retry_after_seconds": round(retry, 1)}
             )
         bucket.tokens -= 1
-        if len(self._buckets) > 50_000:  # bound memory
-            cutoff = now - 3600
-            self._buckets = {k: b for k, b in self._buckets.items() if b.updated > cutoff}
 
 
 # Named limits used by routes: (capacity, refill per second)

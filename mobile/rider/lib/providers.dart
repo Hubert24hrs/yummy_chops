@@ -8,8 +8,18 @@ final configProvider = Provider<AppConfig>((ref) => AppConfig.fromEnvironment())
 final authRepositoryProvider = Provider<AuthRepository>((ref) => throw UnimplementedError('override in main'));
 final authStateProvider = StreamProvider<GmUser?>((ref) => ref.watch(authRepositoryProvider).authStateChanges());
 
+/// Who is signed in (null for nobody). Until the first sign-in news arrives, it is who the app already knows.
+final signedInUidProvider = Provider<String?>((ref) {
+  final auth = ref.watch(authRepositoryProvider);
+  return ref.watch(authStateProvider.select((state) => state.hasValue ? state.value?.uid : auth.currentUser?.uid));
+});
+
 final apiProvider = Provider<GudMealApi>((ref) {
   final auth = ref.watch(authRepositoryProvider);
+  // A new client for each rider: everything read through it (profile, earnings, KYC...) is fetched again for them,
+  // and the location reporter built on it stops. When a rider leaves, `PerUserScope` in main() also throws away
+  // what was kept in memory.
+  ref.watch(signedInUidProvider);
   return GudMealApi(baseUrl: ref.watch(configProvider).apiUrl, token: auth.idToken);
 });
 

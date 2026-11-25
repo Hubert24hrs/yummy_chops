@@ -51,8 +51,15 @@ class Verifier(Protocol):
     async def verify(self, token: str) -> Caller: ...
 
 
+class AppCheckVerifier(Protocol):
+    async def verify(self, token: str) -> None: ...
+
+
 def caller_from_claims(claims: dict[str, Any], token: str) -> Caller:
-    roles = {r for r in claims.get("roles") or [] if r in KNOWN_ROLES} | {"customer"}
+    # Only a list of strings counts: a dict's keys or a string's letters must never become roles.
+    raw = claims.get("roles")
+    roles = {r for r in (raw if isinstance(raw, list) else []) if isinstance(r, str) and r in KNOWN_ROLES}
+    roles.add("customer")
     rr = claims.get("restaurant_roles") or {}
     return Caller(
         uid=str(claims.get("uid") or claims.get("sub")),
@@ -63,14 +70,18 @@ def caller_from_claims(claims: dict[str, Any], token: str) -> Caller:
     )
 
 
+def _firebase_app(project_id: str) -> Any:
+    import firebase_admin
+
+    try:
+        return firebase_admin.get_app()
+    except ValueError:
+        return firebase_admin.initialize_app(options={"projectId": project_id})
+
+
 class FirebaseVerifier:
     def __init__(self, project_id: str, check_revoked: bool) -> None:
-        import firebase_admin
-
-        try:
-            self._app = firebase_admin.get_app()
-        except ValueError:
-            self._app = firebase_admin.initialize_app(options={"projectId": project_id})
+        self._app = _firebase_app(project_id)
         self._check_revoked = check_revoked
 
     async def verify(self, token: str) -> Caller:
@@ -85,6 +96,21 @@ class FirebaseVerifier:
         return caller_from_claims(claims, token)
 
 
+class FirebaseAppCheckVerifier:
+    """Same check as gudmeal-api's: the request comes from a genuine Yummy Chops app or website."""
+
+    def __init__(self, project_id: str) -> None:
+        self._app = _firebase_app(project_id)
+
+    async def verify(self, token: str) -> None:
+        from firebase_admin import app_check
+
+        try:
+            await asyncio.to_thread(app_check.verify_token, token, app=self._app)
+        except Exception as exc:  # the SDK raises ValueError/jwt errors for invalid tokens
+            raise AuthError("Invalid App Check token") from exc
+
+
 CHANNEL_PREFIX = "gmc1"
 
 
@@ -95,7 +121,8 @@ def verify_channel_token(secret: str, token: str, now: float | None = None) -> d
         raise ValueError("Not a channel token")
     signed = f"{parts[0]}.{parts[1]}"
     expected = base64.urlsafe_b64encode(hmac.new(secret.encode(), signed.encode(), hashlib.sha256).digest())
-    if not hmac.compare_digest(expected.rstrip(b"=").decode(), parts[2]):
+    # Compared as bytes: comparing text raises TypeError on a non-ASCII signature (a 500 instead of a 401).
+    if not hmac.compare_digest(expected.rstrip(b"="), parts[2].encode()):
         raise ValueError("Bad signature")
     try:
         claims = json.loads(base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4)))

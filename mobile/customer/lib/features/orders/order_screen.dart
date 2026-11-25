@@ -46,6 +46,11 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
 
   bool _paidHere = false;
 
+  // One key per method until the server answers: a second tap after a lost connection is not a second payment.
+  final _payKeys = <PayMethod, IdempotencyKey>{};
+  bool _cancelling = false;
+  String? _cancelError;
+
   bool get _cameFromPaying => widget.justPaid || _paidHere || widget.paymentReference != null || _payReference != null;
 
   void _offerReceipt(Order? o) {
@@ -61,7 +66,10 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
     });
     try {
       // The server resumes the pending card payment (same page) or pays from the wallet straight away.
-      final checkout = await ref.read(apiProvider).checkout(o.id, newIdempotencyKey('checkout'), provider: method.provider);
+      final api = ref.read(apiProvider);
+      final checkout = await _payKeys
+          .putIfAbsent(method, () => IdempotencyKey('checkout'))
+          .send(o.id, (key) => api.checkout(o.id, key, provider: method.provider));
       ref.invalidate(walletProvider);
       final url = checkout.authorizationUrl;
       if (url != null) {
@@ -75,6 +83,41 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
       if (mounted) setState(() => _payError = e.message);
     } finally {
       if (mounted) setState(() => _paying = false);
+    }
+  }
+
+  /// Cancelling cannot be undone, so the customer is asked first; when the order can no longer be cancelled, the
+  /// reason is shown.
+  Future<void> _cancel(Order o) async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel this order?'),
+        content: Text('Order #${o.shortCode} will be cancelled. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Keep my order')),
+          FilledButton(
+            key: const ValueKey('confirm-cancel-order'),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Cancel order'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    setState(() {
+      _cancelling = true;
+      _cancelError = null;
+    });
+    try {
+      await ref.read(apiProvider).cancel(o.id);
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _cancelError = e.message);
+    } finally {
+      if (mounted) {
+        setState(() => _cancelling = false);
+        ref.invalidate(orderProvider(o.id));
+      }
     }
   }
 
@@ -267,12 +310,14 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
               Padding(
                 padding: const EdgeInsets.only(top: 16),
                 child: OutlinedButton(
-                  onPressed: () async {
-                    await ref.read(apiProvider).cancel(o.id);
-                    ref.invalidate(orderProvider(o.id));
-                  },
+                  onPressed: _cancelling ? null : () => _cancel(o),
                   child: const Text('Cancel order'),
                 ),
+              ),
+            if (_cancelError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(_cancelError!, style: TextStyle(color: theme.colorScheme.error)),
               ),
           ]);
         },

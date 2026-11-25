@@ -5,6 +5,7 @@ import { Button, Card, DataTable, ErrorState, Field, Input, Skeleton, Stat, Togg
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useApi } from "@/lib/api";
+import { settingsError } from "@/lib/errors";
 
 const SOURCES: Record<string, string> = { points: "Yummy points", referral: "Friend's welcome gift", referrer: "Thanks for inviting" };
 
@@ -81,7 +82,7 @@ export default function GrowthPage() {
             <Field label="Points multiplier" htmlFor="pm"><Input id="pm" type="number" value={plus.points_multiplier} onChange={(e) => setPlus({ ...plus, points_multiplier: num(e.target.value) })} /></Field>
             <Field label="Wallet renewal window (hours)" htmlFor="pw"><Input id="pw" type="number" value={plus.renew_window_hours} onChange={(e) => setPlus({ ...plus, renew_window_hours: num(e.target.value) })} /></Field>
           </div>
-          {savePlus.error && <ErrorState message={(savePlus.error as Error).message} />}
+          {savePlus.error && <ErrorState message={settingsError(savePlus.error)} />}
           <Button onClick={() => savePlus.mutate(plus)} loading={savePlus.isPending}>Publish pricing v{pricing.data.version + 1}</Button>
           <p className="text-xs text-muted">The plan is part of pricing: changes apply to new quotes and new payments, and are audited.</p>
         </Card>
@@ -117,7 +118,7 @@ export default function GrowthPage() {
               <Field label="Open for (hours)" htmlFor="gh"><Input id="gh" type="number" value={cfg.group_open_hours} onChange={(e) => setCfg({ ...cfg, group_open_hours: num(e.target.value) })} /></Field>
             </div>
           </section>
-          {saveGrowth.error && <ErrorState message={(saveGrowth.error as Error).message} />}
+          {saveGrowth.error && <ErrorState message={settingsError(saveGrowth.error)} />}
           <Button onClick={() => saveGrowth.mutate(cfg)} loading={saveGrowth.isPending}>Save growth settings v{cfg.version + 1}</Button>
         </Card>
       )}

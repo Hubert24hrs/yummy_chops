@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from ..errors import NotFound
+from ..security.compare import same_secret
 from .base import InitializeResult, RefundResult, SplitInstruction, VerifyResult, WebhookEvent
 
 
@@ -113,7 +114,7 @@ class LocalSandboxProvider:
 
     def verify_webhook(self, raw_body: bytes, headers: Mapping[str, str], client_ip: str | None) -> bool:
         signature = headers.get("x-sandbox-signature") or ""
-        return bool(signature) and hmac.compare_digest(self.sign(raw_body), signature)
+        return bool(signature) and same_secret(self.sign(raw_body), signature)
 
     def parse_webhook(self, raw_body: bytes) -> WebhookEvent:
         event = json.loads(raw_body)

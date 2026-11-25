@@ -45,8 +45,6 @@ def check_input(text: str, *, max_chars: int) -> GuardResult:
     text = (text or "").strip()
     if not text:
         return GuardResult(text="", blocked=True, reason="empty")
-    if len(text) > max_chars:
-        return GuardResult(text=text[:max_chars], blocked=True, reason="too_long")
 
     warnings: list[str] = []
 
@@ -61,6 +59,9 @@ def check_input(text: str, *, max_chars: int) -> GuardResult:
     if _CVV_PIN.search(sanitized):
         sanitized = _CVV_PIN.sub("[secret removed]", sanitized)
         warnings.append("secret_removed")
+    # Card and PIN details are removed first, so even the kept start of an over-long message never holds them.
+    if len(text) > max_chars:
+        return GuardResult(text=sanitized[:max_chars], blocked=True, reason="too_long", warnings=warnings)
     if _INJECTION.search(sanitized):
         return GuardResult(text=sanitized, blocked=True, reason="prompt_injection", warnings=warnings)
     return GuardResult(text=sanitized, warnings=warnings)

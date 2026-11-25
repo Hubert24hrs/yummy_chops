@@ -3,7 +3,7 @@
 import {
   ApiError,
   formatNaira,
-  newIdempotencyKey,
+  idempotentCalls,
   type ParcelCategory,
   type ParcelSize,
   type PlaceArea,
@@ -14,7 +14,7 @@ import { Button, Field, Input, Select, cn } from "@gudmeal/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Building2, Home, Package, Truck } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { checkoutProvider, continueAfterCheckout, PaymentMethodPicker, type PayMethod } from "@/components/payment-method";
 import { publicApi, useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -75,8 +75,8 @@ export function WaybillForm() {
   const [method, setMethod] = useState<PayMethod>("card");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const orderKey = useRef(newIdempotencyKey("waybill"));
-  const checkoutKeys = useRef<Partial<Record<PayMethod, string>>>({});
+  const [sendBooking] = useState(() => idempotentCalls("waybill"));
+  const [sendCheckout] = useState(() => idempotentCalls("checkout"));
 
   useEffect(() => {
     setSender((s) => ({ ...s, name: s.name || user?.displayName || "", phone: s.phone || user?.phoneNumber || "" }));
@@ -140,9 +140,11 @@ export function WaybillForm() {
     setBusy(true);
     setError(null);
     try {
-      const order = await api.waybills.book(quote.id, orderKey.current);
-      const key = (checkoutKeys.current[method] ??= newIdempotencyKey("checkout"));
-      const res = await api.orders.checkout(order.id, key, checkoutProvider(method));
+      // A new price or payment method is a new request with a new key, and so is trying again after a refusal;
+      // only a request the API may not have answered keeps its key. Booking one quote twice gives the same order.
+      const order = await sendBooking({ quote: quote.id }, (key) => api.waybills.book(quote.id, key));
+      const provider = checkoutProvider(method);
+      const res = await sendCheckout({ order: order.id, provider }, (key) => api.orders.checkout(order.id, key, provider));
       continueAfterCheckout(res, router.push);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Couldn’t book the waybill. Please try again.");

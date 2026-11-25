@@ -5,8 +5,10 @@
     <!-- "Use my current location" in the address picker (asked only when tapped). -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- allowBackup off: nothing here is worth restoring, and a signed-in session must not travel in a backup. -->
     <application
         android:label="Yummy Chops"
+        android:allowBackup="false"
         android:usesCleartextTraffic="${usesCleartextTraffic}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
@@ -52,6 +54,11 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Speaking to Yummy (speech_to_text): without this, Android 11 and later hide the speech service and
+             the microphone button does nothing. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
         </intent>
     </queries>
 </manifest>

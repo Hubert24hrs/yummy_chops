@@ -122,7 +122,8 @@ async def sweep(c: Ctr, _caller: InternalCaller) -> dict[str, int]:
         if await c.payments.settle_completed_order(order):
             settled += 1
     purged = await c.idempotency.purge_expired()
-    return {"settled": settled, "idempotency_purged": purged}
+    repaired = await c.orders.repair_lost_events()
+    return {"settled": settled, "idempotency_purged": purged, **repaired}
 
 
 # ------------------------------------------------------------------------------------------------

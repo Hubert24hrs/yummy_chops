@@ -17,7 +17,19 @@ from typing import Any
 import httpx
 
 from ..errors import PaymentProviderError
-from .base import InitializeResult, RefundResult, SplitInstruction, VerifyResult, VerifyStatus, WebhookEvent
+from ..security.compare import same_secret
+from .base import (
+    InitializeResult,
+    ProviderOutcomeUnknown,
+    RefundResult,
+    SplitInstruction,
+    VerifyResult,
+    VerifyStatus,
+    WebhookEvent,
+)
+
+# The request never left this server, so nothing happened at the provider.
+NOT_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
 
 _STATUS_MAP: dict[str, VerifyStatus] = {
     "success": "success",
@@ -35,6 +47,8 @@ _EVENT_MAP = {
     "charge.failed": "charge.failed",
     "refund.processed": "refund.processed",
     "refund.failed": "refund.failed",
+    "refund.pending": "refund.pending",
+    "refund.processing": "refund.pending",
 }
 
 
@@ -63,16 +77,24 @@ class PaystackProvider:
     async def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         try:
             resp = await self._http.request(method, f"{self._base}{path}", headers=self._headers(), **kwargs)
-        except httpx.HTTPError as exc:
+        except NOT_SENT as exc:
             raise PaymentProviderError(
                 "Paystack is unreachable", details={"error": type(exc).__name__}
+            ) from exc
+        except httpx.HTTPError as exc:  # sent, then no answer: Paystack may have done what was asked
+            raise ProviderOutcomeUnknown(
+                "Paystack did not answer", details={"error": type(exc).__name__}
             ) from exc
         try:
             body = resp.json()
         except ValueError as exc:
-            raise PaymentProviderError(
+            raise ProviderOutcomeUnknown(
                 "Invalid response from Paystack", details={"status": resp.status_code}
             ) from exc
+        if not isinstance(body, dict) or resp.status_code >= 500:
+            raise ProviderOutcomeUnknown(
+                "Paystack had an error", details={"status": resp.status_code, "path": path}
+            )
         if resp.status_code >= 400 or not body.get("status"):
             raise PaymentProviderError(
                 body.get("message") or "Paystack request failed",
@@ -208,19 +230,38 @@ class PaystackProvider:
             return False
         signature = headers.get("x-paystack-signature") or ""
         expected = hmac.new(self._secret.encode(), raw_body, hashlib.sha512).hexdigest()
-        return bool(signature) and hmac.compare_digest(expected, signature)
+        return bool(signature) and same_secret(expected, signature)
 
     def parse_webhook(self, raw_body: bytes) -> WebhookEvent:
         event = json.loads(raw_body)
         name = str(event.get("event", ""))
         data = event.get("data") or {}
-        reference = data.get("reference") or (data.get("transaction") or {}).get("reference")
-        ident = data.get("id") or reference or hashlib.sha256(raw_body).hexdigest()[:32]
+        transaction = data.get("transaction")
+        reference = data.get("reference") or (
+            transaction.get("reference") if isinstance(transaction, dict) else None
+        )
+        digest = hashlib.sha256(raw_body).hexdigest()[:32]
+        if name.startswith("refund."):
+            # Refund events name the payment they belong to (transaction_reference) and have no id of their own:
+            # the processor's refund_reference tells two refunds of one payment apart.
+            reference = data.get("transaction_reference") or reference
+            ident = data.get("id") or data.get("refund_reference") or digest
+        else:
+            ident = data.get("id") or reference or digest
+        keys = (
+            "id",
+            "status",
+            "reference",
+            "amount",
+            "currency",
+            "transaction_reference",
+            "refund_reference",
+        )
         return WebhookEvent(
             provider=self.name,
             event_type=_EVENT_MAP.get(name, "other"),
             raw_event=name,
             dedupe_key=f"{name}:{ident}",
             reference=str(reference) if reference else None,
-            data={k: data.get(k) for k in ("id", "status", "reference", "amount", "currency")},
+            data={k: data.get(k) for k in keys},
         )

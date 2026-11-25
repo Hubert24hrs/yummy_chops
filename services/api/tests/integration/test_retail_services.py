@@ -394,7 +394,15 @@ async def test_the_online_test_server_seeds_demo_shops_and_runs_them_by_schedule
     from gudmeal_api.errors import NotFound
 
     dev = await make_container(
-        environment="development", seed_demo_data=True, demo_shops_always_open=True, demo_shop_autopilot=True
+        environment="development",
+        seed_demo_data=True,
+        demo_shops_always_open=True,
+        demo_shop_autopilot=True,
+        # what the online test server is deployed with (deploy.sh): its own secrets and a storage bucket
+        channel_token_secret="c" * 40,
+        internal_shared_secret="i" * 40,
+        file_store="gcs",
+        storage_bucket="demo.firebasestorage.app",
     )
     try:
         counts = await seed_demo(dev, "scheduler")
@@ -408,7 +416,13 @@ async def test_the_online_test_server_seeds_demo_shops_and_runs_them_by_schedule
         await dev.close()
 
     # With the switches off (as in staging and production, which refuse them at start-up) neither job runs.
-    off = await make_container(environment="development")
+    off = await make_container(
+        environment="development",
+        channel_token_secret="c" * 40,
+        internal_shared_secret="i" * 40,
+        file_store="gcs",
+        storage_bucket="demo.firebasestorage.app",
+    )
     try:
         with pytest.raises(NotFound):
             await seed_demo(off, "scheduler")

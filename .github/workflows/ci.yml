@@ -109,6 +109,8 @@ jobs:
       - run: node packages/tokens/build.mjs && git diff --exit-code -- packages/tokens mobile/core/lib/src/theme
       - run: npx vitest run --root packages/api-client
       - run: npx vitest run --root apps/web
+      - run: npx vitest run --root apps/partner
+      - run: npx vitest run --root apps/admin
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"

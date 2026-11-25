@@ -10,6 +10,7 @@ import {
   updateProfile,
   type User,
 } from "firebase/auth";
+import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { firebaseAuth } from "./firebase";
 
@@ -29,13 +30,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const queryClient = useQueryClient();
+
   useEffect(() => {
     const auth = firebaseAuth();
+    let uid: string | null | undefined; // undefined until Firebase says who is signed in
     return onIdTokenChanged(auth, (u) => {
+      // Someone else (or nobody) is signed in now: nothing the last account loaded may stay in memory.
+      if (uid !== undefined && uid !== (u?.uid ?? null)) queryClient.clear();
+      uid = u?.uid ?? null;
       setUser(u);
       setLoading(false);
     });
-  }, []);
+  }, [queryClient]);
 
   const value = useMemo<AuthState>(() => ({
     user,

@@ -8,10 +8,15 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import re
 import time
 from typing import Any
 
 import httpx
+
+# A path is fixed text plus ids. Anything that could change the route ("..", a query or fragment mark, an escape,
+# a backslash, a space) is refused; query parameters always travel in `params`.
+_UNSAFE_PATH = re.compile(r"\.\.|[?#%\\\s]")
 
 
 class ApiError(Exception):
@@ -80,6 +85,8 @@ class GudMealApi:
         params: dict[str, Any] | None = None,
         idempotency_key: str | None = None,
     ) -> Any:
+        if _UNSAFE_PATH.search(path):
+            raise ApiError(400, "invalid_reference", "That reference is not valid")
         headers = dict(self._headers)
         if self._service_auth is not None:
             headers.update(await self._service_auth.headers())

@@ -24,8 +24,14 @@ const prepaid = (o: Order) => o.payment.provider !== "cash";
 export default function OrdersBoard({ params }: { params: Promise<{ rid: string }> }) {
   const { rid } = use(params);
   const api = useApi();
-  const orders = useQuery({ queryKey: ["orders", rid], queryFn: () => api.partner.orders(rid, ACTIVE), refetchInterval: 5000 });
+  // Keeps asking while the tab is in the background too: that is when the sound and the title are needed most.
+  const orders = useQuery({
+    queryKey: ["orders", rid], queryFn: () => api.partner.orders(rid, ACTIVE), refetchInterval: 5000, refetchIntervalInBackground: true,
+  });
   const seen = useRef<Set<string> | null>(null);
+  /** One sound output for the whole page: browsers allow only a few, so each alert reuses it. */
+  const audio = useRef<AudioContext | null>(null);
+  useEffect(() => () => { void audio.current?.close().catch(() => undefined); }, []);
   const [arrived, setArrived] = useState<Order | null>(null);
 
   // Audible + title alert for new orders (kitchens are noisy), and a note saying the payment is in.
@@ -36,7 +42,8 @@ export default function OrdersBoard({ params }: { params: Promise<{ rid: string 
     if (newcomer) {
       setArrived(newcomer);
       try {
-        const ctx = new AudioContext();
+        const ctx = (audio.current ??= new AudioContext());
+        if (ctx.state === "suspended") void ctx.resume().catch(() => undefined);
         const osc = ctx.createOscillator();
         osc.frequency.value = 880;
         osc.connect(ctx.destination);

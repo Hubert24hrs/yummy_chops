@@ -30,16 +30,29 @@ if [[ "${WHATSAPP_ENABLED:-false}" == "true" ]]; then
   WHATSAPP_SECRETS=",WHATSAPP_ACCESS_TOKEN=whatsapp-access-token:latest,WHATSAPP_APP_SECRET=whatsapp-app-secret:latest,WHATSAPP_VERIFY_TOKEN=whatsapp-verify-token:latest"
 fi
 
+# True when a secret has a value. A failed check stops the deploy: going on would deploy without that secret, since
+# --set-secrets replaces every binding (gudmeal-deployer needs roles/secretmanager.viewer, bootstrap-gcp.sh).
+has_secret() {
+  local found
+  found=$(gcloud secrets versions list "$1" --project "$PROJECT" --filter 'state=ENABLED' --limit 1 --format 'value(name)') ||
+    { echo "Could not check the secret $1; stopping so it is not dropped from the services." >&2; exit 1; }
+  [[ -n "$found" ]]
+}
+
+# Riders' KYC documents live in the project's Firebase Storage bucket (the API refuses to start in the cloud
+# without it; bootstrap-gcp.sh gives gudmeal-api access).
+STORAGE_BUCKET="${STORAGE_BUCKET:-$PROJECT.firebasestorage.app}"
+
 # Google Maps server key (docs/GOOGLE_MAPS.md), bound once the secret has a value; without it the API gives labelled
 # estimates. It is listed here because --set-secrets replaces every secret binding on each deploy.
 MAPS_SECRET=""
-if [[ -n "$(gcloud secrets versions list google-maps-server-key --project "$PROJECT" --filter 'state=ENABLED' --limit 1 --format 'value(name)' 2>/dev/null || true)" ]]; then
+if has_secret google-maps-server-key; then
   MAPS_SECRET=",GOOGLE_MAPS_API_KEY=google-maps-server-key:latest"
 fi
 
 # Gemini (Yummy's AI): bound once gemini-api-key has a value; without it Yummy answers in its offline mode.
 GEMINI_SECRETS=""
-if [[ -n "$(gcloud secrets versions list gemini-api-key --project "$PROJECT" --filter 'state=ENABLED' --limit 1 --format 'value(name)' 2>/dev/null || true)" ]]; then
+if has_secret gemini-api-key; then
   GEMINI_SECRETS="GOOGLE_API_KEY=gemini-api-key:latest,GEMINI_MODEL=gemini-model:latest,"
 fi
 
@@ -59,7 +72,7 @@ gcloud run deploy gudmeal-api --project "$PROJECT" --region "$REGION" \
   --min-instances "$MIN" --max-instances "$MAX" \
   --set-cloudsql-instances "$SQL" \
   --allow-unauthenticated \
-  --set-env-vars "ENVIRONMENT=$ENVIRONMENT,DATA_BACKEND=firestore,$DEMO_ENV,GCP_PROJECT_ID=$PROJECT,FIREBASE_PROJECT_ID=$PROJECT,EVENT_BUS=pubsub,TASK_QUEUE=cloudtasks,NOTIFIER=fcm,INTERNAL_AUTH_MODE=oidc,CLOUD_TASKS_LOCATION=$REGION,CLOUD_TASKS_SERVICE_ACCOUNT=gudmeal-tasks@$PROJECT.iam.gserviceaccount.com,INTERNAL_OIDC_AUDIENCE=$API_URL,PUBLIC_BASE_URL=$API_URL,APP_CHECK_ENFORCED=$([ "$ENVIRONMENT" = production ] && echo true || echo false),AGENTS_BASE_URL=$AGENTS_URL,PUBLIC_WEB_URL=$WEB_URL,PAYMENT_CALLBACK_URL=$WEB_URL/checkout/callback,$WHATSAPP_ENV" \
+  --set-env-vars "ENVIRONMENT=$ENVIRONMENT,DATA_BACKEND=firestore,FILE_STORE=gcs,STORAGE_BUCKET=$STORAGE_BUCKET,$DEMO_ENV,GCP_PROJECT_ID=$PROJECT,FIREBASE_PROJECT_ID=$PROJECT,EVENT_BUS=pubsub,TASK_QUEUE=cloudtasks,NOTIFIER=fcm,INTERNAL_AUTH_MODE=oidc,CLOUD_TASKS_LOCATION=$REGION,CLOUD_TASKS_SERVICE_ACCOUNT=gudmeal-tasks@$PROJECT.iam.gserviceaccount.com,INTERNAL_OIDC_AUDIENCE=$API_URL,PUBLIC_BASE_URL=$API_URL,APP_CHECK_ENFORCED=$([ "$ENVIRONMENT" = production ] && echo true || echo false),AGENTS_BASE_URL=$AGENTS_URL,PUBLIC_WEB_URL=$WEB_URL,PAYMENT_CALLBACK_URL=$WEB_URL/checkout/callback,$WHATSAPP_ENV" \
   --set-env-vars "^;^INTERNAL_OIDC_SERVICE_ACCOUNTS=[\"gudmeal-tasks@$PROJECT.iam.gserviceaccount.com\"];TRUSTED_SERVICE_ACCOUNTS=[\"gudmeal-agents@$PROJECT.iam.gserviceaccount.com\"];CORS_ORIGINS=$SITES" \
   --set-secrets "DATABASE_URL=api-database-url:latest,PAYSTACK_SECRET_KEY=paystack-secret-key:latest,CODE_PEPPER=api-code-pepper:latest,CHANNEL_TOKEN_SECRET=channel-token-secret:latest$WHATSAPP_SECRETS$MAPS_SECRET"
 
@@ -71,7 +84,7 @@ gcloud run deploy gudmeal-agents --project "$PROJECT" --region "$REGION" \
   --min-instances 0 --max-instances "$MAX" \
   --set-cloudsql-instances "$SQL" \
   --allow-unauthenticated \
-  --set-env-vars "ENVIRONMENT=$ENVIRONMENT,API_BASE_URL=$API_URL,FIREBASE_PROJECT_ID=$PROJECT,CHECKPOINTER=postgres,CHECK_TOKEN_REVOCATION=true,LANGSMITH_TRACING=false,INTERNAL_AUTH_MODE=oidc" \
+  --set-env-vars "ENVIRONMENT=$ENVIRONMENT,API_BASE_URL=$API_URL,FIREBASE_PROJECT_ID=$PROJECT,CHECKPOINTER=postgres,CHECK_TOKEN_REVOCATION=true,LANGSMITH_TRACING=false,INTERNAL_AUTH_MODE=oidc,APP_CHECK_ENFORCED=$([ "$ENVIRONMENT" = production ] && echo true || echo false)" \
   --set-env-vars "^;^CORS_ORIGINS=$SITES" \
   --set-secrets "${GEMINI_SECRETS}DATABASE_URL=agents-database-url:latest,CHECKPOINT_POSTGRES_URL=agents-checkpoint-url:latest,CHANNEL_TOKEN_SECRET=channel-token-secret:latest"
 

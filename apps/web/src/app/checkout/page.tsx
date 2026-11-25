@@ -1,18 +1,30 @@
 "use client";
 
-import { ApiError, formatNaira, formatTime, isMeasured, newIdempotencyKey, type DeliveryAddress, type Fulfillment, type PlaceLookup, type Quote } from "@gudmeal/api-client";
+import { ApiError, formatNaira, formatTime, idempotentCalls, isMeasured, type DeliveryAddress, type Fulfillment, type PlaceLookup, type Quote } from "@gudmeal/api-client";
 import { AddressSearch, Button, Card, EmptyState, ErrorState, Field, Input, MapView, Price, Select, Skeleton, cn } from "@gudmeal/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Bike, ShieldCheck, Store } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { checkoutProvider, continueAfterCheckout, PaymentMethodPicker, type PayMethod } from "@/components/payment-method";
 import { RequireAuth } from "@/components/require-auth";
 import { useApi } from "@/lib/api";
 import { toCartLines, useCart } from "@/lib/cart";
-import { CITY_NAMES, LAGOS_AREAS, useLocation } from "@/lib/location";
+import { AREAS, CITY_NAMES, useLocation } from "@/lib/location";
 import { GOOGLE_MAPS_BROWSER_KEY } from "@/lib/maps";
+
+/** `value` once it has stopped changing for `ms`: typing asks for one price, not one for every letter. */
+function useSettled<T>(value: T, ms = 500): T {
+  const [settled, setSettled] = useState(value);
+  const key = JSON.stringify(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(value), ms);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` is `value` as text: the same text is the same value
+  }, [key, ms]);
+  return settled;
+}
 
 export default function CheckoutPage() {
   return (
@@ -29,7 +41,9 @@ function Checkout() {
   const [fulfillment, setFulfillment] = useState<Fulfillment>("delivery");
   const [addressId, setAddressId] = useState<string>("new");
   const [line1, setLine1] = useState("");
-  const [areaName, setAreaName] = useState(area.name);
+  /** The area chosen in the list. Until the customer chooses one, it is their delivery area (Lagos or Enugu). */
+  const [areaChoice, setAreaChoice] = useState<string | null>(null);
+  const areaName = areaChoice ?? area.name;
   /** Exact place from address search or "use my location"; without it the neighbourhood centre is used. */
   const [picked, setPicked] = useState<PlaceLookup | null>(null);
   const [phone, setPhone] = useState("");
@@ -38,8 +52,12 @@ function Checkout() {
   const [appliedVoucher, setAppliedVoucher] = useState<string | null>(null);
   const [method, setMethod] = useState<PayMethod>("card");
   const router = useRouter();
-  const orderKey = useRef(newIdempotencyKey("order"));
-  const checkoutKeys = useRef<Partial<Record<PayMethod, string>>>({});
+  const [sendOrder] = useState(() => idempotentCalls("order"));
+  const [sendCheckout] = useState(() => idempotentCalls("checkout"));
+  // The street and the instructions are part of the quote (the order takes its address from it), so the price is
+  // asked for again when they change: once typing stops, because the API allows about one quote every two seconds.
+  const { street, notes } = useSettled({ street: line1.trim(), notes: instructions.trim() });
+  const typing = street !== line1.trim() || notes !== instructions.trim();
 
   const addresses = useQuery({ queryKey: ["addresses"], queryFn: () => api.me.addresses() });
   const myVouchers = useQuery({ queryKey: ["my-vouchers"], queryFn: () => api.rewards.vouchers() });
@@ -51,22 +69,24 @@ function Checkout() {
     if (fulfillment === "pickup") return null;
     const saved = addresses.data?.find((a) => a.id === addressId);
     if (saved) return saved;
-    if (line1.trim().length < 3) return null;
+    if (street.length < 3) return null;
+    // The rider's phone number is not here: it does not change the price, and the order gets it when it is placed.
     if (picked) {
       const city = picked.place.city === "enugu" ? CITY_NAMES.enugu : CITY_NAMES.lagos;
       return {
-        line1: line1.trim(), area: picked.place.area ?? areaName, city, state: city, location: picked.place.location,
-        place_id: picked.place.place_id, contact_phone: phone || null, instructions: instructions || null,
+        line1: street, area: picked.place.area ?? areaName, city, state: city, location: picked.place.location,
+        place_id: picked.place.place_id, instructions: notes || null,
       };
     }
-    const a = LAGOS_AREAS.find((x) => x.name === areaName)!;
-    return { line1: line1.trim(), area: a.name, location: a.location, contact_phone: phone || null, instructions: instructions || null };
-  }, [fulfillment, addresses.data, addressId, line1, areaName, phone, instructions, picked]);
+    const a = AREAS.find((x) => x.name === areaName) ?? area;
+    const city = CITY_NAMES[a.city];
+    return { line1: street, area: a.name, city, state: city, location: a.location, instructions: notes || null };
+  }, [fulfillment, addresses.data, addressId, street, areaName, area, notes, picked]);
 
   function onPicked(found: PlaceLookup) {
     setPicked(found);
     if (found.place.precision === "rooftop" || found.place.precision === "street") setLine1(found.place.formatted_address);
-    if (found.place.area && LAGOS_AREAS.some((a) => a.name === found.place.area)) setAreaName(found.place.area);
+    if (found.place.area && AREAS.some((a) => a.name === found.place.area)) setAreaChoice(found.place.area);
   }
 
   const quoteReady = cart.items.length > 0 && cart.restaurant_id && (fulfillment === "pickup" || address);
@@ -82,17 +102,23 @@ function Checkout() {
 
   const placeOrder = useMutation({
     mutationFn: async (q: Quote) => {
+      const contact = phone || undefined;
       if (addressId === "new" && address && fulfillment === "delivery") {
-        await api.me.addAddress({ ...address, label: "Saved at checkout" }).catch(() => undefined);
+        await api.me.addAddress({ ...address, contact_phone: contact ?? null, label: "Saved at checkout" }).catch(() => undefined);
       }
-      const order = await api.orders.create(q.id, orderKey.current, "web", phone || undefined);
-      // One key per payment method: switching method after a refusal is a new request, a retry is not.
-      const key = (checkoutKeys.current[method] ??= newIdempotencyKey("checkout"));
-      return api.orders.checkout(order.id, key, checkoutProvider(method));
+      // Each request keeps its key only until the API answers it: a new quote, phone number or payment method is a
+      // new request, and so is trying again after a refusal. Asking twice for one quote gives the same order.
+      const order = await sendOrder({ quote: q.id, contact }, (key) => api.orders.create(q.id, key, "web", contact));
+      const provider = checkoutProvider(method);
+      return sendCheckout({ order: order.id, provider }, (key) => api.orders.checkout(order.id, key, provider));
     },
     onSuccess: (res) => {
       clear();
       continueAfterCheckout(res, router.push);
+    },
+    onError: (e) => {
+      // The price is no longer valid: get a new one, so the next press of the button can go through.
+      if (e instanceof ApiError && (e.code === "quote_expired" || e.code === "price_changed")) void quote.refetch();
     },
   });
 
@@ -166,8 +192,12 @@ function Checkout() {
                 </Field>
                 {!picked && (
                   <Field label="Area" htmlFor="area">
-                    <Select id="area" value={areaName} onChange={(e) => setAreaName(e.target.value)}>
-                      {LAGOS_AREAS.map((a) => <option key={a.name}>{a.name}</option>)}
+                    <Select id="area" value={areaName} onChange={(e) => setAreaChoice(e.target.value)}>
+                      {(["lagos", "enugu"] as const).map((city) => (
+                        <optgroup key={city} label={CITY_NAMES[city]}>
+                          {AREAS.filter((a) => a.city === city).map((a) => <option key={a.name}>{a.name}</option>)}
+                        </optgroup>
+                      ))}
                     </Select>
                   </Field>
                 )}
@@ -234,7 +264,7 @@ function Checkout() {
             <Breakdown quote={quote.data} />
           ) : null}
           {placeOrder.error && <ErrorState message={(placeOrder.error as Error).message} />}
-          <Button block size="lg" disabled={!quote.data || placeOrder.isPending} loading={placeOrder.isPending}
+          <Button block size="lg" disabled={!quote.data || typing || placeOrder.isPending} loading={placeOrder.isPending}
             onClick={() => quote.data && placeOrder.mutate(quote.data)}>
             {method === "cash"
               ? `Place order · pay ${quote.data ? formatNaira(quote.data.breakdown.total_kobo) : ""} on delivery`

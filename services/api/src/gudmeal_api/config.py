@@ -1,11 +1,13 @@
 """Runtime configuration (12-factor). Every value can be set through environment variables.
 
-Secrets are `SecretStr` so they never appear in logs or reprs. In staging/production the
-settings are validated strictly at startup (see `Settings.validate_for_environment`).
+Secrets are `SecretStr` so they never appear in logs or reprs. Unsafe settings stop the service at start-up
+(see `Settings.validate_for_environment`): a few everywhere, more on any server in the cloud, all of them in
+staging and production.
 """
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from typing import Literal
 
@@ -13,6 +15,19 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "development", "staging", "production"]
+
+# Local-only placeholders: every server in the cloud refuses to start with them (validate_for_environment).
+DEFAULT_CODE_PEPPER = "local-dev-pepper-change-me"
+DEFAULT_CHANNEL_TOKEN_SECRET = "local-dev-channel-secret-change-me"  # noqa: S105
+#: Environment variables that point the Google SDKs at a local emulator. The sign-in emulator accepts unsigned
+#: tokens with any roles, so none of them may be set on a server in the cloud.
+EMULATOR_SWITCHES = (
+    "FIREBASE_AUTH_EMULATOR_HOST",
+    "FIRESTORE_EMULATOR_HOST",
+    "FIREBASE_STORAGE_EMULATOR_HOST",
+    "STORAGE_EMULATOR_HOST",
+)
+MIN_SECRET_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -31,6 +46,13 @@ class Settings(BaseSettings):
             "http://localhost:5050",  # Flutter customer app (web debug)
         ]
     )
+
+    # How many of our own proxies stand in front of this service and append the caller's address to
+    # X-Forwarded-For: 1 on Cloud Run, 2 behind a load balancer as well, 0 when callers connect directly
+    # (api/deps.py client_ip). Entries before those are whatever the caller sent.
+    trusted_proxy_hops: int = 1
+    # The largest request body accepted (a rider's KYC photo, 5 MB, arrives base64-encoded in JSON: about 7 MB).
+    max_request_bytes: int = 8 * 1024 * 1024
 
     # --- data ------------------------------------------------------------------------------
     data_backend: Literal["memory", "firestore"] = "memory"
@@ -60,6 +82,10 @@ class Settings(BaseSettings):
     payment_http_timeout_seconds: float = 15.0
     # Backup gateway tried when the default one fails to start a checkout (only if it is configured).
     payment_failover_provider: str | None = "flutterwave"
+    # Split card payments (ADR-0028): a business's share reaches its bank before the order is finished, and a refund
+    # comes out of Yummy Chops' balance. So a shop's unfinished split money is capped: past this, or while the shop
+    # owes money back, its card payments are not split and it is paid in the weekly settlement instead.
+    split_exposure_limit_kobo: int = 20_000_000  # ₦200,000
 
     # --- Yummy Chops wallet (closed-loop stored value: spend on Yummy Chops only, no cash withdrawal) ---------
     # Limits are product defaults pending legal/CBN review (see docs/adr/0013-wallet-and-cash.md).
@@ -129,7 +155,7 @@ class Settings(BaseSettings):
     # only when ENVIRONMENT is local or test, so the switch does nothing anywhere else.
     sandbox_follows_lan_address: bool = False
     delivery_code_max_attempts: int = 5
-    code_pepper: SecretStr = SecretStr("local-dev-pepper-change-me")
+    code_pepper: SecretStr = SecretStr(DEFAULT_CODE_PEPPER)
 
     # --- maps ---------------------------------------------------------------------------------
     # Server key for Places (New), Geocoding and Routes. Never shipped to apps or browsers; without it the
@@ -154,7 +180,7 @@ class Settings(BaseSettings):
     whatsapp_business_number: str = "+234 000 000 0000"
     whatsapp_graph_version: str = "v21.0"
     # Delegated customer-only tokens for chat channels; shared with the agents service.
-    channel_token_secret: SecretStr = SecretStr("local-dev-channel-secret-change-me")
+    channel_token_secret: SecretStr = SecretStr(DEFAULT_CHANNEL_TOKEN_SECRET)
     agents_base_url: str = "http://localhost:8100"
     public_web_url: str = "http://localhost:3000"
 
@@ -172,9 +198,44 @@ class Settings(BaseSettings):
         return {kind: value for kind, value in contacts.items() if value}
 
     def validate_for_environment(self) -> None:
-        """Fail fast on unsafe configuration outside local/test."""
-        if self.environment not in ("staging", "production"):
-            return
+        """Fail fast on unsafe configuration: two rules everywhere, more for every server in the cloud (the online
+        test server included) and the full list for staging and production."""
+        problems: list[str] = []
+        paystack = self.paystack_secret_key.get_secret_value() if self.paystack_secret_key else ""
+        if paystack.startswith("sk_live_") and self.environment != "production":
+            problems.append("a live Paystack key (sk_live_...) is allowed only in production")
+        if os.environ.get("K_SERVICE") and not self.is_cloud:
+            # Cloud Run sets K_SERVICE. ENVIRONMENT defaults to local, which opens /v1/dev and the pretend payments.
+            problems.append("ENVIRONMENT must be development, staging or production on Cloud Run")
+        if self.is_cloud:
+            problems += self._cloud_problems()
+        if self.environment in ("staging", "production"):
+            problems += self._release_problems(paystack)
+        if problems:
+            raise RuntimeError("Unsafe configuration: " + "; ".join(problems))
+
+    def _cloud_problems(self) -> list[str]:
+        """What no server reachable from the internet may run with, whatever it is for."""
+        problems = [
+            f"{name} must not be set: the emulators accept unsigned sign-ins"
+            for name in EMULATOR_SWITCHES
+            if os.environ.get(name)
+        ]
+        if self.sandbox_follows_lan_address:
+            problems.append("SANDBOX_FOLLOWS_LAN_ADDRESS is for phone tests on this computer only")
+        channel = self.channel_token_secret.get_secret_value()
+        if channel == DEFAULT_CHANNEL_TOKEN_SECRET or len(channel) < MIN_SECRET_LENGTH:
+            problems.append(
+                f"CHANNEL_TOKEN_SECRET must be set from Secret Manager ({MIN_SECRET_LENGTH} characters or more)"
+            )
+        internal = self.internal_shared_secret.get_secret_value() if self.internal_shared_secret else ""
+        if self.internal_auth_mode == "shared_secret" and internal and len(internal) < MIN_SECRET_LENGTH:
+            problems.append(f"INTERNAL_SHARED_SECRET must be {MIN_SECRET_LENGTH} characters or more")
+        if self.file_store != "gcs" or not self.storage_bucket:
+            problems.append("FILE_STORE=gcs and STORAGE_BUCKET are required (riders' KYC documents)")
+        return problems
+
+    def _release_problems(self, paystack: str) -> list[str]:
         problems: list[str] = []
         if self.data_backend != "firestore":
             problems.append("DATA_BACKEND must be 'firestore'")
@@ -184,12 +245,15 @@ class Settings(BaseSettings):
             problems.append("INTERNAL_AUTH_MODE must be 'oidc'")
         if not self.internal_oidc_audience or not self.internal_oidc_service_accounts:
             problems.append("INTERNAL_OIDC_AUDIENCE and INTERNAL_OIDC_SERVICE_ACCOUNTS are required")
-        if self.code_pepper.get_secret_value() == "local-dev-pepper-change-me":
-            problems.append("CODE_PEPPER must be set from Secret Manager")
-        if self.payment_default_provider == "paystack" and not self.paystack_secret_key:
+        pepper = self.code_pepper.get_secret_value()
+        if pepper == DEFAULT_CODE_PEPPER or len(pepper) < MIN_SECRET_LENGTH:
+            problems.append(
+                f"CODE_PEPPER must be set from Secret Manager ({MIN_SECRET_LENGTH} characters or more)"
+            )
+        if self.payment_default_provider == "paystack" and not paystack:
             problems.append("PAYSTACK_SECRET_KEY is required")
-        if self.file_store != "gcs" or not self.storage_bucket:
-            problems.append("FILE_STORE=gcs and STORAGE_BUCKET are required (riders' KYC documents)")
+        if self.environment == "production" and paystack.startswith("sk_test_"):
+            problems.append("PAYSTACK_SECRET_KEY must be the live key in production (it is a test key)")
         if self.event_bus != "pubsub" or self.task_queue != "cloudtasks":
             problems.append("EVENT_BUS=pubsub and TASK_QUEUE=cloudtasks are required")
         if self.seed_demo_data:
@@ -202,8 +266,6 @@ class Settings(BaseSettings):
             problems.append(
                 "TRUSTED_SERVICE_ACCOUNTS must list the agents service account (Yummy's tool calls)"
             )
-        if self.channel_token_secret.get_secret_value() == "local-dev-channel-secret-change-me":
-            problems.append("CHANNEL_TOKEN_SECRET must be set from Secret Manager")
         if self.whatsapp_enabled and not (
             self.whatsapp_provider == "cloud"
             and self.whatsapp_access_token
@@ -215,8 +277,7 @@ class Settings(BaseSettings):
                 "WHATSAPP_ENABLED needs WHATSAPP_PROVIDER=cloud and the WhatsApp access token, app secret, "
                 "verify token and phone number id"
             )
-        if problems:
-            raise RuntimeError("Unsafe configuration: " + "; ".join(problems))
+        return problems
 
 
 @lru_cache

@@ -17,6 +17,7 @@ from gudmeal_api.repositories import MemoryDocumentStore
 from gudmeal_api.security.auth import StaticTokenVerifier
 from gudmeal_api.security.rbac import Principal
 from gudmeal_api.seed import seed
+from gudmeal_api.services.files import MemoryFileStore
 from gudmeal_api.services.infra import MemoryIdentityAdmin, RecordingTaskQueue
 
 
@@ -84,6 +85,7 @@ async def make_container(
         verifier=StaticTokenVerifier(PRINCIPALS),
         identity=MemoryIdentityAdmin(),
         task_queue=RecordingTaskQueue,
+        files=MemoryFileStore(),  # tests never reach a real bucket, whatever FILE_STORE says
     )
     await seed(c.repos)
     for r in await c.repos.restaurants.find():  # deterministic tests: open around the clock

@@ -188,7 +188,9 @@ async def test_offline_gudy_plan_then_pick_and_decline(offline_stack):
     pick = await chat(client, "plan 1", thread=plans["thread_id"])
     assert pick["status"] == "approval_required" and pick["approval"]["tool"] == "confirm_order"
     r = await client.post(
-        f"/v1/chat/{plans['thread_id']}/approval", json={"approved": False}, headers=bearer("customer")
+        f"/v1/chat/{plans['thread_id']}/approval",
+        json={"approved": False, "tool_call_id": pick["approval"]["tool_call_id"]},
+        headers=bearer("customer"),
     )
     assert "haven't done it" in r.json()["reply"]
 

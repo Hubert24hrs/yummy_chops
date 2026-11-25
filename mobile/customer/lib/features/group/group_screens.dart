@@ -188,11 +188,11 @@ class GroupScreen extends ConsumerStatefulWidget {
   ConsumerState<GroupScreen> createState() => _GroupScreenState();
 }
 
-class _GroupScreenState extends ConsumerState<GroupScreen> {
+class _GroupScreenState extends ConsumerState<GroupScreen> with WidgetsBindingObserver, PaymentReturn<GroupScreen> {
   Timer? _poll;
   PayMethod _method = PayMethod.card;
   final _voucher = TextEditingController();
-  String _checkoutKey = newIdempotencyKey('group');
+  final _checkoutKey = IdempotencyKey('group');
   String _shareKey = newIdempotencyKey('share');
   String _restKey = newIdempotencyKey('rest');
   bool _busy = false;
@@ -210,6 +210,12 @@ class _GroupScreenState extends ConsumerState<GroupScreen> {
     _poll?.cancel();
     _voucher.dispose();
     super.dispose();
+  }
+
+  @override
+  void paymentChecked() {
+    ref.invalidate(groupProvider(widget.id));
+    ref.invalidate(walletProvider);
   }
 
   List<CartLine> _myLines(GroupOrder g, {String? except}) {
@@ -244,8 +250,9 @@ class _GroupScreenState extends ConsumerState<GroupScreen> {
         }
         final url = res.payment.authorizationUrl;
         if (url != null) {
+          // Checked when the customer comes back to the app: there is nothing to check before they have paid.
+          paymentPageOpened(res.payment.reference);
           await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
-          await api.verifyPayment(res.payment.reference);
         }
         ref.invalidate(walletProvider);
       });
@@ -400,8 +407,10 @@ class _GroupScreenState extends ConsumerState<GroupScreen> {
                       ? null
                       : () => _act((api) async {
                             final v = _voucher.text.trim();
-                            await api.checkoutGroup(g.id, _checkoutKey, voucher: v.isEmpty ? null : v.toUpperCase());
-                            _checkoutKey = newIdempotencyKey('group');
+                            final voucher = v.isEmpty ? null : v.toUpperCase();
+                            // A retry keeps the key; a changed voucher, or a "no" from the server (an item sold
+                            // out, say), makes the next attempt a new request.
+                            await _checkoutKey.send(voucher, (key) => api.checkoutGroup(g.id, key, voucher: voucher));
                           }),
                   child: const Text('Place group order'),
                 ),

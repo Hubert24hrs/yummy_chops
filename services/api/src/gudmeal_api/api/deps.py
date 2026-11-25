@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Any
 
@@ -11,9 +10,11 @@ from fastapi import Depends, Header, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
+from .. import lan
 from ..container import Container
 from ..errors import DomainError, PermissionDenied, Unauthenticated
 from ..ledger.idempotency import request_hash, validate_key
+from ..security.compare import same_secret
 from ..security.rate_limit import LIMITS
 from ..security.rbac import Principal
 
@@ -42,6 +43,8 @@ async def get_principal(
         raise Unauthenticated("Sign in required")
     principal = await c.verifier.verify(authorization[7:].strip())
     request.state.principal = principal
+    if c.settings.sandbox_follows_lan_address:
+        lan.remember_user(principal.uid)  # phone tests: this user's payment page opens where their device is
     return principal
 
 
@@ -58,9 +61,16 @@ def limit(name: str) -> Callable[..., Awaitable[None]]:
 
 
 def client_ip(request: Request) -> str | None:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """The caller's address, for per-address limits and the payment gateways' allow-lists.
+
+    Every proxy appends the address it saw to X-Forwarded-For, so only the entries our own proxies added can be
+    believed: the last one on Cloud Run, the one before it behind a load balancer as well (TRUSTED_PROXY_HOPS).
+    Anything earlier is whatever the caller typed. With no trusted proxy (0) the header is ignored."""
+    hops = get_container(request).settings.trusted_proxy_hops
+    forwarded = [part.strip() for part in request.headers.get("x-forwarded-for", "").split(",")]
+    forwarded = [part for part in forwarded if part]
+    if hops > 0 and len(forwarded) >= hops:
+        return forwarded[-hops]
     return request.client.host if request.client else None
 
 
@@ -122,7 +132,7 @@ async def trusted_service(request: Request, c: Container) -> bool:
     if s.internal_auth_mode == "shared_secret":
         expected = s.internal_shared_secret.get_secret_value() if s.internal_shared_secret else None
         given = request.headers.get("x-internal-token")
-        return bool(expected and given and hmac.compare_digest(expected, given))
+        return bool(expected and given and same_secret(expected, given))
     header = request.headers.get("x-service-authorization") or ""
     if not header.lower().startswith("bearer "):
         return False
@@ -143,7 +153,7 @@ async def verify_internal(
     s = c.settings
     if s.internal_auth_mode == "shared_secret":
         expected = s.internal_shared_secret.get_secret_value() if s.internal_shared_secret else None
-        if not expected or not x_internal_token or not hmac.compare_digest(expected, x_internal_token):
+        if not expected or not x_internal_token or not same_secret(expected, x_internal_token):
             raise PermissionDenied("Internal endpoint")
         return "shared-secret"
     if not authorization or not authorization.lower().startswith("bearer "):

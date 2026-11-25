@@ -59,8 +59,8 @@ class _ParcelScreenState extends ConsumerState<ParcelScreen> {
   String? _error;
   bool _busy = false;
   final _scroll = ScrollController();
-  final _orderKey = newIdempotencyKey('parcel');
-  final _checkoutKeys = <PayMethod, String>{};
+  final _orderKey = IdempotencyKey('parcel');
+  final _checkoutKeys = <PayMethod, IdempotencyKey>{};
   PayMethod _method = PayMethod.card;
   bool _cod = false;
   final _codAmount = TextEditingController();
@@ -132,7 +132,12 @@ class _ParcelScreenState extends ConsumerState<ParcelScreen> {
             scheduledFor: _when,
             codAmountKobo: _cod ? _codKobo : null,
           );
-      setState(() => _quote = q);
+      setState(() {
+        _quote = q;
+        // A new price is a new booking: it never goes out with the keys of the last one.
+        _orderKey.renew();
+        _checkoutKeys.clear();
+      });
       // Bring the price breakdown into view.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scroll.hasClients) {
@@ -152,9 +157,10 @@ class _ParcelScreenState extends ConsumerState<ParcelScreen> {
     setState(() => _busy = true);
     try {
       final api = ref.read(apiProvider);
-      final order = await api.createParcel(quote.id, _orderKey);
-      final key = _checkoutKeys.putIfAbsent(_method, () => newIdempotencyKey('checkout'));
-      final checkout = await api.checkout(order.id, key, provider: _method.provider);
+      final order = await _orderKey.send(quote.id, (key) => api.createParcel(quote.id, key));
+      final checkout = await _checkoutKeys
+          .putIfAbsent(_method, () => IdempotencyKey('checkout'))
+          .send(order.id, (key) => api.checkout(order.id, key, provider: _method.provider));
       ref.invalidate(walletProvider);
       final url = checkout.authorizationUrl;
       if (url == null) {
@@ -165,7 +171,11 @@ class _ParcelScreenState extends ConsumerState<ParcelScreen> {
       await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
       if (mounted) context.go('/orders/${order.id}?ref=${checkout.reference}');
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      setState(() {
+        _error = e.message;
+        // The price is no longer held: the button goes back to asking for a new one.
+        if (e.needsNewQuote) _quote = null;
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }

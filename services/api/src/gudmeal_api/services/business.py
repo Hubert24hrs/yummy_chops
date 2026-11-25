@@ -9,11 +9,15 @@ A business has a unique ID (YCB-XXXXXX), an owner, one or more branches and one 
   bigger moves checked by Yummy Chops);
 * items are tagged with the business ID;
 * card payments are split by Paystack: the business's share goes straight to its bank account (a Paystack
-  subaccount); the bank account number itself is never stored, only its last four digits.
+  subaccount); the bank account number itself is never stored, only its last four digits. Only the owner sets or
+  changes that account;
+* suspension: while any branch is suspended the business cannot add a branch or open one that has not opened yet,
+  and suspending the main branch also suspends the open branches that sell its menu (`suspend_branches_selling`).
 """
 
 from __future__ import annotations
 
+import json
 import re
 import secrets
 import uuid
@@ -23,16 +27,20 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..domain.geo import GeoPoint, geohash_encode
-from ..domain.models import Business, Restaurant, RestaurantStatus
+from ..domain.models import Business, OptionalPlainText, PlainText, Restaurant, RestaurantStatus
 from ..errors import Conflict, NotFound, PaymentProviderError, PermissionDenied, ValidationFailed
 from ..ledger.audit import AuditLog
 from ..repositories import Repositories
 from ..security.rbac import Permission, Principal, Role
 from .catalog import slugify
-from .infra import IdentityAdmin
+from .infra import IdentityAdmin, Notifier
 
 ID_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"  # no 0/O or 1/I: read out over the phone without mistakes
-MAX_BRANCHES = 30
+#: Shops per business, the main one included. Every shop is one entry in the owner's sign-in roles, and Firebase
+#: holds about 28 of them (MAX_CLAIMS_CHARS), so the limit people see stays below that.
+MAX_BRANCHES = 25
+#: Firebase refuses custom claims (the roles inside a sign-in token) longer than this many characters.
+MAX_CLAIMS_CHARS = 1000
 # Used when the API has no Paystack key (the local sandbox): bank accounts are not really checked.
 SANDBOX_BANKS = [
     {"code": "044", "name": "Access Bank"},
@@ -49,9 +57,10 @@ def utcnow() -> datetime:
 
 
 class BranchInput(BaseModel):
-    branch_name: str | None = Field(default=None, max_length=60)
-    address: str = Field(min_length=5, max_length=200)
-    area: str = Field(default="", max_length=60)
+    # Names and addresses are shown on pages and maps: PlainText refuses the characters < and >.
+    branch_name: OptionalPlainText = Field(default=None, max_length=60)
+    address: PlainText = Field(min_length=5, max_length=200)
+    area: PlainText = Field(default="", max_length=60)
     location: GeoPoint
     manager_phone: str | None = Field(default=None, max_length=20)
 
@@ -60,7 +69,7 @@ class BranchUpdate(BaseModel):
     """The branch's name and manager's number. Its address moves with the kitchen location checks
     (`PUT /v1/partner/restaurants/{id}/location`), like any shop's."""
 
-    branch_name: str | None = Field(default=None, max_length=60)
+    branch_name: OptionalPlainText = Field(default=None, max_length=60)
     manager_phone: str | None = Field(default=None, max_length=20)
 
 
@@ -76,11 +85,13 @@ class BusinessService:
         identity: IdentityAdmin,
         audit: AuditLog,
         paystack: Any | None = None,  # PaystackProvider, when the API has a Paystack key
+        notifier: Notifier | None = None,
     ) -> None:
         self.repos = repos
         self.identity = identity
         self.audit = audit
         self.paystack = paystack
+        self.notifier = notifier
         self._banks: list[dict[str, str]] | None = None
 
     # ------------------------------------------------------------------------------------------------ creating
@@ -101,6 +112,7 @@ class BusinessService:
     ) -> Business:
         """A business for `main` (already saved): its ID goes on the main branch and every item, and each extra
         branch becomes a merchant selling the main branch's menu. The owner manages them all."""
+        await self._check_room(owner_uid, [main.id, *_new_ids(len(branches or []))])
         business = Business(
             id=await self.new_id(),
             name=main.name,
@@ -157,11 +169,25 @@ class BusinessService:
         await self.repos.restaurants.create(branch)
         return branch
 
-    async def _grant(self, uid: str, restaurant_ids: list[str]) -> None:
+    async def _claims_with(self, uid: str, restaurant_ids: list[str]) -> tuple[list[str], dict[str, str]]:
+        """The owner's sign-in roles once they also own `restaurant_ids`."""
         claims = await self.identity.get_claims(uid)
         roles = set(claims.get("roles", [])) | {Role.RESTAURANT_OWNER.value}
         restaurant_roles = {**claims.get("restaurant_roles", {}), **dict.fromkeys(restaurant_ids, "owner")}
-        await self.identity.set_claims(uid, sorted(roles), restaurant_roles)
+        return sorted(roles), restaurant_roles
+
+    async def _grant(self, uid: str, restaurant_ids: list[str]) -> None:
+        roles, restaurant_roles = await self._claims_with(uid, restaurant_ids)
+        await self.identity.set_claims(uid, roles, restaurant_roles)
+
+    async def _check_room(self, uid: str, restaurant_ids: list[str]) -> None:
+        """Before anything is written: the roles for these shops must still fit in the owner's sign-in token.
+        Without this check Firebase refuses the roles after the branch exists, leaving a branch nobody can open."""
+        roles, restaurant_roles = await self._claims_with(uid, restaurant_ids)
+        if len(json.dumps({"roles": roles, "restaurant_roles": restaurant_roles})) > MAX_CLAIMS_CHARS:
+            raise ValidationFailed(
+                "One sign-in cannot manage this many shops. Please contact partner support to add more."
+            )
 
     # ------------------------------------------------------------------------------------------------ the owner
     async def mine(self, principal: Principal) -> dict[str, Any]:
@@ -187,11 +213,17 @@ class BusinessService:
     async def add_branch(self, principal: Principal, business_id: str, data: BranchInput) -> dict[str, Any]:
         business = await self._owned(principal, business_id)
         branches = await self.repos.restaurants.find(where=[("business_id", "==", business.id)], limit=100)
+        if any(b.status == RestaurantStatus.SUSPENDED for b in branches):
+            # A suspended business cannot carry on from a new branch.
+            raise PermissionDenied(
+                "A branch of this business is suspended, so it cannot add branches. Please contact partner support."
+            )
         if len(branches) >= MAX_BRANCHES:
             raise ValidationFailed(f"A business can have at most {MAX_BRANCHES} branches")
         main = await self.repos.restaurants.get(business.main_restaurant_id)
         if main is None:
             raise NotFound("The main branch is missing")
+        await self._check_room(business.owner_uid, _new_ids(1))
         branch = await self._new_branch(business, main, data)
         await self._grant(business.owner_uid, [branch.id])
         await self._audit(principal, "business.branch_added", business.id, {"restaurant_id": branch.id})
@@ -222,8 +254,11 @@ class BusinessService:
 
     async def connect_bank(self, principal: Principal, business_id: str, data: BankInput) -> dict[str, Any]:
         """The business's bank account for split payments: checked with the bank, then given to Paystack as a
-        subaccount. Only the last four digits are kept here."""
+        subaccount. Only the last four digits are kept here. Only the owner may set or change it: staff who
+        manage shops must not be able to point a business's money at another account."""
         business = await self._owned(principal, business_id)
+        if business.owner_uid != principal.uid:
+            raise PermissionDenied("Only the business's owner can set or change its bank account")
         bank = next((b for b in await self.banks() if b["code"] == data.bank_code), None)
         if bank is None:
             raise ValidationFailed("Choose your bank from the list")
@@ -257,7 +292,22 @@ class BusinessService:
                 "settlement_account_last4": data.account_number[-4:],
             },
         )
-        await self._audit(principal, "business.bank_connected", business.id, {"bank": bank["name"]})
+        last4 = data.account_number[-4:]
+        await self._audit(
+            principal,
+            "business.bank_connected",
+            business.id,
+            {"bank": bank["name"], "account_name": account_name, "account_last4": last4},
+        )
+        if self.notifier is not None:  # so a change the owner did not make is noticed at once
+            changed = business.paystack_subaccount_code is not None
+            await self.notifier.notify_user(
+                business.owner_uid,
+                "Bank account changed" if changed else "Bank account connected",
+                f"{business.name} is now paid into {bank['name']}, account ending {last4} ({account_name}). "
+                "If you did not do this, contact support straight away.",
+                {"kind": "business_bank", "business_id": business.id},
+            )
         return await self.view(await self._owned(principal, business_id))
 
     # ------------------------------------------------------------------------------------------------ the team
@@ -322,4 +372,30 @@ def valid_business_id(value: str) -> bool:
     return bool(re.fullmatch(r"YCB-[" + ID_ALPHABET + r"]{6}", value))
 
 
-__all__ = ["BankInput", "BranchInput", "BranchUpdate", "BusinessService", "valid_business_id"]
+def _new_ids(count: int) -> list[str]:
+    """Stand-ins, as long as real shop ids, for branches that do not exist yet (to measure the owner's roles)."""
+    return [f"new-branch-{n:09d}" for n in range(count)]
+
+
+async def suspend_branches_selling(repos: Repositories, restaurant_id: str) -> list[str]:
+    """A suspended shop's menu is not sold anywhere: the open branches that sell it (a business's other branches,
+    when the shop is its main branch) are suspended with it. Returns the branches stopped. Each stays suspended
+    until staff activate it again; branches that had not opened yet are untouched (they cannot open while a
+    branch of the business is suspended)."""
+    stopped: list[str] = []
+    branches = await repos.restaurants.find(where=[("menu_restaurant_id", "==", restaurant_id)], limit=100)
+    for branch in branches:
+        if branch.status == RestaurantStatus.ACTIVE:
+            await repos.restaurants.update(branch.id, {"status": RestaurantStatus.SUSPENDED.value})
+            stopped.append(branch.id)
+    return stopped
+
+
+__all__ = [
+    "BankInput",
+    "BranchInput",
+    "BranchUpdate",
+    "BusinessService",
+    "suspend_branches_selling",
+    "valid_business_id",
+]

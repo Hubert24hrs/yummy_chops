@@ -16,10 +16,18 @@ const GUARANTOR_FIELDS: [keyof RiderKycGuarantor, string][] = [
   ["name", "Full name"], ["phone", "Phone number"], ["email", "Email (if they have one)"], ["address", "Address"], ["occupation", "Occupation"],
 ];
 const EMPTY_GUARANTOR: RiderKycGuarantor = { name: "", phone: "", email: "", address: "", occupation: "" };
+/** The API takes files up to 5 MB. */
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
 /** A photo made smaller (at most 1600 px, JPEG) so it uploads quickly and stays under the 5 MB limit; PDFs as they are. */
 async function readForUpload(file: File): Promise<string> {
+  // A file sent as it is (a PDF, or a photo the browser cannot redraw) is checked before it is read: reading and
+  // sending a big file only for the API to refuse it wastes the rider's time and data.
   const asDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
+    if (blob.size > MAX_UPLOAD_BYTES) {
+      reject(new Error("This file is too large (at most 5 MB). Choose a smaller file."));
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
     reader.onerror = () => reject(new Error("The file could not be read"));
