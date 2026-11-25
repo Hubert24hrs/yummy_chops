@@ -56,23 +56,29 @@ class InProcessEventBus:
 
 
 class PubSubEventBus:
-    """Publishes to one Pub/Sub topic; the event name travels in the `topic` attribute."""
+    """Publishes to one Pub/Sub topic; the event name travels in the `event` attribute. (Not `topic`: that is the
+    name of the publisher's own first argument, so `publish(path, data, topic=...)` fails.)"""
 
-    def __init__(self, project_id: str, topic_id: str) -> None:
-        from google.cloud import pubsub_v1
+    def __init__(self, project_id: str, topic_id: str, publisher: Any = None) -> None:
+        if publisher is None:
+            from google.cloud import pubsub_v1
 
-        self._publisher = pubsub_v1.PublisherClient()
+            publisher = pubsub_v1.PublisherClient()
+        self._publisher = publisher
         self._topic_path = self._publisher.topic_path(project_id, topic_id)
 
     async def publish(self, topic: str, payload: dict[str, Any]) -> None:
         data = json.dumps(payload, default=str).encode()
-        future = self._publisher.publish(self._topic_path, data, topic=topic)
+        future = self._publisher.publish(self._topic_path, data, event=topic)
         await asyncio.to_thread(future.result, 30)
 
 
 def decode_pubsub_push(body: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     message = body.get("message") or {}
-    topic = (message.get("attributes") or {}).get("topic", "")
+    attributes = message.get("attributes") or {}
+    topic = attributes.get("event") or attributes.get(
+        "topic", ""
+    )  # "topic": messages published before the fix
     payload = json.loads(base64.b64decode(message.get("data") or b"e30=") or b"{}")
     return topic, payload
 
