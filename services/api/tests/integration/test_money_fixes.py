@@ -6,7 +6,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy import select, text
@@ -312,7 +312,13 @@ async def test_checkouts_nobody_finished_are_given_up_after_a_day(flow, client, 
     async with container.db.transaction() as s:
         await s.execute(
             text("UPDATE payment_records SET created_at = :old WHERE reference = :ref"),
-            {"old": "2020-01-01 00:00:00.000000", "ref": ref},
+            # PostgreSQL wants a real date; SQLite stores dates as this text.
+            {
+                "old": datetime(2020, 1, 1, tzinfo=UTC)
+                if container.db.dialect == "postgresql"
+                else "2020-01-01 00:00:00.000000",
+                "ref": ref,
+            },
         )
     assert await container.payments.reconcile_stale() == {"checked": 1, "errors": 0, "abandoned": 1}
     assert await container.payments.reconcile_stale() == {"checked": 0, "errors": 0, "abandoned": 0}
