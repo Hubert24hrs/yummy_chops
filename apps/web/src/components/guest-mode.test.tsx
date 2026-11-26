@@ -117,7 +117,7 @@ describe("no sign-in walls", () => {
 describe("account page", () => {
   it("a guest is offered to save the account with Google; Apple stays hidden until it is set up", async () => {
     show(<AccountPage />);
-    expect(screen.getByRole("heading", { name: "You're ordering as a guest" })).toBeTruthy();
+    expect(screen.queryByText(/ordering as a guest/)).toBeNull();
     expect(screen.getByRole("heading", { name: "Save your account" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Continue with Apple" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();

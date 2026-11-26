@@ -218,19 +218,23 @@ async def test_quote_owned_by_customer(flow, client):
     assert r.status_code == 404
 
 
-async def test_out_of_delivery_area(client):
-    far = {**ADDRESS, "location": {"lat": 6.6018, "lng": 3.3515}}  # Ikeja, ~19 km from Lekki
-    r = await client.post(
-        "/v1/quotes",
-        headers=auth("customer"),
-        json={
-            "restaurant_id": "r-jollof-junction",
-            "fulfillment": "delivery",
-            "delivery_address": far,
-            "lines": [{"item_id": "jj-dodo", "quantity": 1}],
-        },
-    )
-    assert r.status_code == 409 and r.json()["error"]["code"] == "out_of_delivery_area"
+async def test_shops_deliver_anywhere_in_their_city_but_not_to_another(client):
+    async def quote(location: dict) -> object:
+        return await client.post(
+            "/v1/quotes",
+            headers=auth("customer"),
+            json={
+                "restaurant_id": "r-jollof-junction",
+                "fulfillment": "delivery",
+                "delivery_address": {**ADDRESS, "location": location},
+                "lines": [{"item_id": "jj-dodo", "quantity": 1}],
+            },
+        )
+
+    ikeja = await quote({"lat": 6.6018, "lng": 3.3515})  # ~19 km from the Lekki kitchen, still Lagos
+    assert ikeja.status_code == 201, ikeja.text
+    enugu = await quote({"lat": 6.4402, "lng": 7.4994})  # another city
+    assert enugu.status_code == 409 and enugu.json()["error"]["code"] == "out_of_delivery_area"
 
 
 async def test_voucher_applies_once_per_customer(flow, client):
@@ -294,3 +298,26 @@ async def test_the_rider_can_reach_the_customer_only_while_delivering(flow, clie
     )
     assert done.status_code == 200, done.text
     assert (await rider_view(active=False))["delivery_address"]["contact_phone"] is None
+
+
+async def test_a_delivery_order_needs_a_phone_for_the_rider(client):
+    """A guest has no phone on their account: the order must carry one (owner, 2026-11-26)."""
+    no_phone = {k: v for k, v in ADDRESS.items() if k != "contact_phone"}
+    body = {
+        "restaurant_id": "r-jollof-junction",
+        "fulfillment": "delivery",
+        "delivery_address": no_phone,
+        "lines": [{"item_id": "jj-dodo", "quantity": 1}],
+    }
+    q = (await client.post("/v1/quotes", headers=auth("customer2"), json=body)).json()
+    r = await client.post(
+        "/v1/orders", json={"quote_id": q["id"], "channel": "app"}, headers={**auth("customer2"), **idem()}
+    )
+    assert r.status_code == 422 and "phone number" in r.json()["error"]["message"]
+    r = await client.post(
+        "/v1/orders",
+        json={"quote_id": q["id"], "channel": "app", "contact_phone": "0803 000 0000"},
+        headers={**auth("customer2"), **idem()},
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["delivery_address"]["contact_phone"] == "0803 000 0000"

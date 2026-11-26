@@ -2981,7 +2981,9 @@ as String?,
 /// @nodoc
 mixin _$DeliveryAddress {
 
- String? get label; String get line1; String? get area; String get city; String get state; GeoPoint get location; String? get instructions; String? get contactPhone;
+ String? get label; String get line1; String? get area; String get city; String get state; GeoPoint get location; String? get instructions; String? get contactPhone;/// The id of an address saved in the customer's address book (`GET /v1/me/addresses`); never sent back with a
+/// quote or a saved address (the id goes in the path of `PUT /v1/me/addresses/{id}`).
+@JsonKey(includeToJson: false) String? get id;
 /// Create a copy of DeliveryAddress
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -2995,20 +2997,20 @@ $DeliveryAddressCopyWith<DeliveryAddress> get copyWith => _$DeliveryAddressCopyW
 @override
 bool operator ==(Object other) {
   final _this = this as DeliveryAddress;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is DeliveryAddress&&(identical(other.label, _this.label) || other.label == _this.label)&&(identical(other.line1, _this.line1) || other.line1 == _this.line1)&&(identical(other.area, _this.area) || other.area == _this.area)&&(identical(other.city, _this.city) || other.city == _this.city)&&(identical(other.state, _this.state) || other.state == _this.state)&&(identical(other.location, _this.location) || other.location == _this.location)&&(identical(other.instructions, _this.instructions) || other.instructions == _this.instructions)&&(identical(other.contactPhone, _this.contactPhone) || other.contactPhone == _this.contactPhone));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is DeliveryAddress&&(identical(other.label, _this.label) || other.label == _this.label)&&(identical(other.line1, _this.line1) || other.line1 == _this.line1)&&(identical(other.area, _this.area) || other.area == _this.area)&&(identical(other.city, _this.city) || other.city == _this.city)&&(identical(other.state, _this.state) || other.state == _this.state)&&(identical(other.location, _this.location) || other.location == _this.location)&&(identical(other.instructions, _this.instructions) || other.instructions == _this.instructions)&&(identical(other.contactPhone, _this.contactPhone) || other.contactPhone == _this.contactPhone)&&(identical(other.id, _this.id) || other.id == _this.id));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as DeliveryAddress;
-  return Object.hash(runtimeType,_this.label,_this.line1,_this.area,_this.city,_this.state,_this.location,_this.instructions,_this.contactPhone);
+  return Object.hash(runtimeType,_this.label,_this.line1,_this.area,_this.city,_this.state,_this.location,_this.instructions,_this.contactPhone,_this.id);
 }
 
 @override
 String toString() {
   final _this = this as DeliveryAddress;
-  return 'DeliveryAddress(label: ${_this.label}, line1: ${_this.line1}, area: ${_this.area}, city: ${_this.city}, state: ${_this.state}, location: ${_this.location}, instructions: ${_this.instructions}, contactPhone: ${_this.contactPhone})';
+  return 'DeliveryAddress(label: ${_this.label}, line1: ${_this.line1}, area: ${_this.area}, city: ${_this.city}, state: ${_this.state}, location: ${_this.location}, instructions: ${_this.instructions}, contactPhone: ${_this.contactPhone}, id: ${_this.id})';
 }
 
 
@@ -3019,7 +3021,7 @@ abstract mixin class $DeliveryAddressCopyWith<$Res>  {
   factory $DeliveryAddressCopyWith(DeliveryAddress value, $Res Function(DeliveryAddress) _then) = _$DeliveryAddressCopyWithImpl;
 @useResult
 $Res call({
- String? label, String line1, String? area, String city, String state, GeoPoint location, String? instructions, String? contactPhone
+ String? label, String line1, String? area, String city, String state, GeoPoint location, String? instructions, String? contactPhone,@JsonKey(includeToJson: false) String? id
 });
 
 
@@ -3036,7 +3038,7 @@ class _$DeliveryAddressCopyWithImpl<$Res>
 
 /// Create a copy of DeliveryAddress
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? label = freezed,Object? line1 = null,Object? area = freezed,Object? city = null,Object? state = null,Object? location = null,Object? instructions = freezed,Object? contactPhone = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? label = freezed,Object? line1 = null,Object? area = freezed,Object? city = null,Object? state = null,Object? location = null,Object? instructions = freezed,Object? contactPhone = freezed,Object? id = freezed,}) {
   return _then(DeliveryAddress(
 label: freezed == label ? _self.label : label // ignore: cast_nullable_to_non_nullable
 as String?,line1: null == line1 ? _self.line1 : line1 // ignore: cast_nullable_to_non_nullable
@@ -3046,6 +3048,7 @@ as String,state: null == state ? _self.state : state // ignore: cast_nullable_to
 as String,location: null == location ? _self.location : location // ignore: cast_nullable_to_non_nullable
 as GeoPoint,instructions: freezed == instructions ? _self.instructions : instructions // ignore: cast_nullable_to_non_nullable
 as String?,contactPhone: freezed == contactPhone ? _self.contactPhone : contactPhone // ignore: cast_nullable_to_non_nullable
+as String?,id: freezed == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String?,
   ));
 }
@@ -3140,10 +3143,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? label,  String line1,  String? area,  String city,  String state,  GeoPoint location,  String? instructions,  String? contactPhone)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String? label,  String line1,  String? area,  String city,  String state,  GeoPoint location,  String? instructions,  String? contactPhone, @JsonKey(includeToJson: false)  String? id)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _DeliveryAddress() when $default != null:
-return $default(_that.label,_that.line1,_that.area,_that.city,_that.state,_that.location,_that.instructions,_that.contactPhone);case _:
+return $default(_that.label,_that.line1,_that.area,_that.city,_that.state,_that.location,_that.instructions,_that.contactPhone,_that.id);case _:
   return orElse();
 
 }
@@ -3161,10 +3164,10 @@ return $default(_that.label,_that.line1,_that.area,_that.city,_that.state,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? label,  String line1,  String? area,  String city,  String state,  GeoPoint location,  String? instructions,  String? contactPhone)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String? label,  String line1,  String? area,  String city,  String state,  GeoPoint location,  String? instructions,  String? contactPhone, @JsonKey(includeToJson: false)  String? id)  $default,) {final _that = this;
 switch (_that) {
 case _DeliveryAddress():
-return $default(_that.label,_that.line1,_that.area,_that.city,_that.state,_that.location,_that.instructions,_that.contactPhone);case _:
+return $default(_that.label,_that.line1,_that.area,_that.city,_that.state,_that.location,_that.instructions,_that.contactPhone,_that.id);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -3181,10 +3184,10 @@ return $default(_that.label,_that.line1,_that.area,_that.city,_that.state,_that.
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? label,  String line1,  String? area,  String city,  String state,  GeoPoint location,  String? instructions,  String? contactPhone)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String? label,  String line1,  String? area,  String city,  String state,  GeoPoint location,  String? instructions,  String? contactPhone, @JsonKey(includeToJson: false)  String? id)?  $default,) {final _that = this;
 switch (_that) {
 case _DeliveryAddress() when $default != null:
-return $default(_that.label,_that.line1,_that.area,_that.city,_that.state,_that.location,_that.instructions,_that.contactPhone);case _:
+return $default(_that.label,_that.line1,_that.area,_that.city,_that.state,_that.location,_that.instructions,_that.contactPhone,_that.id);case _:
   return null;
 
 }
@@ -3196,7 +3199,7 @@ return $default(_that.label,_that.line1,_that.area,_that.city,_that.state,_that.
 @JsonSerializable()
 
 class _DeliveryAddress implements DeliveryAddress {
-  const _DeliveryAddress({this.label, required this.line1, this.area, this.city = 'Lagos', this.state = 'Lagos', required this.location, this.instructions, this.contactPhone});
+  const _DeliveryAddress({this.label, required this.line1, this.area, this.city = 'Lagos', this.state = 'Lagos', required this.location, this.instructions, this.contactPhone, @JsonKey(includeToJson: false) this.id});
   factory _DeliveryAddress.fromJson(Map<String, dynamic> json) => _$DeliveryAddressFromJson(json);
 
 @override final  String? label;
@@ -3207,6 +3210,9 @@ class _DeliveryAddress implements DeliveryAddress {
 @override final  GeoPoint location;
 @override final  String? instructions;
 @override final  String? contactPhone;
+/// The id of an address saved in the customer's address book (`GET /v1/me/addresses`); never sent back with a
+/// quote or a saved address (the id goes in the path of `PUT /v1/me/addresses/{id}`).
+@override@JsonKey(includeToJson: false) final  String? id;
 
 /// Create a copy of DeliveryAddress
 /// with the given fields replaced by the non-null parameter values.
@@ -3221,18 +3227,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _DeliveryAddress&&(identical(other.label, label) || other.label == label)&&(identical(other.line1, line1) || other.line1 == line1)&&(identical(other.area, area) || other.area == area)&&(identical(other.city, city) || other.city == city)&&(identical(other.state, state) || other.state == state)&&(identical(other.location, location) || other.location == location)&&(identical(other.instructions, instructions) || other.instructions == instructions)&&(identical(other.contactPhone, contactPhone) || other.contactPhone == contactPhone));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _DeliveryAddress&&(identical(other.label, label) || other.label == label)&&(identical(other.line1, line1) || other.line1 == line1)&&(identical(other.area, area) || other.area == area)&&(identical(other.city, city) || other.city == city)&&(identical(other.state, state) || other.state == state)&&(identical(other.location, location) || other.location == location)&&(identical(other.instructions, instructions) || other.instructions == instructions)&&(identical(other.contactPhone, contactPhone) || other.contactPhone == contactPhone)&&(identical(other.id, id) || other.id == id));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,label,line1,area,city,state,location,instructions,contactPhone);
+    return Object.hash(runtimeType,label,line1,area,city,state,location,instructions,contactPhone,id);
 }
 
 @override
 String toString() {
-    return 'DeliveryAddress(label: $label, line1: $line1, area: $area, city: $city, state: $state, location: $location, instructions: $instructions, contactPhone: $contactPhone)';
+    return 'DeliveryAddress(label: $label, line1: $line1, area: $area, city: $city, state: $state, location: $location, instructions: $instructions, contactPhone: $contactPhone, id: $id)';
 }
 
 
@@ -3243,7 +3249,7 @@ abstract mixin class _$DeliveryAddressCopyWith<$Res> implements $DeliveryAddress
   factory _$DeliveryAddressCopyWith(_DeliveryAddress value, $Res Function(_DeliveryAddress) _then) = __$DeliveryAddressCopyWithImpl;
 @override @useResult
 $Res call({
- String? label, String line1, String? area, String city, String state, GeoPoint location, String? instructions, String? contactPhone
+ String? label, String line1, String? area, String city, String state, GeoPoint location, String? instructions, String? contactPhone,@JsonKey(includeToJson: false) String? id
 });
 
 
@@ -3260,7 +3266,7 @@ class __$DeliveryAddressCopyWithImpl<$Res>
 
 /// Create a copy of DeliveryAddress
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? label = freezed,Object? line1 = null,Object? area = freezed,Object? city = null,Object? state = null,Object? location = null,Object? instructions = freezed,Object? contactPhone = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? label = freezed,Object? line1 = null,Object? area = freezed,Object? city = null,Object? state = null,Object? location = null,Object? instructions = freezed,Object? contactPhone = freezed,Object? id = freezed,}) {
   return _then(_DeliveryAddress(
 label: freezed == label ? _self.label : label // ignore: cast_nullable_to_non_nullable
 as String?,line1: null == line1 ? _self.line1 : line1 // ignore: cast_nullable_to_non_nullable
@@ -3270,6 +3276,7 @@ as String,state: null == state ? _self.state : state // ignore: cast_nullable_to
 as String,location: null == location ? _self.location : location // ignore: cast_nullable_to_non_nullable
 as GeoPoint,instructions: freezed == instructions ? _self.instructions : instructions // ignore: cast_nullable_to_non_nullable
 as String?,contactPhone: freezed == contactPhone ? _self.contactPhone : contactPhone // ignore: cast_nullable_to_non_nullable
+as String?,id: freezed == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String?,
   ));
 }

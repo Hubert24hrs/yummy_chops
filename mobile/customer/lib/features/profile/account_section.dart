@@ -71,7 +71,7 @@ class _SaveAccountCardState extends ConsumerState<SaveAccountCard> {
             Text('Save your account', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
             Text(
-              "You're ordering as a guest. Save your account to keep your orders, addresses and points on any phone.",
+              "Save your account to keep your orders, addresses and points on any phone.",
               style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 12),

@@ -13,11 +13,17 @@ async def test_discovery_and_search(client):
     # 10 Lagos restaurants; beauty shops (vertical=beauty) and Enugu merchants are not in the food list near Lekki
     assert len(cards) == 10 and all(c["distance_km"] is not None for c in cards)
     assert {c["vertical"] for c in cards} == {"food"} and {c["city"] for c in cards} == {"lagos"}
-    assert cards[0]["is_featured"]
+    # Nearest first (owner, 2026-11-26): open shops by distance from the customer.
+    open_cards = [c for c in cards if c["is_open"] and c["is_accepting_orders"]]
+    steps = [round(c["distance_km"] * 2) / 2 for c in open_cards]
+    assert steps == sorted(steps) and cards[: len(open_cards)] == open_cards
     detail = (await client.get("/v1/restaurants/r-jollof-junction", params=LEKKI)).json()
     assert detail["sections"][0]["items"] and "r-jollof-junction-protein" in detail["option_groups"]
     found = (await client.get("/v1/search", params={"q": "jollof"})).json()
     assert {i["item"]["id"] for i in found["items"]} >= {"jj-party-jollof", "gb-jollof-quinoa"}
+    near = (await client.get("/v1/search", params={"q": "jollof", **LEKKI})).json()["items"]
+    in_stock = [i["distance_km"] for i in near if i["item"]["is_available"]]
+    assert in_stock and in_stock == sorted(in_stock)  # goods from the nearest shops come first
     prefix = (await client.get("/v1/search", params={"q": "shaw"})).json()
     assert any(i["item"]["id"] == "sr-chicken" for i in prefix["items"])
     assert (await client.get("/v1/restaurants/does-not-exist")).status_code == 404

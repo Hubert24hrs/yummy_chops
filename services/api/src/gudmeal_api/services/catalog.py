@@ -27,6 +27,8 @@ from ..domain.models import (
 )
 from ..domain.pricing import PricingConfig, delivery_fee, estimate_minutes
 from ..errors import NotFound, PermissionDenied, ValidationFailed
+from ..maps.models import CITY_RADIUS_KM as CITY_WIDE_KM
+from ..maps.models import shop_delivers_to
 from ..repositories import Repositories
 from ..security.rbac import Principal, require_restaurant
 
@@ -236,7 +238,9 @@ class CatalogService:
             distance = haversine_km(r.location, location)
             zone = cfg.zone_for(location)
             card.distance_km = round(distance, 2)
-            card.delivers_to_location = r.supports_delivery and distance <= r.delivery_radius_km
+            card.delivers_to_location = r.supports_delivery and shop_delivers_to(
+                r.location, r.delivery_radius_km, location
+            )
             card.eta_minutes = estimate_minutes(r.avg_prep_minutes, distance, cfg)
             if card.delivers_to_location:
                 card.delivery_fee_kobo = delivery_fee(distance, cfg, zone.surge_bps if zone else 10_000)
@@ -295,7 +299,7 @@ class CatalogService:
             card = await self._card(r, location, now, promotions, cfg)
             if open_now and not card.is_open:
                 continue
-            if location is not None and card.distance_km is not None and card.distance_km > 25:
+            if location is not None and card.distance_km is not None and card.distance_km > CITY_WIDE_KM:
                 continue
             cards.append(card)
             if r.business_id:
@@ -303,8 +307,12 @@ class CatalogService:
         cards = one_branch_each(cards, branch_of)
 
         def rec_key(c: RestaurantCard) -> tuple[Any, ...]:
+            # Nearest first when the customer's location is known (owner, 2026-11-26): open shops before closed
+            # ones, then by distance in half-kilometre steps, then featured and rating among shops that close.
+            near = round((c.distance_km or 0) * 2) / 2 if location is not None else 0
             return (
                 not (c.is_open and c.is_accepting_orders),
+                near,
                 not c.is_featured,
                 -(c.rating * min(1.0, c.rating_count / 50)),
                 c.distance_km or 0,
@@ -401,7 +409,20 @@ class CatalogService:
         restaurants = await self.list_restaurants(
             location=location, query=query, limit=10, vertical=vertical, city=city
         )
-        found = [(item, shop_for(item.restaurant_id)) for _, item in scored[:limit]]
+        found = [(score, item, shop_for(item.restaurant_id)) for score, item in scored[: max(limit, 60)]]
+
+        def away(shop: Restaurant) -> float | None:
+            return round(haversine_km(shop.location, location), 2) if location is not None else None
+
+        # Goods from the nearest shops come first (owner, 2026-11-26): items in stock at open shops, then by the
+        # shop's distance from the customer, then the best match. Without a location, the best match first.
+        found.sort(
+            key=lambda f: (
+                not (f[1].is_available and is_open(f[2].opening_hours, now) and f[2].is_accepting_orders),
+                away(f[2]) if location is not None else 0.0,
+                -f[0],
+            )
+        )
         return {
             "items": [
                 {
@@ -409,8 +430,9 @@ class CatalogService:
                     "restaurant_id": shop.id,
                     "restaurant_name": shop.name,
                     "vertical": shop.vertical.value,
+                    "distance_km": away(shop),
                 }
-                for item, shop in found
+                for _, item, shop in found[:limit]
             ],
             "restaurants": restaurants,
         }

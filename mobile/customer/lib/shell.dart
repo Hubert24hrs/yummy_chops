@@ -35,7 +35,11 @@ class AppShell extends ConsumerWidget {
         selectedIndex: shell.currentIndex,
         indicatorColor: Theme.of(context).colorScheme.primaryContainer,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        onDestinationSelected: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),
+        onDestinationSelected: (i) {
+          // Tapping Orders while on it reads the list again too (going to it from another tab does that by itself).
+          if (i == 2 && i == shell.currentIndex) ref.invalidate(myOrdersProvider);
+          shell.goBranch(i, initialLocation: i == shell.currentIndex);
+        },
         destinations: [
           const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Home'),
           const NavigationDestination(icon: Icon(Icons.search_rounded), selectedIcon: Icon(Icons.manage_search_rounded), label: 'Discover'),

@@ -985,7 +985,12 @@ def mixed_cart_one_payment() -> None:
     ledger_balanced()
 
 
-def deliver_trip(orders: dict[str, dict], staff: dict[str, tuple[str, str]], who: str = "customer") -> None:
+def deliver_trip(
+    orders: dict[str, dict],
+    staff: dict[str, tuple[str, str]],
+    who: str = "customer",
+    phone: str | None = None,
+) -> None:
     """ADR-0031: one rider collects every shop's order of a mixed cart, by the planned route, then delivers them
     all with the customer's one code."""
     for shop, order in orders.items():
@@ -1030,6 +1035,8 @@ def deliver_trip(orders: dict[str, dict], staff: dict[str, tuple[str, str]], who
         "the rider gets a Google Maps link for the whole route",
         "google.com/maps/dir" in trip["navigation_url"],
     )
+    if phone:
+        check(f"the rider sees the customer's phone ({phone})", stops[-1].get("phone") == phone, stops[-1])
     for stop in stops[:-1]:
         shop = next(k for k, o in orders.items() if o["id"] == stop["order_id"])
         shop_step(f"/v1/partner/restaurants/{shop}/orders/{stop['order_id']}", "ready", staff[shop][1])
@@ -1049,6 +1056,87 @@ def deliver_trip(orders: dict[str, dict], staff: dict[str, tuple[str, str]], who
             final = get_order(oid, who)
         check(f"order {oid[:6]} delivered and completed", final["status"] == "completed", final["status"])
     check("the trip is finished", call("GET", "/v1/rider/trip", rider)["trips"] == [])
+
+
+@flow
+def guest_mixed_cart_far_away() -> None:
+    """The owner's phone test (2026-11-26): a guest (no sign-in) in Ikeja, ~19 km from the Lekki shops, buys from
+    three shops, must give a phone number, pays once, sees the orders in Orders; the rider sees the customer's phone"""
+    riders_online()
+    r = httpx.post(
+        f"http://{EMULATOR}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=demo-key",
+        json={"returnSecureToken": True},
+        timeout=20,
+    )
+    TOKENS["guest"] = r.json()["idToken"]
+    check("a guest gets in without signing in", call("GET", "/v1/me", "guest") is not None)
+    beauty = items_of(call("GET", "/v1/restaurants", params={"city": "lagos", "vertical": "beauty"}))[0]["id"]
+    pharmacy = "p-carefirst"
+    ensure_accounts(beauty_shop=pharmacy)
+    ensure_accounts(beauty_shop=beauty)
+    for shop in (pharmacy, beauty):
+        open_all_day(shop, "beauty")
+    ikeja = {"line1": "12 Allen Avenue", "area": "Ikeja", "location": {"lat": 6.6018, "lng": 3.3515}}
+    cart = {
+        JJ: JJ_LINES,
+        pharmacy: [line_for(call("GET", f"/v1/restaurants/{pharmacy}"), "cf-vitamin-c-20", 1)],
+        beauty: [first_orderable_line(call("GET", f"/v1/restaurants/{beauty}"))],
+    }
+    quotes = {}
+    for shop, lines in cart.items():
+        body = {"restaurant_id": shop, "lines": lines, "fulfillment": "delivery", "delivery_address": ikeja}
+        quotes[shop] = call("POST", "/v1/quotes", "guest", body, expect=(201, 409))
+    check(
+        "every shop delivers to Ikeja (anywhere in Lagos), ~19 km away",
+        all("error" not in q for q in quotes.values()),
+        {s: q.get("error") for s, q in quotes.items()},
+    )
+    first = next(iter(quotes.values()))
+    refused = call(
+        "POST",
+        "/v1/orders",
+        "guest",
+        {"quote_id": first["id"], "channel": "app"},
+        expect=(400, 422),
+        idem=True,
+    )
+    check(
+        "no phone number: the order is refused with a clear message", "phone" in str(refused).lower(), refused
+    )
+    phone = "+2348031234567"
+    orders = {
+        shop: call(
+            "POST",
+            "/v1/orders",
+            "guest",
+            {"quote_id": q["id"], "channel": "app", "contact_phone": phone},
+            expect=201,
+            idem=True,
+        )
+        for shop, q in quotes.items()
+    }
+    t0 = time.time()
+    co = call("POST", "/v1/checkouts", "guest", {"order_ids": [o["id"] for o in orders.values()]}, idem=True)
+    complete_sandbox(co)
+    paid = call("POST", "/v1/payments/verify", "guest", {"reference": co["reference"]})
+    check(
+        f"one payment for 3 shops, confirmed in {time.time() - t0:.1f} s",
+        paid.get("status") == "succeeded" and time.time() - t0 < 10,
+        paid,
+    )
+    listed = {o["id"]: o["status"] for o in items_of(call("GET", "/v1/orders", "guest"))}
+    check(
+        "the guest's Orders lists all three orders, in progress",
+        all(listed.get(o["id"]) not in (None, "draft", "pending_payment") for o in orders.values()),
+        listed,
+    )
+    deliver_trip(
+        orders,
+        {JJ: ("kitchen", "owner"), pharmacy: ("beauty", "beauty"), beauty: ("beauty", "beauty")},
+        who="guest",
+        phone=phone,
+    )
+    ledger_balanced()
 
 
 @flow

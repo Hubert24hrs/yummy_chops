@@ -24,7 +24,11 @@ Future<void> main() async {
   if (config.useEmulators) {
     await connectAuthEmulator(FirebaseAuth.instance, config.emulatorHost, port: config.emulatorPort);
   }
-  final auth = FirebaseAuthRepository(FirebaseAuth.instance, usingEmulator: config.useEmulators);
+  final auth = FirebaseAuthRepository(
+    FirebaseAuth.instance,
+    usingEmulator: config.useEmulators,
+    googleWebClientId: config.googleWebClientId,
+  );
   // What the app keeps in memory belongs to the signed-in rider: it all starts afresh when they sign out.
   runApp(PerUserScope(
     auth: auth,

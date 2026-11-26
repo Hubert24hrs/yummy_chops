@@ -138,6 +138,9 @@ abstract class DeliveryAddress with _$DeliveryAddress {
     required GeoPoint location,
     String? instructions,
     String? contactPhone,
+    /// The id of an address saved in the customer's address book (`GET /v1/me/addresses`); never sent back with a
+    /// quote or a saved address (the id goes in the path of `PUT /v1/me/addresses/{id}`).
+    @JsonKey(includeToJson: false) String? id,
   }) = _DeliveryAddress;
   factory DeliveryAddress.fromJson(Map<String, dynamic> json) => _$DeliveryAddressFromJson(json);
 }

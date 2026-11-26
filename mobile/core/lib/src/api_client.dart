@@ -506,6 +506,8 @@ class GudMealApi {
 
   Future<List<DeliveryAddress>> addresses() => _call(() => _dio.get('/v1/me/addresses'), (d) => _list(d).map(DeliveryAddress.fromJson).toList());
   Future<void> saveAddress(DeliveryAddress a) => _call(() => _dio.post('/v1/me/addresses', data: a.toJson()), (_) {});
+  /// Changes an address already in the address book (for example the phone number the rider calls).
+  Future<void> updateAddress(String id, DeliveryAddress a) => _call(() => _dio.put('/v1/me/addresses/$id', data: a.toJson()), (_) {});
   Future<void> registerDevice(String token, String platform) =>
       _call(() => _dio.post('/v1/me/devices', data: {'token': token, 'platform': platform}), (_) {});
 

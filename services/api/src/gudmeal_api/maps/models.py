@@ -54,6 +54,15 @@ class RouteEstimate(BaseModel):
     source: RouteSource
 
 
+def shop_delivers_to(shop_location: GeoPoint, radius_km: float, point: GeoPoint) -> bool:
+    """Every shop delivers anywhere in its own city (owner's decision, 2026-11-26); a shop's own radius only
+    matters outside the cities Yummy Chops serves."""
+    city = served_city(shop_location)
+    if city is not None and city == served_city(point):
+        return True
+    return haversine_km(shop_location, point) <= radius_km
+
+
 def served_city(point: GeoPoint) -> str | None:
     """The Yummy Chops city a point belongs to (nearest centre within ``CITY_RADIUS_KM``), if any."""
     best: tuple[float, str] | None = None

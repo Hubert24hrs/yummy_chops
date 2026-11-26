@@ -59,6 +59,8 @@ for (const app of toBuild) {
     `--dart-define=FIREBASE_APP_ID=${app.appId}`,
     `--dart-define=FIREBASE_PROJECT_ID=${env.FIREBASE_PROJECT_ID}`,
     `--dart-define=FIREBASE_SENDER_ID=${env.FIREBASE_SENDER_ID}`,
+    // Google sign-in through Android's account picker (no browser page): the project's web OAuth client (public).
+    ...(env.GOOGLE_WEB_CLIENT_ID ? [`--dart-define=GOOGLE_WEB_CLIENT_ID=${env.GOOGLE_WEB_CLIENT_ID}`] : []),
     ...(env.MAPS_ANDROID_KEY ? ["--dart-define=MAPS_ENABLED=true"] : []),
     ...(universal ? [] : ["--target-platform", "android-arm64"]),
   ], {

@@ -10,12 +10,58 @@ import '../cart/cart_controller.dart';
 
 const _active = activeOrderStatuses;
 
-/// Orders: in-progress tracking, the cart you haven't finished, history and what you've spent.
-class OrdersScreen extends ConsumerWidget {
+/// Orders: in-progress tracking, the cart you haven't finished, history and what you've spent. The list is read
+/// again each time the tab shows and when the app comes back to the front (a list read once, when there were no
+/// orders yet, stayed empty after paying).
+class OrdersScreen extends ConsumerStatefulWidget {
   const OrdersScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<OrdersScreen> createState() => _OrdersScreenState();
+}
+
+class _OrdersScreenState extends ConsumerState<OrdersScreen> with WidgetsBindingObserver {
+  /// Whether the tab is the one on screen: the tab shell keeps the other tabs alive with their tickers off.
+  bool? _shown;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final shown = TickerMode.valuesOf(context).enabled;
+    // Shown again after another tab: read the list again (the first time it is read anyway).
+    if (shown && _shown == false) {
+      // Not while the tree is being built: the list's other readers rebuild with it.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _refresh();
+      });
+    }
+    _shown = shown;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _shown != false) _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  void _refresh() {
+    ref.invalidate(myOrdersProvider);
+    ref.invalidate(orderSummaryProvider);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     // No sign-in here: the app has signed in a guest (or the customer) before this tab shows (GuestGate in app.dart).
     final theme = Theme.of(context);
     return DefaultTabController(
@@ -37,7 +83,7 @@ class _InProgress extends ConsumerWidget {
     final orders = ref.watch(myOrdersProvider);
     final cart = ref.watch(cartProvider);
     return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(myOrdersProvider),
+      onRefresh: () => ref.refresh(myOrdersProvider.future).then((_) {}, onError: (_) {}),
       child: ListView(padding: const EdgeInsets.only(top: 8, bottom: 96), children: [
         orders.when(
           loading: () => const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())),
@@ -75,8 +121,8 @@ class _History extends ConsumerWidget {
     final summary = ref.watch(orderSummaryProvider);
     return RefreshIndicator(
       onRefresh: () async {
-        ref.invalidate(myOrdersProvider);
         ref.invalidate(orderSummaryProvider);
+        await ref.refresh(myOrdersProvider.future).then((_) {}, onError: (_) {});
       },
       child: ListView(padding: const EdgeInsets.only(top: 8, bottom: 96), children: [
         summary.when(

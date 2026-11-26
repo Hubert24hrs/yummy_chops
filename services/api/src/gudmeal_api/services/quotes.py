@@ -34,6 +34,7 @@ from ..errors import (
     VoucherInvalid,
 )
 from ..maps import MapsService, RouteEstimate
+from ..maps.models import shop_delivers_to
 from ..repositories import Repositories
 from ..security.rbac import Principal
 
@@ -154,7 +155,9 @@ class QuoteService:
         if req.fulfillment == Fulfillment.DELIVERY:
             assert req.delivery_address is not None
             distance = haversine_km(restaurant.location, req.delivery_address.location)
-            if distance > restaurant.delivery_radius_km:
+            if not shop_delivers_to(
+                restaurant.location, restaurant.delivery_radius_km, req.delivery_address.location
+            ):
                 raise OutOfDeliveryArea(
                     f"{restaurant.name} does not deliver to this address",
                     details={"distance_km": round(distance, 2), "radius_km": restaurant.delivery_radius_km},

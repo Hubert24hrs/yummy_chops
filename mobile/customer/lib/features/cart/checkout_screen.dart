@@ -4,14 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gud_meal_core/gud_meal_core.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers.dart';
 import '../../ui/components.dart' show kmBetween;
 import '../../ui/gm_map.dart';
 import '../../ui/payment_picker.dart';
 import '../location/address_picker.dart';
+import '../orders/payment_watch.dart';
 import 'cart_controller.dart';
+import 'contact_phone.dart';
 import 'widgets/cart_widgets.dart';
 import 'widgets/checkout_sheets.dart';
 import 'widgets/order_summary.dart';
@@ -39,6 +40,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
   /// Applied voucher code ('' = none): typing in the field changes nothing until "Apply".
   String _appliedVoucher = '';
+
+  /// The number the rider calls, as typed. Required for delivery (the rider must be able to reach the customer);
+  /// filled in from the address, the number used last time, the Home address or the account.
   String? _phone;
   String? _allergies;
 
@@ -88,9 +92,42 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    _phone = initialContactPhone(
+      remembered: ref.read(contactPhoneStoreProvider).phone,
+      account: ref.read(authRepositoryProvider).currentUser?.phone,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _getQuote();
+      if (!mounted) return;
+      _getQuote();
+      if (_phone == null) _phoneFromAddressBook();
     });
+  }
+
+  /// No number on this phone or the account: the Home address may have one.
+  Future<void> _phoneFromAddressBook() async {
+    List<DeliveryAddress> saved;
+    try {
+      saved = await ref.read(addressesProvider.future);
+    } catch (_) {
+      return;
+    }
+    if (!mounted || _phone != null) return;
+    final phone = initialContactPhone(saved: saved);
+    if (phone == null) return;
+    _phone = phone;
+    _changed(now: true); // the number goes on the delivery address of the quote
+  }
+
+  /// The number in E.164 (+234...), or null while it is missing or not a Nigerian phone number.
+  String? get _contactPhone => riderContactPhone(_phone);
+
+  /// Delivery needs a number the rider can call; pickup does not.
+  bool get _phoneOk => _fulfillment != 'delivery' || _contactPhone != null;
+
+  /// Why "Pay to order" waits for the phone number, or null.
+  String? get _phoneProblem {
+    if (_phoneOk) return null;
+    return (_phone ?? '').trim().isEmpty ? missingPhoneMessage : invalidPhoneMessage;
   }
 
   @override
@@ -159,12 +196,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     if (picked != null) {
       return picked.address.copyWith(
         line1: line1,
-        contactPhone: _phone ?? picked.address.contactPhone,
+        contactPhone: _contactPhone ?? picked.address.contactPhone,
         instructions: _instructions ?? picked.address.instructions,
       );
     }
     final area = ref.read(areaProvider);
-    return DeliveryAddress(line1: line1, area: area.name, location: area.location, contactPhone: _phone, instructions: _instructions);
+    return DeliveryAddress(line1: line1, area: area.name, location: area.location, contactPhone: _contactPhone, instructions: _instructions);
   }
 
   Future<void> _pickAddress() async {
@@ -258,6 +295,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   String get _payLabel => _method == PayMethod.cash ? 'Place order' : 'Pay to order';
 
   Future<void> _onPayPressed() async {
+    if (!_phoneOk) {
+      setState(() => _payError = _phoneProblem);
+      return;
+    }
     if (_far) {
       final choice = await showFarAddressSheet(context, address: _addressTitle, payLabel: _payLabel);
       if (!mounted || choice == null) return;
@@ -278,7 +319,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     });
     try {
       final api = ref.read(apiProvider);
-      final phone = _phone;
+      final phone = _contactPhone;
+      if (_fulfillment == 'delivery' && phone == null) {
+        setState(() => _payError = missingPhoneMessage);
+        return;
+      }
       // One order per shop. Each key goes with its price and this phone number: a retry keeps it, a changed
       // order gets a new one.
       final ids = <String>[];
@@ -294,6 +339,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           .send(ids.join(','), (key) => api.checkoutMany(ids, key, provider: _method.provider));
       ref.read(cartProvider.notifier).clear();
       ref.invalidate(walletProvider);
+      // The new orders are on Orders straight away (an earlier, empty list is not kept).
+      ref.invalidate(myOrdersProvider);
+      if (phone != null) unawaited(rememberContactPhone(ref, phone, deliveredTo: _fulfillment == 'delivery' ? _picked?.address : null));
       final first = ids.first;
       final url = checkout.authorizationUrl;
       if (url == null) {
@@ -308,10 +356,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         }
         return;
       }
-      // Provider-hosted payment page: card data never touches the app. The order screen verifies the reference,
-      // which marks every order of this payment paid.
-      await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
-      if (mounted) context.go('/orders/$first?ref=${checkout.reference}');
+      // Provider-hosted payment page, inside the app: card data never touches the app. The order screen behind it
+      // asks the server about the reference every 2 s, which marks every order of this payment paid, then closes
+      // the page by itself.
+      await ref.read(paymentPageProvider).open(Uri.parse(url));
+      if (mounted) context.go('/orders/$first?ref=${checkout.reference}${ids.length > 1 ? '&many=1' : ''}');
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _payError = e.message);
@@ -457,14 +506,24 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       ]),
       bottomNavigationBar: StickyBottomBar(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (_payError != null)
+          if (_payError != null && _payError != _phoneProblem)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(_payError!, style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.w600)),
             ),
+          if (_phoneProblem != null && quotes != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: TextButton.icon(
+                key: const ValueKey('checkout-pay-needs-phone'),
+                onPressed: _busy ? null : _editPhone,
+                icon: const Icon(Icons.phone_iphone_rounded),
+                label: Text(_phoneProblem!, textAlign: TextAlign.center),
+              ),
+            ),
           FilledButton(
             key: const ValueKey('checkout-pay'),
-            onPressed: _busy || quotes == null || _quoting ? null : _onPayPressed,
+            onPressed: _busy || quotes == null || _quoting || !_phoneOk ? null : _onPayPressed,
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
             child: Text(_busy ? 'Please wait…' : _payLabel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           ),
@@ -564,25 +623,35 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         icon: Icons.phone_iphone_rounded,
         title: 'Phone number',
         subtitle: _phone ?? 'Add your phone number',
-        onTap: _busy
-            ? null
-            : () async {
-                final text = await showTextFieldSheet(
-                  context,
-                  title: 'Phone number',
-                  body: 'The rider calls this number if they cannot find you.',
-                  label: 'Phone number',
-                  initial: _phone,
-                  maxLength: 20,
-                  maxLines: 1,
-                  keyboardType: TextInputType.phone,
-                );
-                if (text == null || !mounted) return;
-                // The number goes with the order, not the price: no new quote (a new number is a new order key).
-                setState(() => _phone = text.isEmpty ? null : text);
-              },
+        onTap: _busy ? null : _editPhone,
       ),
+      if (_phoneProblem != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          child: Text(_phoneProblem!,
+              key: const ValueKey('checkout-phone-error'), style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.w600)),
+        ),
     ];
+  }
+
+  Future<void> _editPhone() async {
+    final text = await showTextFieldSheet(
+      context,
+      title: 'Phone number',
+      body: 'The rider calls this number if they cannot find you.',
+      label: 'Phone number',
+      initial: _phone,
+      maxLength: 20,
+      maxLines: 1,
+      keyboardType: TextInputType.phone,
+    );
+    if (text == null || !mounted) return;
+    final phone = text.trim().isEmpty ? null : text.trim();
+    if (phone == _phone) return;
+    _phone = phone;
+    // The number is on the delivery address of the quote, so the price is asked for again (and a new number is a
+    // new order, with a new key).
+    _changed(now: true);
   }
 
   Widget _timeOptions(BuildContext context) {

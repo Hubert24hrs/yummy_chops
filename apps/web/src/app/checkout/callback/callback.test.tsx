@@ -118,6 +118,21 @@ describe("payment return page", () => {
     expect(screen.queryByText(/not been charged|amount_mismatch/)).toBeNull();
   });
 
+  it("asks again every 2 s while the payment is still pending, then opens the orders", async () => {
+    auth.user = { uid: "cust-1" };
+    window.sessionStorage.setItem("gudmeal.checkout.orders.v1", JSON.stringify({ reference: "YC-ABC123", orderIds: ["o1", "o2"] }));
+    verify
+      .mockResolvedValueOnce({ status: "pending", order_id: "o1", purpose: "order" })
+      .mockResolvedValueOnce({ status: "pending", order_id: "o1", purpose: "order" })
+      .mockResolvedValue({ status: "succeeded", order_id: "o1", purpose: "order" });
+    show();
+    expect(await screen.findByRole("heading", { name: "Confirming your payment…" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Payment not completed" })).toBeNull();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/orders"), { timeout: 6000 });
+    expect(verify).toHaveBeenCalledTimes(3);
+    window.sessionStorage.clear();
+  });
+
   it("when the check itself fails, says so, offers to try again and never says “not charged”", async () => {
     auth.user = { uid: "cust-1" };
     verify.mockRejectedValueOnce(new Error("We couldn't reach Yummy Chops. Check your connection and try again."));

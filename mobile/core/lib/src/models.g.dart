@@ -252,6 +252,7 @@ _DeliveryAddress _$DeliveryAddressFromJson(Map<String, dynamic> json) =>
       location: GeoPoint.fromJson(json['location'] as Map<String, dynamic>),
       instructions: json['instructions'] as String?,
       contactPhone: json['contact_phone'] as String?,
+      id: json['id'] as String?,
     );
 
 Map<String, dynamic> _$DeliveryAddressToJson(_DeliveryAddress instance) =>

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gud_meal_core/gud_meal_core.dart';
 
 import 'app.dart';
+import 'features/cart/contact_phone.dart';
 import 'features/security/app_lock.dart';
 import 'maps_loader.dart';
 import 'providers.dart';
@@ -31,9 +32,15 @@ Future<void> main() async {
   if (mapsEnabled && kIsWeb) {
     googleMapsReady = await loadGoogleMapsScript(const String.fromEnvironment('MAPS_BROWSER_KEY'));
   }
-  final auth = FirebaseAuthRepository(FirebaseAuth.instance, usingEmulator: config.useEmulators);
+  final auth = FirebaseAuthRepository(
+    FirebaseAuth.instance,
+    usingEmulator: config.useEmulators,
+    googleWebClientId: config.googleWebClientId,
+  );
   // Read before the first frame, so "Unlock with fingerprint" covers the app before anything shows.
   final appLock = await SharedPrefsAppLockStore.open();
+  // The phone number used at the last checkout fills in the next one.
+  final contactPhone = await SharedPrefsContactPhoneStore.open();
   // What the app keeps in memory belongs to the signed-in customer: it all starts afresh when they sign out.
   runApp(PerUserScope(
     auth: auth,
@@ -42,6 +49,7 @@ Future<void> main() async {
         configProvider.overrideWithValue(config),
         authRepositoryProvider.overrideWithValue(auth),
         appLockStoreProvider.overrideWithValue(appLock),
+        contactPhoneStoreProvider.overrideWithValue(contactPhone),
       ],
       child: const GudMealApp(),
     ),

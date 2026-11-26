@@ -142,7 +142,8 @@ final restaurantDetailProvider =FutureProvider.family<RestaurantDetail, String>(
 });
 
 // ------------------------------------------------------------------------------------------ me
-/// Statuses of an order that is still on its way (the Orders tab's "In progress").
+/// Statuses of an order that is still on its way (the Orders tab's "In progress"): every `OrderStatus` of the API
+/// (`domain/order_state.py`) except draft, completed, cancelled, refunded and partially refunded.
 const activeOrderStatuses = {
   'pending_payment', 'paid', 'submitted_to_restaurant', 'restaurant_accepted', 'preparing',
   'ready_for_pickup', 'rider_assigned', 'picked_up', 'in_transit', 'delivered', 'disputed', 'refund_pending',
@@ -150,8 +151,10 @@ const activeOrderStatuses = {
 
 /// How often the orders list looks again while an order is in progress: its status moves on without the customer
 /// doing anything (paid, accepted, picked up...), so a list read once would go stale.
-const ordersRefreshInterval = Duration(seconds: 15);
+const ordersRefreshInterval = Duration(seconds: 10);
 
+/// The customer's orders. Read again whenever the Orders tab shows, when the app comes back to the front, right
+/// after a checkout, every [ordersRefreshInterval] while one is in progress, and on pull-to-refresh.
 final myOrdersProvider = FutureProvider<List<Order>>((ref) async {
   final orders = await ref.watch(apiProvider).myOrders();
   if (orders.any((o) => activeOrderStatuses.contains(o.status))) {

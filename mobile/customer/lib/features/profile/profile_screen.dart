@@ -64,8 +64,10 @@ class ProfileScreen extends ConsumerWidget {
                             name ?? 'Welcome to Yummy Chops',
                             style: theme.textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w900),
                           ),
-                          const SizedBox(height: 2),
-                          Text(guest ? "You're ordering as a guest" : (user.email ?? user.phone ?? ''), style: const TextStyle(color: Colors.white)),
+                          if (!guest) ...[
+                            const SizedBox(height: 2),
+                            Text(user.email ?? user.phone ?? '', style: const TextStyle(color: Colors.white)),
+                          ],
                         ],
                       ),
                     ),

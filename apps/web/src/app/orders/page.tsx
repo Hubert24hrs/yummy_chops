@@ -12,10 +12,14 @@ import { useApi } from "@/lib/api";
 import { useCart } from "@/lib/cart";
 import { SERVICE_NAMES as SERVICE, serviceCopy } from "@/lib/services";
 
+/** Every status of an order still on its way (the API's `OrderStatus` without draft, completed, cancelled and refunds). */
 const ACTIVE = new Set([
   "pending_payment", "paid", "submitted_to_restaurant", "restaurant_accepted", "preparing", "ready_for_pickup",
   "rider_assigned", "picked_up", "in_transit", "delivered", "disputed", "refund_pending",
 ]);
+
+/** How often the list looks again while an order is in progress: its status moves on by itself. */
+const ORDERS_REFRESH_MS = 10_000;
 
 export default function OrdersPage() {
   return <RequireAuth><Orders /></RequireAuth>;
@@ -24,8 +28,16 @@ export default function OrdersPage() {
 function Orders() {
   const api = useApi();
   const [tab, setTab] = useState<"progress" | "history">("progress");
-  const orders = useQuery({ queryKey: ["orders"], queryFn: () => api.orders.list(50) });
-  const summary = useQuery({ queryKey: ["order-summary"], queryFn: () => api.orders.summary() });
+  // Always read again when the page opens and when the customer comes back to the tab (an empty answer from before
+  // paying was kept), and every 10 s while an order is in progress.
+  const orders = useQuery({
+    queryKey: ["orders"], queryFn: () => api.orders.list(50),
+    staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: true,
+    refetchInterval: (q) => (q.state.data?.some((o) => ACTIVE.has(o.status)) ? ORDERS_REFRESH_MS : false),
+  });
+  const summary = useQuery({
+    queryKey: ["order-summary"], queryFn: () => api.orders.summary(), staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: true,
+  });
   const { cart, shops, count, subtotalKobo } = useCart();
   const list = (orders.data ?? []).filter((o) => (tab === "progress" ? ACTIVE.has(o.status) : !ACTIVE.has(o.status)));
 

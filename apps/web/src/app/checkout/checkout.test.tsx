@@ -21,6 +21,7 @@ const quoteFor = (req: QuoteRequest): Quote => ({
   estimated_delivery_at: "2026-11-24T12:30:00Z", scheduled_for: req.scheduled_for ?? null, created_at: "2026-11-24T12:00:00Z", expires_at: "2026-11-24T12:10:00Z",
 });
 const api = {
+  request: vi.fn(async (_method: string, _path: string, _init?: { body?: unknown }) => ({})),
   me: { addresses: vi.fn(async () => [] as object[]), addAddress: vi.fn(async (a: object) => ({ id: "a1", ...a })) },
   rewards: { vouchers: vi.fn(async () => [] as object[]) },
   wallet: { get: vi.fn(async () => ({ enabled: true, balance_kobo: 0 })) },
@@ -50,8 +51,7 @@ const { default: CheckoutPage } = await import("./page");
 const { CartProvider } = await import("@/lib/cart");
 const { LocationProvider } = await import("@/lib/location");
 
-function show() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+function show(qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })) {
   return render(
     <QueryClientProvider client={qc}><LocationProvider><CartProvider><CheckoutPage /></CartProvider></LocationProvider></QueryClientProvider>,
   );
@@ -70,7 +70,9 @@ const line = (restaurant_id: string, restaurant_name: string, item_id: string, n
   selections: [], selection_labels: [], ...(notes ? { notes } : {}),
 });
 const saveCart = (items: ReturnType<typeof line>[]) => window.localStorage.setItem("gudmeal.cart.v2", JSON.stringify({ items }));
-const home = { id: "a1", label: "Home", line1: "5 Admiralty Way", area: "Lekki Phase 1", location: { lat: 6.4478, lng: 3.4723 } };
+const home = {
+  id: "a1", label: "Home", line1: "5 Admiralty Way", area: "Lekki Phase 1", location: { lat: 6.4478, lng: 3.4723 }, contact_phone: "08030000000",
+};
 
 /** Opens a row's sheet, fills it in, then closes it with its own button. */
 function inSheet(row: RegExp, fill: () => void, done = /^(Save|Done)$/) {
@@ -130,11 +132,11 @@ describe("checkout", () => {
 
     await waitFor(() => expect(api.orders.quote).toHaveBeenCalled(), ready);
     await waitFor(() => expect(payButton().disabled).toBe(false), ready);
-    // One request for the finished address, not one for each letter; the phone number asks for none.
+    // One request for the finished address and phone number, not one for each letter.
     expect(api.orders.quote).toHaveBeenCalledTimes(1);
     expect(api.orders.quote.mock.calls[0]![0].delivery_address).toEqual({
       line1: "12 Ogui Road", area: "Independence Layout", city: "Enugu", state: "Enugu",
-      location: { lat: 6.4473, lng: 7.5214 }, instructions: "Blue gate",
+      location: { lat: 6.4473, lng: 7.5214 }, instructions: "Blue gate", contact_phone: "+2348030000000",
     });
     expect(api.orders.quote.mock.calls[0]![0].scheduled_for).toBeNull();
     // The address shows on the page, with the summary and the total.
@@ -144,8 +146,56 @@ describe("checkout", () => {
 
     fireEvent.click(payButton());
     await waitFor(() => expect(push).toHaveBeenCalledWith("/orders/o1"));
-    expect(api.orders.create).toHaveBeenCalledWith("q1", expect.stringMatching(/^order-/), "web", "08030000000");
-    expect(api.me.addAddress).toHaveBeenCalledWith(expect.objectContaining({ line1: "12 Ogui Road", contact_phone: "08030000000", label: "Saved at checkout" }));
+    expect(api.orders.create).toHaveBeenCalledWith("q1", expect.stringMatching(/^order-/), "web", "+2348030000000");
+    expect(api.me.addAddress).toHaveBeenCalledWith(expect.objectContaining({ line1: "12 Ogui Road", contact_phone: "+2348030000000", label: "Saved at checkout" }));
+  });
+
+  it("delivery needs a phone number: Pay waits for it, then it goes with the order and the quote and is remembered", async () => {
+    api.me.addresses.mockResolvedValue([{ ...home, contact_phone: null }]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    show(qc);
+    await waitFor(() => expect(api.orders.quote).toHaveBeenCalled(), ready);
+    expect(await screen.findByText("Total to pay")).toBeTruthy();
+    expect(screen.getByTestId("phone-problem").textContent).toBe("Add a phone number so the rider can call you");
+    expect(payButton().disabled).toBe(true);
+
+    // Not a Nigerian number: still waiting.
+    inSheet(/Phone number/, () => type("Phone number", "12345"));
+    expect(screen.getByTestId("phone-problem").textContent).toMatch(/Enter a Nigerian phone number/);
+    expect(payButton().disabled).toBe(true);
+
+    // The tip under the total opens the same sheet.
+    fireEvent.click(screen.getByRole("button", { name: /Enter a Nigerian phone number/ }));
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "0803 123 4567" } });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }));
+    expect(screen.queryByTestId("phone-problem")).toBeNull();
+    await waitFor(() => expect(payButton().disabled).toBe(false), ready);
+    expect(api.orders.quote.mock.calls.at(-1)![0].delivery_address).toEqual(expect.objectContaining({ id: "a1", contact_phone: "+2348031234567" }));
+
+    fireEvent.click(payButton());
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/orders/o1"));
+    expect(api.orders.create).toHaveBeenCalledWith(expect.any(String), expect.any(String), "web", "+2348031234567");
+    // The Orders list is read again, and the number fills in the next checkout.
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["orders"] });
+    expect(window.localStorage.getItem("gudmeal.contact-phone.v1")).toBe("+2348031234567");
+    await waitFor(() => expect(api.request).toHaveBeenCalledWith("PUT", "/v1/me/addresses/a1", {
+      body: expect.objectContaining({ line1: "5 Admiralty Way", contact_phone: "+2348031234567" }),
+    }));
+    expect(api.request.mock.calls[0]![2]!.body).not.toHaveProperty("id");
+  });
+
+  it("fills the phone number in from this browser or the saved address", async () => {
+    window.localStorage.setItem("gudmeal.contact-phone.v1", "+2348035550000");
+    show();
+    expect(await screen.findByRole("button", { name: /Phone number\s*\+2348035550000/ })).toBeTruthy();
+    cleanup();
+    window.localStorage.removeItem("gudmeal.contact-phone.v1");
+
+    api.me.addresses.mockResolvedValue([home]);
+    show();
+    expect(await screen.findByRole("button", { name: /Phone number\s*08030000000/ })).toBeTruthy();
+    expect(screen.queryByTestId("phone-problem")).toBeNull();
   });
 
   it("asks again with a new key after the API refused, and with the same key after a network error", async () => {

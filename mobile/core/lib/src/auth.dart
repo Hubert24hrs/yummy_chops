@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class GmUser {
   const GmUser({required this.uid, this.email, this.name, this.phone, this.isAnonymous = false});
@@ -77,8 +78,29 @@ Future<void> connectAuthEmulator(fb.FirebaseAuth auth, String host, {int port = 
 }
 
 class FirebaseAuthRepository implements AuthRepository {
-  FirebaseAuthRepository(this._auth, {this.usingEmulator = false});
+  FirebaseAuthRepository(this._auth, {this.usingEmulator = false, this.googleWebClientId = ''});
   final fb.FirebaseAuth _auth;
+
+  /// See `AppConfig.googleWebClientId`: phones then use the native Google account picker.
+  final String googleWebClientId;
+  bool _googleReady = false;
+
+  bool get _nativeGoogle => !kIsWeb && !usingEmulator && googleWebClientId.isNotEmpty;
+
+  /// The phone's own Google account picker (Credential Manager): an ID token for Firebase, no browser page.
+  Future<fb.AuthCredential> _nativeGoogleCredential() async {
+    final google = GoogleSignIn.instance;
+    if (!_googleReady) {
+      await google.initialize(serverClientId: googleWebClientId);
+      _googleReady = true;
+    }
+    final account = await google.authenticate();
+    final idToken = account.authentication.idToken;
+    if (idToken == null) {
+      throw fb.FirebaseAuthException(code: 'missing-id-token', message: 'Google did not return a sign-in token');
+    }
+    return fb.GoogleAuthProvider.credential(idToken: idToken);
+  }
 
   /// Connected to the local Auth emulator (local testing), not to Firebase.
   final bool usingEmulator;
@@ -180,6 +202,8 @@ class FirebaseAuthRepository implements AuthRepository {
   Future<void> signInWithGoogle({String? testEmail}) async {
     if (usingEmulator) {
       await _auth.signInWithCredential(_testGoogleCredential(testEmail));
+    } else if (_nativeGoogle) {
+      await _auth.signInWithCredential(await _nativeGoogleCredential());
     } else {
       await _signInWithProvider(fb.GoogleAuthProvider());
     }
@@ -189,8 +213,11 @@ class FirebaseAuthRepository implements AuthRepository {
   Future<void> signInAnonymously() => _auth.signInAnonymously();
 
   @override
-  Future<LinkOutcome> linkWithGoogle({String? testEmail}) =>
-      usingEmulator ? _linkCredential(_testGoogleCredential(testEmail)) : _linkProvider(fb.GoogleAuthProvider());
+  Future<LinkOutcome> linkWithGoogle({String? testEmail}) async {
+    if (usingEmulator) return _linkCredential(_testGoogleCredential(testEmail));
+    if (_nativeGoogle) return _linkCredential(await _nativeGoogleCredential());
+    return _linkProvider(fb.GoogleAuthProvider());
+  }
 
   @override
   Future<LinkOutcome> linkWithApple() => _linkProvider(fb.AppleAuthProvider());

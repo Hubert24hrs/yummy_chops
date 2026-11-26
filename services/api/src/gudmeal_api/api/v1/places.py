@@ -15,6 +15,7 @@ from ...domain.models import RestaurantStatus
 from ...domain.pricing import delivery_fee, estimate_minutes
 from ...errors import NotFound, ValidationFailed
 from ...maps import PlaceResult
+from ...maps.models import shop_delivers_to
 from ...security.rbac import Permission, require
 from ...services.locations import LocationInput, RestaurantLocationService
 from ..deps import Ctr, CurrentPrincipal, limit
@@ -109,7 +110,11 @@ async def delivery_estimates(
     for r, route in zip(kitchens, routes, strict=True):
         straight = haversine_km(r.location, point)
         measured = route.source == "google"
-        delivers = r.supports_delivery and zone is not None and straight <= r.delivery_radius_km
+        delivers = (
+            r.supports_delivery
+            and zone is not None
+            and shop_delivers_to(r.location, r.delivery_radius_km, point)
+        )
         out.append(
             {
                 "restaurant_id": r.id,

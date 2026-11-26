@@ -33,6 +33,8 @@ from .pricing import PricingConfig, compute_price, estimate_minutes, price_line
 MAX_PARTY_SIZE = 10
 TOP_MAINS = 6
 
+CITY_WIDE_KM = 60.0  # every shop delivers anywhere in its city (2026-11-26)
+
 
 @dataclass
 class PlannerRequest:
@@ -184,7 +186,7 @@ def plan_meals(
         if req.cuisines and not req.cuisines & {c.lower() for c in restaurant.cuisines}:
             continue
         distance = haversine_km(restaurant.location, req.location)
-        if distance > restaurant.delivery_radius_km:
+        if distance > max(restaurant.delivery_radius_km, CITY_WIDE_KM):  # shops deliver city-wide
             continue
         prep = max([restaurant.avg_prep_minutes] + [i.prep_minutes or 0 for i in items])
         eta = estimate_minutes(min(prep, restaurant.avg_prep_minutes + 15), distance, cfg)

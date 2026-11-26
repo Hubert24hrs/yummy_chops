@@ -86,6 +86,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                     id: s.pathParameters['id']!,
                     paymentReference: s.uri.queryParameters['ref'],
                     justPaid: s.uri.queryParameters['paid'] == '1',
+                    paidTogether: s.uri.queryParameters['many'] == '1',
                   )),
                   routes: [
                     GoRoute(

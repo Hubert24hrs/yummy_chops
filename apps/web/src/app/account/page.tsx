@@ -57,7 +57,7 @@ function Account() {
               {isGuest ? "G" : (name || user?.email || "?")[0]!.toUpperCase()}
             </span>
             <div>
-              <h1 className="text-2xl font-black">{isGuest ? "You're ordering as a guest" : name || "Your profile"}</h1>
+              <h1 className="text-2xl font-black">{isGuest ? "Your profile" : name || "Your profile"}</h1>
               <p className="text-sm text-white/90">
                 {isGuest ? "Save your account to keep your orders on any device." : user?.email ?? user?.phoneNumber}
               </p>

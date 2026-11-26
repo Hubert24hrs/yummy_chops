@@ -14,6 +14,7 @@ class AppConfig {
     this.testServerHosts = const [],
     this.foundHost,
     this.appleSignIn = false,
+    this.googleWebClientId = '',
   });
 
   final String apiUrl;
@@ -38,6 +39,11 @@ class AppConfig {
   /// Shows "Continue with Apple" in the customer app's Profile (`--dart-define=APPLE_SIGN_IN=true`). Off by default:
   /// it needs the Apple provider set up in the Firebase project first.
   final bool appleSignIn;
+
+  /// The Firebase project's Google sign-in web client (`--dart-define=GOOGLE_WEB_CLIENT_ID=…`, public). With it,
+  /// phones sign in with Google through Android's own account picker instead of a browser page, which could fail
+  /// with "missing initial state" when the browser drops its storage.
+  final String googleWebClientId;
 
   /// Android emulators reach the host machine at 10.0.2.2.
   static String get _host => !kIsWeb && defaultTargetPlatform == TargetPlatform.android ? '10.0.2.2' : 'localhost';
@@ -64,6 +70,7 @@ class AppConfig {
             const bool.fromEnvironment('USE_FIREBASE_EMULATORS', defaultValue: kDebugMode),
         testServerHosts: splitHosts(const String.fromEnvironment('TEST_SERVER_HOSTS')),
         appleSignIn: const bool.fromEnvironment('APPLE_SIGN_IN'),
+        googleWebClientId: const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID'),
       );
 
   /// A list of hosts from one build setting: separated by `+`, commas, semicolons or spaces.
@@ -105,6 +112,7 @@ class AppConfig {
         testServerHosts: testServerHosts,
         foundHost: host,
         appleSignIn: appleSignIn,
+        googleWebClientId: googleWebClientId,
       );
 
   static String _moved(String url, String host) => Uri.parse(url).replace(host: host).toString();

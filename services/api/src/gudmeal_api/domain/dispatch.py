@@ -17,8 +17,9 @@ class DispatchConfig:
     vehicle_max_delivery_km: dict[VehicleType, float] = field(
         default_factory=lambda: {
             VehicleType.BICYCLE: 3.0,
-            VehicleType.MOTORCYCLE: 18.0,
-            VehicleType.CAR: 30.0,
+            # Every shop delivers anywhere in its city (2026-11-26): motorcycles and cars cover the whole city.
+            VehicleType.MOTORCYCLE: 60.0,
+            VehicleType.CAR: 60.0,
         }
     )
     # Score weights (lower total score = better candidate).

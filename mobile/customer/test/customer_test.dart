@@ -8,8 +8,10 @@ import 'package:gud_meal_customer/features/auth/sign_in_screen.dart';
 import 'package:gud_meal_customer/features/cart/cart_controller.dart';
 import 'package:gud_meal_customer/features/cart/cart_screen.dart';
 import 'package:gud_meal_customer/features/cart/checkout_screen.dart';
+import 'package:gud_meal_customer/features/cart/contact_phone.dart';
 import 'package:gud_meal_customer/features/cart/widgets/order_summary.dart';
 import 'package:gud_meal_customer/features/location/address_picker.dart';
+import 'package:gud_meal_customer/features/orders/payment_watch.dart';
 import 'package:gud_meal_customer/features/restaurant/restaurant_screen.dart';
 import 'package:gud_meal_customer/providers.dart';
 
@@ -25,11 +27,22 @@ const beefSuya = MenuItem(id: 'sl-beef', restaurantId: 'r-suya', name: 'Beef Suy
 CartItem item(String id, int qty, {List<OptionSelection> sel = const []}) =>
     CartItem(itemId: id, name: id, unitPriceKobo: 100000, quantity: qty, selections: sel);
 
+/// The payment page, without a browser.
+class FakePaymentPage extends PaymentPage {
+  final opened = <Uri>[];
+  int closed = 0;
+  @override
+  Future<void> open(Uri url) async => opened.add(url);
+  @override
+  Future<void> close() async => closed++;
+}
+
 /// Records quotes; never hits the network.
 class FakeApi extends GudMealApi {
   FakeApi() : super(baseUrl: 'http://fake', token: () async => 'tok');
   final quotes = <List<CartLine>>[];
   final scheduled = <DateTime?>[];
+  final quotedAddresses = <DeliveryAddress?>[];
 
   @override
   Future<Quote> quote({
@@ -42,6 +55,7 @@ class FakeApi extends GudMealApi {
   }) async {
     quotes.add(lines);
     scheduled.add(scheduledFor);
+    quotedAddresses.add(address);
     return Quote(
       id: 'q1', restaurantName: 'Suya Lane', fulfillment: fulfillment, etaMinutes: 40,
       breakdown: const PriceBreakdown(subtotalKobo: 900000, deliveryFeeKobo: 175000, serviceFeeKobo: 45000, vatKobo: 16500, totalKobo: 1136500),
@@ -51,6 +65,9 @@ class FakeApi extends GudMealApi {
 
   @override
   Future<WalletOverview> wallet() async => const WalletOverview(balanceKobo: 2000000);
+
+  @override
+  Future<List<DeliveryAddress>> addresses() async => const [];
 
   @override
   Future<List<RewardVoucher>> myVouchers() async => const [];
@@ -95,9 +112,23 @@ class _OrderingApi extends FakeApi {
 
 /// Prices each shop on its own and records the orders and the one checkout.
 class _MixedApi extends FakeApi {
-  final quoted = <(String restaurantId, String? voucher, List<CartLine> lines, DateTime? scheduledFor)>[];
-  final orders = <(String quoteId, String key)>[];
+  final quoted = <(String restaurantId, String? voucher, List<CartLine> lines, DateTime? scheduledFor, DeliveryAddress? address)>[];
+  final orders = <(String quoteId, String key, String? phone)>[];
   final checkouts = <(List<String> orderIds, String key, String? provider)>[];
+  final updatedAddresses = <(String id, DeliveryAddress address)>[];
+  int orderListReads = 0;
+
+  /// Set: card payments continue on this page.
+  String? payUrl;
+
+  @override
+  Future<List<Order>> myOrders() async {
+    orderListReads++;
+    return const [];
+  }
+
+  @override
+  Future<void> updateAddress(String id, DeliveryAddress a) async => updatedAddresses.add((id, a));
 
   @override
   Future<Quote> quote({
@@ -108,7 +139,7 @@ class _MixedApi extends FakeApi {
     String? voucher,
     DateTime? scheduledFor,
   }) async {
-    quoted.add((restaurantId, voucher, lines, scheduledFor));
+    quoted.add((restaurantId, voucher, lines, scheduledFor, address));
     final pharmacy = restaurantId == 'r-pharm';
     return Quote(
       id: 'q-$restaurantId-${quoted.length}', restaurantName: pharmacy ? 'HealthPlus Pharmacy' : 'Suya Lane', fulfillment: fulfillment, etaMinutes: 40,
@@ -121,14 +152,17 @@ class _MixedApi extends FakeApi {
 
   @override
   Future<Order> createOrder(String quoteId, String idempotencyKey, {String? contactPhone}) async {
-    orders.add((quoteId, idempotencyKey));
+    orders.add((quoteId, idempotencyKey, contactPhone));
     return Order(id: 'o-$quoteId', shortCode: 'ABC123', status: 'pending_payment', restaurantName: 'x');
   }
 
   @override
   Future<MultiCheckoutResult> checkoutMany(List<String> orderIds, String idempotencyKey, {String? provider}) async {
     checkouts.add((orderIds, idempotencyKey, provider));
-    return MultiCheckoutResult(orderIds: orderIds, provider: provider ?? 'local_sandbox', reference: 'YC-B-1', amountKobo: 1636500, paymentStatus: 'succeeded');
+    return MultiCheckoutResult(
+      orderIds: orderIds, provider: provider ?? 'paystack', reference: 'YC-B-1', amountKobo: 1636500,
+      authorizationUrl: provider == null || provider == 'paystack' ? payUrl : null, paymentStatus: payUrl == null ? 'succeeded' : 'pending',
+    );
   }
 }
 
@@ -273,6 +307,18 @@ void main() {
     expect(find.text('₦11,365'), findsOneWidget);
     expect(find.text('₦1,750'), findsOneWidget);
     expect(find.text('Pay to order'), findsOneWidget);
+    // No phone number yet: the rider could not call, so nothing can be paid.
+    expect(find.byKey(const ValueKey('checkout-phone-error')), findsOneWidget);
+    expect(find.text(missingPhoneMessage), findsNWidgets(2)); // by the phone row and by the button
+    expect(payButton(tester).onPressed, isNull);
+
+    await tester.tap(find.byKey(const ValueKey('checkout-pay-needs-phone')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Phone number'), '0803 123 4567');
+    await tester.tap(find.text('Save'));
+    await settleQuote(tester);
+    expect(find.text(missingPhoneMessage), findsNothing);
+    expect(api.quotedAddresses.last?.contactPhone, '+2348031234567', reason: 'the number is on the delivery address of the quote');
     expect(payButton(tester).onPressed, isNotNull);
   });
 
@@ -284,6 +330,7 @@ void main() {
     final container = ProviderContainer(overrides: [
       authRepositoryProvider.overrideWithValue(FakeAuthRepository(const GmUser(uid: 'u1'))),
       apiProvider.overrideWithValue(api),
+      contactPhoneStoreProvider.overrideWithValue(MemoryContactPhoneStore('08031234567')),
     ]);
     addTearDown(container.dispose);
     container.read(cartProvider.notifier).add('r-suya', 'Suya Lane', item('sl-beef', 2));
@@ -304,17 +351,18 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Pay to order'));
     await tester.pumpAndSettle();
-    // A changed phone number is a changed order: a new key again.
-    await tapVisible(tester, find.text('Add your phone number'));
-    await tester.enterText(find.widgetWithText(TextField, 'Phone number'), '08031234567');
+    // A changed phone number is a changed order (it is on the quote's address): a new price and a new key.
+    await tapVisible(tester, find.text('08031234567'));
+    await tester.enterText(find.widgetWithText(TextField, 'Phone number'), '+234 903 123 4567');
     await tester.tap(find.text('Save'));
-    await tester.pumpAndSettle();
-    expect(find.text('08031234567'), findsOneWidget);
+    await settleQuote(tester);
+    expect(find.text('+234 903 123 4567'), findsOneWidget);
     await tester.tap(find.text('Pay to order'));
     await tester.pumpAndSettle();
 
-    expect(api.orders.map((o) => o.$1), ['q1', 'q2', 'q2', 'q2']);
-    expect(api.orders.last.$3, '08031234567');
+    expect(api.orders.map((o) => o.$1), ['q1', 'q2', 'q2', 'q3']);
+    expect(api.orders.first.$3, '+2348031234567', reason: 'sent as the order contact_phone, in E.164');
+    expect(api.orders.last.$3, '+2349031234567');
     final keys = api.orders.map((o) => o.$2).toList();
     expect(keys[1], isNot(keys[0]), reason: 'the new price is a new order');
     expect(keys[2], keys[1], reason: 'a retry cannot place the order twice');
@@ -507,7 +555,8 @@ void main() {
   });
 
   group('checkout', () {
-    Future<(_MixedApi, ProviderContainer)> openCheckout(WidgetTester tester, {List overrides = const []}) async {
+    Future<(_MixedApi, ProviderContainer)> openCheckout(WidgetTester tester,
+        {List overrides = const [], ContactPhoneStore? phones, FakePaymentPage? page}) async {
       tester.view.physicalSize = const Size(1080, 5400);
       tester.view.devicePixelRatio = 2.6;
       addTearDown(tester.view.reset);
@@ -515,6 +564,8 @@ void main() {
       final container = ProviderContainer(overrides: [
         authRepositoryProvider.overrideWithValue(FakeAuthRepository(const GmUser(uid: 'u1'))),
         apiProvider.overrideWithValue(api),
+        contactPhoneStoreProvider.overrideWithValue(phones ?? MemoryContactPhoneStore('08031234567')),
+        paymentPageProvider.overrideWithValue(page ?? FakePaymentPage()),
         ...overrides,
       ]);
       addTearDown(container.dispose);
@@ -655,6 +706,68 @@ void main() {
       expect(find.text('Free delivery with Yummy Chops Plus'), findsOneWidget);
       await tapVisible(tester, find.text('More info'));
       expect(find.text('PAGE /plus'), findsOneWidget);
+    });
+
+    testWidgets('delivery needs a phone number: Pay waits for it, it goes with the order and the quote, and is remembered', (tester) async {
+      const home = DeliveryAddress(id: 'a-home', label: 'Home', line1: '5 Admiralty Way', area: 'Lekki Phase 1', location: GeoPoint(lat: 6.4478, lng: 3.4723));
+      final phones = MemoryContactPhoneStore();
+      final (api, container) = await openCheckout(tester, phones: phones, overrides: [addressesProvider.overrideWith((ref) async => const [home])]);
+      await tester.enterText(find.widgetWithText(TextField, 'Street address'), '5 Admiralty Road');
+      await settleQuote(tester);
+      expect(find.text('Total to pay'), findsOneWidget);
+      expect(find.text('Add your phone number'), findsOneWidget);
+      expect(find.byKey(const ValueKey('checkout-phone-error')), findsOneWidget);
+      expect(payButton(tester).onPressed, isNull);
+
+      // Not a Nigerian number: still waiting, and the customer is told why.
+      await tapVisible(tester, find.byKey(const ValueKey('checkout-phone')));
+      await tester.enterText(find.widgetWithText(TextField, 'Phone number'), '12345');
+      await tester.tap(find.text('Save'));
+      await settleQuote(tester);
+      expect(find.text(invalidPhoneMessage), findsWidgets);
+      expect(payButton(tester).onPressed, isNull);
+
+      await tapVisible(tester, find.byKey(const ValueKey('checkout-phone')));
+      await tester.enterText(find.widgetWithText(TextField, 'Phone number'), '0803 123 4567');
+      await tester.tap(find.text('Save'));
+      await settleQuote(tester);
+      expect(find.byKey(const ValueKey('checkout-phone-error')), findsNothing);
+      expect(api.quoted.skip(api.quoted.length - 2).map((q) => q.$5?.contactPhone), ['+2348031234567', '+2348031234567']);
+
+      await tapVisible(tester, find.text('Yummy Chops wallet'));
+      await tester.tap(find.text('Pay to order'));
+      await tester.pumpAndSettle();
+      expect(api.orders.map((o) => o.$3), ['+2348031234567', '+2348031234567'], reason: 'every order has the number');
+      // Remembered on the phone and on the Home address, so the next checkout is filled in.
+      expect(phones.phone, '+2348031234567');
+      expect(api.updatedAddresses.single.$1, 'a-home');
+      expect(api.updatedAddresses.single.$2.contactPhone, '+2348031234567');
+      expect(api.updatedAddresses.single.$2.line1, '5 Admiralty Way');
+      expect(container.read(cartProvider).isEmpty, isTrue);
+    });
+
+    testWidgets('the phone number is filled in from the Home address when the phone has none', (tester) async {
+      const home = DeliveryAddress(id: 'a-home', label: 'Home', line1: '5 Admiralty Way', location: GeoPoint(lat: 6.4478, lng: 3.4723), contactPhone: '08035550000');
+      await openCheckout(tester, phones: MemoryContactPhoneStore(), overrides: [addressesProvider.overrideWith((ref) async => const [home])]);
+      expect(find.text('08035550000'), findsOneWidget);
+      expect(find.byKey(const ValueKey('checkout-phone-error')), findsNothing);
+    });
+
+    testWidgets('a card payment opens the payment page inside the app, refreshes Orders and goes to the order', (tester) async {
+      final page = FakePaymentPage();
+      final (api, container) = await openCheckout(tester, page: page);
+      final sub = container.listen(myOrdersProvider, (_, _) {});
+      addTearDown(sub.close);
+      await tester.pumpAndSettle();
+      final readsBefore = api.orderListReads;
+      api.payUrl = 'https://checkout.paystack.com/abc';
+      await tester.enterText(find.widgetWithText(TextField, 'Street address'), '5 Admiralty Road');
+      await settleQuote(tester);
+      await tester.tap(find.text('Pay to order'));
+      await tester.pumpAndSettle();
+      expect(page.opened, [Uri.parse('https://checkout.paystack.com/abc')]);
+      expect(find.text('order /orders/o-q-r-suya-1?ref=YC-B-1&many=1'), findsOneWidget);
+      expect(api.orderListReads, greaterThan(readsBefore), reason: 'the orders list is read again after a checkout');
     });
 
     testWidgets('"Your order" goes back to the cart', (tester) async {

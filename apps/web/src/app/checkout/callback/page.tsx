@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, Card, Spinner } from "@gudmeal/ui";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, CircleAlert, Smartphone, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -9,6 +9,11 @@ import { Suspense, useEffect, useState } from "react";
 import { ordersPaidTogether } from "@/components/payment-method";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+
+/** While the provider has not settled the payment, it is asked about again every 2 s, up to 30 times (a minute). */
+const VERIFY_RETRY_MS = 2_000;
+const VERIFY_TRIES = 30;
+const UNSETTLED = ["pending", "initialized"];
 
 export default function CallbackPage() {
   return <Suspense><CallbackGate /></Suspense>;
@@ -54,15 +59,28 @@ function Callback() {
   // One payment for orders from several shops: the gateway comes back with the first order only.
   const [paidTogether] = useState(() => ordersPaidTogether(reference));
 
-  // Never trust the redirect: ask the server to verify with the provider.
+  // Never trust the redirect: ask the server to verify with the provider, straight away (never an answer kept from
+  // before), then every 2 s for a short while until the provider has settled it.
   const verify = useQuery({
     queryKey: ["verify", reference],
     enabled: Boolean(reference),
     queryFn: () => api.payments.verify(reference!),
-    refetchInterval: (q) => (q.state.data && ["pending", "initialized"].includes(q.state.data.status) ? 3000 : false),
+    staleTime: 0,
+    gcTime: 0,
+    refetchInterval: (q) =>
+      q.state.data && UNSETTLED.includes(q.state.data.status) && q.state.dataUpdateCount < VERIFY_TRIES ? VERIFY_RETRY_MS : false,
   });
 
   const status = verify.data?.status;
+  const qc = useQueryClient();
+  /** Still not settled after a minute of asking: the order updates by itself when the provider settles it. */
+  const answers = qc.getQueryState(["verify", reference])?.dataUpdateCount ?? 0;
+  const gaveUp = Boolean(status && UNSETTLED.includes(status) && !verify.isFetching && answers >= VERIFY_TRIES);
+  useEffect(() => {
+    if (status !== "succeeded") return;
+    void qc.invalidateQueries({ queryKey: ["orders"] });
+    void qc.invalidateQueries({ queryKey: ["order-summary"] });
+  }, [status, qc]);
   // An order that has just been paid for: straight to the receipt printer (ADR-0019).
   const router = useRouter();
   const paidOrder = status === "succeeded" && !isTopUp && (verify.data?.purpose ?? "order") === "order";
@@ -87,6 +105,16 @@ function Callback() {
       <Card className="w-full max-w-md space-y-4 p-8 text-center">
         {!reference ? (
           <p>Missing payment reference.</p>
+        ) : gaveUp ? (
+          <>
+            <CircleAlert className="mx-auto size-12 text-warning" />
+            <h1 className="font-display text-2xl">Still confirming your payment</h1>
+            <p className="text-sm text-muted">
+              The payment provider has not confirmed it yet. You do not need to pay again: your order updates by itself.
+            </p>
+            <Button block loading={verify.isFetching} onClick={() => verify.refetch()}>Check again</Button>
+            <Link href="/orders"><Button variant="outline" block>Go to my orders</Button></Link>
+          </>
         ) : verify.isLoading || status === "pending" || status === "initialized" ? (
           <>
             <Spinner className="mx-auto size-10 text-primary" />

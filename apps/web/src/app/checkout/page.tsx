@@ -5,7 +5,7 @@ import {
   type CheckoutResult, type DeliveryAddress, type Fulfillment, type GeoPoint, type MultiCheckoutResult, type PlaceLookup, type Quote,
 } from "@gudmeal/api-client";
 import { AddressSearch, Button, EmptyState, ErrorState, Field, Input, MapView, Price, Select, Skeleton, Textarea, cn } from "@gudmeal/ui";
-import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bike, ChevronDown, ChevronLeft, ChevronRight, Crown, MapPin, MapPinned, MessageSquareText, Pencil, PiggyBank, ShieldCheck,
   Smartphone, Store, TicketPercent, TriangleAlert, WheatOff,
@@ -18,6 +18,8 @@ import { checkoutProvider, continueAfterCheckout, PaymentMethodPicker, type PayM
 import { RequireAuth } from "@/components/require-auth";
 import { Sheet } from "@/components/sheet";
 import { useApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { normaliseNigerianPhone, phoneProblem, rememberedPhone, rememberPhone } from "@/lib/contact-phone";
 import { toCartLines, useCart, withAllergies } from "@/lib/cart";
 import { AREAS, CITY_NAMES, kmBetween, useLocation } from "@/lib/location";
 import { GOOGLE_MAPS_BROWSER_KEY } from "@/lib/maps";
@@ -93,7 +95,12 @@ function Checkout() {
   const areaName = areaChoice ?? area.name;
   /** Exact place from address search or "use my location"; without it the neighbourhood centre is used. */
   const [picked, setPicked] = useState<PlaceLookup | null>(null);
+  /** The number the rider calls, as typed: required for delivery. Filled in until the customer types one. */
   const [phone, setPhone] = useState("");
+  const [phoneTyped, setPhoneTyped] = useState(false);
+  const contactPhone = normaliseNigerianPhone(phone);
+  const { user } = useAuth();
+  const qc = useQueryClient();
   const [instructions, setInstructions] = useState("");
   const [allergies, setAllergies] = useState("");
   const [voucher, setVoucher] = useState("");
@@ -118,8 +125,10 @@ function Checkout() {
   // from it), so the price is asked for again when they change: once typing stops, because the API allows about one
   // quote every two seconds. Quantities changed on the cart page are settled the same way.
   const basket = shops.map((sh) => ({ restaurant_id: sh.restaurant_id, lines: withAllergies(toCartLines(sh.items), allergies) }));
-  const { street, notes, priced } = useSettled({ street: line1.trim(), notes: instructions.trim(), priced: basket });
-  const typing = street !== line1.trim() || notes !== instructions.trim() || JSON.stringify(priced) !== JSON.stringify(basket);
+  // The phone number is on the delivery address of the quote too, settled the same way.
+  const { street, notes, priced, contact } = useSettled({ street: line1.trim(), notes: instructions.trim(), priced: basket, contact: contactPhone });
+  const typing = street !== line1.trim() || notes !== instructions.trim() || JSON.stringify(priced) !== JSON.stringify(basket)
+    || contact !== contactPhone;
 
   const addresses = useQuery({ queryKey: ["addresses"], queryFn: () => api.me.addresses() });
   const myVouchers = useQuery({ queryKey: ["my-vouchers"], queryFn: () => api.rewards.vouchers() });
@@ -134,24 +143,35 @@ function Checkout() {
     if (addresses.data?.length && addressId === "new") chooseAddress(addresses.data[0]!.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once the saved addresses arrive
   }, [addresses.data]);
+  // Until the customer types a number: the chosen address's, the one used last time in this browser, the Home
+  // address's, or the account's.
+  useEffect(() => {
+    if (phoneTyped || phone.trim()) return;
+    const chosen = addresses.data?.find((a) => a.id === addressId);
+    const home = addresses.data?.find((a) => (a.label ?? "").trim().toLowerCase() === "home");
+    const found = chosen?.contact_phone || rememberedPhone() || home?.contact_phone || user?.phoneNumber;
+    if (found) setPhone(found);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- when the addresses or the choice change
+  }, [addresses.data, addressId, user, phoneTyped]);
 
   const address: DeliveryAddress | null = useMemo(() => {
     if (fulfillment === "pickup") return null;
+    // The rider's phone number goes on the address (and with the order when it is placed).
+    const phoneOn = contact ? { contact_phone: contact } : {};
     const saved = addresses.data?.find((a) => a.id === addressId);
-    if (saved) return { ...saved, instructions: notes || null };
+    if (saved) return { ...saved, instructions: notes || null, ...phoneOn };
     if (street.length < 3) return null;
-    // The rider's phone number is not here: it does not change the price, and the order gets it when it is placed.
     if (picked) {
       const city = picked.place.city === "enugu" ? CITY_NAMES.enugu : CITY_NAMES.lagos;
       return {
         line1: street, area: picked.place.area ?? areaName, city, state: city, location: picked.place.location,
-        place_id: picked.place.place_id, instructions: notes || null,
+        place_id: picked.place.place_id, instructions: notes || null, ...phoneOn,
       };
     }
     const a = AREAS.find((x) => x.name === areaName) ?? area;
     const city = CITY_NAMES[a.city];
-    return { line1: street, area: a.name, city, state: city, location: a.location, instructions: notes || null };
-  }, [fulfillment, addresses.data, addressId, street, areaName, area, notes, picked]);
+    return { line1: street, area: a.name, city, state: city, location: a.location, instructions: notes || null, ...phoneOn };
+  }, [fulfillment, addresses.data, addressId, street, areaName, area, notes, picked, contact]);
   const savedAddress = addresses.data?.find((a) => a.id === addressId);
   const far = Boolean(fulfillment === "delivery" && address && here && kmBetween(here, address.location) > FAR_KM);
 
@@ -188,9 +208,13 @@ function Checkout() {
   const refetchQuotes = () => quotes.forEach((q) => void q.refetch());
   const tooManyShops = shops.length > MAX_SHOPS_PER_PAYMENT;
 
+  /** Delivery needs a number the rider can call; pickup does not. */
+  const missingPhone = fulfillment === "delivery" ? phoneProblem(phone) : null;
+
   const placeOrder = useMutation({
     mutationFn: async (qs: Quote[]) => {
-      const contact = phone.trim() || undefined;
+      const contact = contactPhone ?? undefined;
+      if (fulfillment === "delivery" && !contact) throw new Error(phoneProblem(phone) ?? "");
       if (addressId === "new" && address && fulfillment === "delivery") {
         await api.me.addAddress({ ...address, contact_phone: contact ?? null, label: "Saved at checkout" }).catch(() => undefined);
       }
@@ -208,6 +232,10 @@ function Checkout() {
     },
     onSuccess: (res) => {
       clear();
+      // The new orders are on Orders straight away (an earlier answer is not kept).
+      void qc.invalidateQueries({ queryKey: ["orders"] });
+      void qc.invalidateQueries({ queryKey: ["order-summary"] });
+      if (contactPhone) keepPhone(contactPhone);
       continueAfterCheckout(res, router.push);
     },
     onError: (e) => {
@@ -215,6 +243,20 @@ function Checkout() {
       if (e instanceof ApiError && (e.code === "quote_expired" || e.code === "price_changed")) refetchQuotes();
     },
   });
+
+  /**
+   * The number fills in the next checkout: kept in this browser, and on the saved address the order went to (or the
+   * Home address) when that one does not have it yet. Never holds up the order.
+   */
+  function keepPhone(number: string) {
+    rememberPhone(number);
+    if (fulfillment !== "delivery") return;
+    const target = savedAddress ?? addresses.data?.find((a) => (a.label ?? "").trim().toLowerCase() === "home");
+    if (!target || normaliseNigerianPhone(target.contact_phone) === number) return;
+    const { id, ...rest } = target;
+    void api.request("PUT", `/v1/me/addresses/${id}`, { body: { ...rest, contact_phone: number } })
+      .then(() => qc.invalidateQueries({ queryKey: ["addresses"] }), () => undefined);
+  }
 
   if (!ready) {
     return <div className="container-page space-y-3 py-16" aria-busy="true"><Skeleton className="h-10 w-1/2" /><Skeleton className="h-40" /></div>;
@@ -236,7 +278,7 @@ function Checkout() {
   const standardText = fulfillment === "pickup"
     ? (eta != null ? `Ready in about ${eta} min` : "As soon as it's ready")
     : (eta != null ? `${eta}–${eta + 10} min` : "As soon as possible");
-  const canPay = Boolean(allQuotes) && !typing && !tooManyShops && !placeOrder.isPending;
+  const canPay = Boolean(allQuotes) && !typing && !tooManyShops && !missingPhone && !placeOrder.isPending;
   const payLabel = method === "cash"
     ? `Place ${several ? "orders" : "order"}${totalKobo != null ? ` · ${formatNaira(totalKobo)}` : ""}`
     : `Pay to order${totalKobo != null ? ` · ${formatNaira(totalKobo)}` : ""}`;
@@ -306,6 +348,7 @@ function Checkout() {
 
         <Row icon={<Smartphone className="size-6" />} title="Phone number" subtitle={phone.trim() || "Add your phone number"}
           muted={!phone.trim()} onClick={() => setSheet("phone")} />
+        {missingPhone && <p className="-mt-2 text-sm font-semibold text-danger" data-testid="phone-problem">{missingPhone}</p>}
 
         <section aria-label={fulfillment === "pickup" ? "Pickup time" : "Delivery options"} className="mt-8">
           <h2 className="font-display text-2xl">{fulfillment === "pickup" ? "Pickup time" : "Delivery options"}</h2>
@@ -448,6 +491,11 @@ function Checkout() {
             </p>
           )}
           {placeOrder.error && <ErrorState message={(placeOrder.error as Error).message} />}
+          {missingPhone && allQuotes && (
+            <button type="button" onClick={() => setSheet("phone")} className="flex w-full items-center gap-2 text-left text-sm font-semibold text-danger">
+              <Smartphone className="size-4 shrink-0" aria-hidden="true" /> {missingPhone}
+            </button>
+          )}
           <p className="flex items-start gap-2 text-xs text-muted">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
             {method === "card" && `You'll pay on a secure payment page. Your ${several ? "orders are" : "order is"} sent once we verify the payment.`}
@@ -480,8 +528,10 @@ function Checkout() {
 
       <Sheet open={sheet === "phone"} onClose={() => setSheet(null)} title="Your phone number"
         footer={<Button block size="lg" onClick={() => setSheet(null)}>Save</Button>}>
-        <Field label="Phone number" htmlFor="phone" hint="The rider and the shop call this number about your order.">
-          <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="0803 000 0000" inputMode="tel" autoComplete="tel" maxLength={20} />
+        <Field label="Phone number" htmlFor="phone" hint="The rider and the shop call this number about your order."
+          error={phone.trim() && !contactPhone ? phoneProblem(phone) ?? undefined : undefined}>
+          <Input id="phone" value={phone} onChange={(e) => { setPhoneTyped(true); setPhone(e.target.value); }} placeholder="0803 000 0000"
+            inputMode="tel" autoComplete="tel" maxLength={20} />
         </Field>
       </Sheet>
 

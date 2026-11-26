@@ -355,6 +355,17 @@ class OrderService:
 
         order_id = uuid.uuid4().hex
         address = quote.delivery_address
+        phone = (
+            contact_phone or (address.contact_phone if address else None) or principal.phone or ""
+        ).strip()
+        if (
+            quote.fulfillment == Fulfillment.DELIVERY
+            and len("".join(ch for ch in phone if ch.isdigit())) < 10
+        ):
+            # The rider calls the customer at the door (guests have no phone on their account): owner, 2026-11-26.
+            raise ValidationFailed(
+                "Add a phone number so the rider can reach you", details={"field": "contact_phone"}
+            )
         if address and contact_phone:
             address = address.model_copy(update={"contact_phone": contact_phone})
         order = Order(

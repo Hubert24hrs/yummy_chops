@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:gud_meal_core/gud_meal_core.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers.dart';
 import '../../ui/gm_map.dart';
 import '../../ui/payment_picker.dart';
 import '../../widgets.dart';
+import 'payment_watch.dart';
 
 const _live = {
   'pending_payment', 'paid', 'submitted_to_restaurant', 'restaurant_accepted', 'preparing', 'ready_for_pickup',
@@ -22,11 +22,15 @@ const _onDelivery = {'rider_assigned', 'picked_up', 'in_transit'};
 
 /// Live order tracking. Polls the API every 5 s while the order is active (Firestore listener in production).
 class OrderScreen extends ConsumerStatefulWidget {
-  const OrderScreen({super.key, required this.id, this.paymentReference, this.justPaid = false});
+  const OrderScreen({super.key, required this.id, this.paymentReference, this.justPaid = false, this.paidTogether = false});
   final String id;
 
-  /// Set when returning from checkout; used to re-verify the payment server-side on resume.
+  /// Set when coming from checkout with the payment page open: the screen asks the server about this payment every
+  /// 2 s and when the app comes back to the front, closes the page as soon as it is paid, and says so.
   final String? paymentReference;
+
+  /// One payment covered several shops' orders (ADR-0030): once it is paid, Orders lists them all.
+  final bool paidTogether;
 
   /// Opened straight after paying from the wallet: the receipt printer comes up once (ADR-0019).
   final bool justPaid;
@@ -51,10 +55,17 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
   bool _cancelling = false;
   String? _cancelError;
 
+  /// Asks the server about the payment whose page is open (Paystack's webhook may not reach the server).
+  PaymentWatcher? _watcher;
+
+  /// The customer left the payment page before it was paid.
+  String? _payNote;
+
   bool get _cameFromPaying => widget.justPaid || _paidHere || widget.paymentReference != null || _payReference != null;
 
   void _offerReceipt(Order? o) {
-    if (o == null || _receiptOffered || !_cameFromPaying || o.payment.status != 'paid' || !mounted) return;
+    // Several shops paid at once: Orders lists them, each with its own receipt.
+    if (o == null || _receiptOffered || !_cameFromPaying || widget.paidTogether || o.payment.status != 'paid' || !mounted) return;
     _receiptOffered = true;
     context.push('/orders/${o.id}/receipt');
   }
@@ -74,7 +85,9 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
       final url = checkout.authorizationUrl;
       if (url != null) {
         _payReference = checkout.reference;
-        await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
+        _payNote = null;
+        await ref.read(paymentPageProvider).open(Uri.parse(url));
+        _watchPayment(checkout.reference);
       } else if (checkout.provider == 'wallet') {
         _paidHere = true; // paid on the spot: the receipt printer comes up
       }
@@ -121,6 +134,39 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
     }
   }
 
+  /// While the payment page is open: ask the server every 2 s (for up to 10 minutes) whether it is paid. The server
+  /// asks the provider; the redirect back is never trusted.
+  void _watchPayment(String reference) {
+    _watcher?.stop();
+    final api = ref.read(apiProvider);
+    _watcher = PaymentWatcher(
+      verify: () => api.verifyPayment(reference),
+      onSettled: _paymentSettled,
+      timing: ref.read(paymentWatchTimingProvider),
+    )..start();
+  }
+
+  void _paymentSettled(PaymentCheck result) {
+    if (!mounted) return;
+    // The page is closed for the customer: paid, or nothing more to do on it.
+    unawaited(ref.read(paymentPageProvider).close().catchError((Object _) {}));
+    ref.invalidate(orderProvider(widget.id));
+    ref.invalidate(myOrdersProvider);
+    ref.invalidate(walletProvider);
+    if (result == PaymentCheck.succeeded) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(widget.paidTogether ? 'Payment received. Your orders are on their way to the shops.' : 'Payment received')),
+      );
+      setState(() => _payNote = null);
+      if (widget.paidTogether) GoRouter.maybeOf(context)?.go('/orders');
+    } else {
+      setState(() {
+        _payNote = null;
+        _payError = 'The payment did not go through. Choose a way to pay to try again.';
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -129,21 +175,30 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
       final status = ref.read(orderProvider(widget.id)).value?.status;
       if (status == null || _live.contains(status)) ref.invalidate(orderProvider(widget.id));
     });
+    final reference = widget.paymentReference;
+    if (reference != null) _watchPayment(reference);
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Returning from the payment page: ask the server to verify with the provider (never trust the redirect).
-    final reference = _payReference ?? widget.paymentReference;
-    if (state == AppLifecycleState.resumed && reference != null) {
-      ref.read(apiProvider).verifyPayment(reference).whenComplete(() => ref.invalidate(orderProvider(widget.id)));
-    }
+    // Back in the app (the payment page was closed, or the phone was put down): ask straight away.
+    final watcher = _watcher;
+    if (state != AppLifecycleState.resumed || watcher == null || watcher.settled) return;
+    watcher.check().then((result) {
+      if (!mounted) return;
+      ref.invalidate(orderProvider(widget.id));
+      // Left before paying. A bank transfer can still arrive, so the screen keeps asking for a while.
+      if (result == PaymentCheck.notFinished) {
+        setState(() => _payNote = 'The payment is not finished yet. If you paid, this page updates by itself.');
+      }
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _watcher?.stop();
     super.dispose();
   }
 
@@ -207,6 +262,8 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Text('Finish paying ${formatNaira(o.breakdown?.totalKobo)}', style: const TextStyle(fontWeight: FontWeight.w800)),
                     const Text('Your order goes ahead as soon as it is paid.'),
+                    if (_payNote != null)
+                      Padding(padding: const EdgeInsets.only(top: 6), child: Text(_payNote!, style: const TextStyle(fontWeight: FontWeight.w600))),
                     const SizedBox(height: 10),
                     FilledButton(
                       onPressed: _paying ? null : () => _pay(o, PayMethod.card),
