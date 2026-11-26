@@ -104,13 +104,11 @@ class DispatchService:
         return profile
 
     async def _active_deliveries(self, profile: RiderProfile) -> list[Order]:
-        """The rider's deliveries in progress (each id on the profile is checked against its order)."""
-        active: list[Order] = []
-        for order_id in profile.active_order_ids[:12]:
-            order = await self.repos.orders.get(order_id)
-            if order and order.status in ACTIVE_DELIVERY and order.rider_id == profile.uid:
-                active.append(order)
-        return active
+        """The rider's deliveries in progress, read from the orders themselves (as `/v1/rider/deliveries` does):
+        the profile's `active_order_ids` is a counter for the job limit and could miss an order (a large trip, or
+        an order joining the trip while another one is being delivered)."""
+        found = await self.orders.list_for_rider(profile.uid, list(ACTIVE_DELIVERY), limit=100)
+        return sorted(found, key=lambda o: (o.created_at, o.id))
 
     async def set_availability(self, principal: Principal, online: bool) -> RiderProfile:
         profile = await self.rider_profile(principal)
@@ -234,11 +232,25 @@ class DispatchService:
         if order.rider_id:
             return None
         trip = await self.orders.trip_orders(order)
+        previous = await self.repos.assignments.find(where=[("order_id", "==", order_id)])
         if len(trip) > 1:
-            # One rider collects a mixed cart's orders (ADR-0031): the rider already on this trip takes this one too.
-            on_trip = next((o for o in trip if o.rider_id and o.status in ACTIVE_DELIVERY), None)
-            if on_trip is not None:
-                await self.join_trip(order, str(on_trip.rider_id))
+            # One rider collects a mixed cart's orders (ADR-0031): the rider already on this trip takes this one too,
+            # unless that rider had this order and handed it back (or can no longer take it): then it is offered as
+            # usual.
+            gave_back = (exclude or set()) | {
+                a.rider_id
+                for a in previous
+                if a.status not in (AssignmentStatus.OFFERED, AssignmentStatus.EXPIRED)
+            }
+            on_trip = next(
+                (
+                    o
+                    for o in trip
+                    if o.rider_id and o.status in ACTIVE_DELIVERY and o.rider_id not in gave_back
+                ),
+                None,
+            )
+            if on_trip is not None and await self.join_trip(order, str(on_trip.rider_id)):
                 return None
         open_offers = []
         for o in trip:  # an open offer for any order of the trip stands for the whole trip
@@ -248,7 +260,17 @@ class DispatchService:
         now = utcnow()
         if any(o.expires_at > now for o in open_offers):
             return None  # an offer is already outstanding
-        previous = await self.repos.assignments.find(where=[("order_id", "==", order_id)])
+        if len(trip) > 1:
+            # A trip offer is recorded on one of its orders: a rider who declined it (or let it run out) declined
+            # this order too.
+            known = {a.id for a in previous}
+            previous += [
+                a
+                for a in await self.repos.assignments.find(
+                    where=[("trip_order_ids", "array_contains", order_id)]
+                )
+                if a.id not in known and a.status in (AssignmentStatus.DECLINED, AssignmentStatus.EXPIRED)
+            ]
         # Riders who declined or handed the job back are not asked again; a rider whose offer just ran out is
         # skipped for a while (they may be away from the phone), then asked again.
         excluded = (exclude or set()) | {
@@ -259,8 +281,13 @@ class DispatchService:
         riders = await self.repos.riders.find(
             where=[("is_online", "==", True), ("status", "==", RiderStatus.ACTIVE.value)], limit=500
         )
-        cash_due = order.cash_to_collect_kobo
-        if cash_due:  # don't send riders out with more cash than they may carry
+        # The whole trip: this order and the others of the cart still waiting for a rider (some shops may not have
+        # accepted theirs yet; those join the rider's trip when they do).
+        jobs = [order] + [
+            o for o in trip if o.id != order.id and o.rider_id is None and o.status in TRIP_JOINABLE
+        ]
+        cash_due = sum(o.cash_to_collect_kobo for o in jobs)
+        if cash_due:  # don't send riders out with more cash than they may carry (the whole trip's)
             riders = [r for r in riders if r.cash_held_kobo + cash_due <= self.cash_limit]
         # Nobody close enough last round (a small fleet, or a pickup far from every rider): look further each time.
         # Found on a phone test: a package picked up in Ajah never reached the only rider, 11.5 km away in Ikate.
@@ -298,11 +325,6 @@ class DispatchService:
             return None
         best = ranked[0]
         rider = next(r for r in riders if r.uid == best.rider_id)
-        # The whole trip: this order and the others of the cart still waiting for a rider (some shops may not have
-        # accepted theirs yet; those join the rider's trip when they do).
-        jobs = [order] + [
-            o for o in trip if o.id != order.id and o.rider_id is None and o.status in TRIP_JOINABLE
-        ]
         dropoff = order.delivery_address.location if order.delivery_address else order.restaurant_location
         planned = quickest_order(
             rider.last_location, jobs, dropoff, lambda o: o.restaurant_location, self._leg_cost
@@ -441,7 +463,7 @@ class DispatchService:
                 rider.uid,
                 {"acceptance_rate": round(rider.offers_accepted / max(1, rider.offers_received), 3)},
             )
-        await self.start(assignment.order_id)
+        await self._restart(assignment)
 
     async def _close_offer(
         self, assignment_id: str, status: AssignmentStatus, reason: str | None = None
@@ -465,7 +487,26 @@ class DispatchService:
         if assignment is None or assignment.status != AssignmentStatus.OFFERED:
             return
         if await self._close_offer(assignment.id, AssignmentStatus.EXPIRED):
-            await self.start(assignment.order_id)
+            await self._restart(assignment)
+
+    async def _restart(self, assignment: DeliveryAssignment) -> None:
+        """An offer was closed without a rider: look again for its order and, for a trip offer, for every order of
+        the trip. The others waited for this offer with no retry of their own, and its own order may be gone
+        (cancelled while the offer was out); `start` makes one offer for the trip and skips the rest."""
+        for order_id in dict.fromkeys([assignment.order_id, *assignment.trip_order_ids]):
+            await self.start(order_id)
+
+    async def _withdraw_offers(self, order_id: str) -> None:
+        """The order was called off before any rider took it: its open offer goes, and the rest of its trip (which
+        waited for that offer) is offered again."""
+        offers = await self.repos.assignments.find(
+            where=[("order_id", "==", order_id), ("status", "==", AssignmentStatus.OFFERED.value)]
+        )
+        for offer in offers:
+            if await self._close_offer(offer.id, AssignmentStatus.CANCELLED, "order called off"):
+                for other_id in offer.trip_order_ids:
+                    if other_id != order_id:
+                        await self.start(other_id)
 
     async def retry(self, payload: dict[str, Any]) -> None:
         await self.start(str(payload["order_id"]))
@@ -548,7 +589,9 @@ class DispatchService:
                     "kind": "dropoff",
                     "order_ids": [o.id for o in orders],
                     "name": first.customer_name,
-                    "address": ", ".join(p for p in (address.line1, address.area) if p) if address else "",
+                    "address": (", ".join(p for p in (address.line1, address.area) if p) or None)
+                    if address
+                    else None,
                     "location": to_doc(dropoff),
                     "phone": (address.contact_phone if address else None) or first.customer_phone,
                     "instructions": address.instructions if address else None,
@@ -644,10 +687,15 @@ class DispatchService:
         except InvalidTransition:
             await self.repos.assignments.update(assignment.id, {"status": AssignmentStatus.CANCELLED.value})
             return None
-        fresh = await self.repos.riders.get(rider_uid)
-        active = fresh.active_order_ids if fresh else rider.active_order_ids
-        if order.id not in active:
-            await self.repos.riders.update(rider_uid, {"active_order_ids": [*active, order.id]})
+
+        async def add_job(tx: Transaction) -> None:
+            # In a transaction: a delivery finishing at the same moment must not write the list back without it.
+            doc = await tx.get(f"rider_profiles/{rider_uid}")
+            active = list((doc or {}).get("active_order_ids") or [])
+            if doc is not None and order.id not in active:
+                tx.update(f"rider_profiles/{rider_uid}", {"active_order_ids": [*active, order.id]})
+
+        await self.repos.store.run_transaction(add_job)
         await self.notifier.notify_restaurant(
             order.restaurant_id,
             "Rider assigned",
@@ -779,6 +827,7 @@ class DispatchService:
         """Cancelled or refunded before delivery, or put under review by staff on the way (a dispute): free the
         rider, who could otherwise take no more jobs, and tell them."""
         if payload.get("from") not in (S.RIDER_ASSIGNED.value, S.PICKED_UP.value, S.IN_TRANSIT.value):
+            await self._withdraw_offers(str(payload["order_id"]))
             return
         order = await self.repos.orders.get(str(payload["order_id"]))
         if order is None or not order.rider_id:

@@ -6,10 +6,11 @@ import hmac
 import logging
 import secrets
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
+from ..domain.geo import haversine_km
 from ..domain.models import (
     DeliveryAddress,
     Fulfillment,
@@ -23,6 +24,7 @@ from ..domain.models import (
 from ..domain.money import format_naira
 from ..domain.order_state import ACTIVE_FULFILMENT, ActorType, OrderStatus, assert_transition
 from ..errors import (
+    IncorrectCode,
     InvalidTransition,
     NotFound,
     PermissionDenied,
@@ -47,6 +49,8 @@ TASK_UNPAID_EXPIRY = "/internal/tasks/unpaid-order-expiry"
 TASK_PARCEL_RELEASE = "/internal/tasks/parcel-release"
 PARCEL_DISPATCH_LEAD = timedelta(minutes=30)  # start finding a rider this long before a scheduled pickup
 PARCEL_MERCHANT_ID = "gm-send"  # pseudo-merchant id for courier jobs (no partner owns it)
+#: Orders of a cart delivered to addresses this close together are one trip to one door (ADR-0031).
+SAME_DOOR_KM = 0.1
 MAX_ORDERS_PER_CHECKOUT = 10  # a mixed cart: one order per shop, paid at once (ADR-0030)
 REPAIR_WINDOW = timedelta(days=3)  # how far back the sweep looks for money paid on cancelled orders
 
@@ -422,9 +426,16 @@ class OrderService:
         return order
 
     async def checkout(
-        self, principal: Principal, order_id: str, *, provider: str | None, idempotency_key: str
+        self,
+        principal: Principal,
+        order_id: str,
+        *,
+        provider: str | None,
+        idempotency_key: str,
+        together: Sequence[str] = (),
     ) -> dict[str, Any]:
-        """Pay for an order: gateway (card/transfer/USSD), Yummy Chops wallet, or cash on delivery."""
+        """Pay for an order: gateway (card/transfer/USSD), Yummy Chops wallet, or cash on delivery. `together` are
+        the other orders of a mixed cart placed with it (pay on delivery)."""
         order = await self.get(order_id)
         if order.customer_id != principal.uid:
             raise NotFound("Order not found")
@@ -437,7 +448,8 @@ class OrderService:
         if order.status not in (S.DRAFT, S.PENDING_PAYMENT):
             raise InvalidTransition(f"Order is already {order.status.value}")
         if provider == "cash":
-            await self.cash.assert_pay_on_delivery(principal, order)  # refused orders stay payable online
+            # Refused orders stay payable online.
+            await self.cash.assert_pay_on_delivery(principal, order, together=together)
         if order.status == S.DRAFT:
             order = await self.transition(
                 order_id, S.PENDING_PAYMENT, actor_type=A.CUSTOMER, actor_id=principal.uid
@@ -476,10 +488,29 @@ class OrderService:
             raise ValidationFailed(f"Pay for 1 to {MAX_ORDERS_PER_CHECKOUT} orders at once")
         if len(ids) > 1:
             await self._join_trip(principal, ids)
+        orders = [await self.get(oid) for oid in ids]
+        if len(ids) > 1:
+            for order in orders:
+                if order.customer_id != principal.uid:
+                    raise NotFound("Order not found")
+                if order.is_leg or order.is_waybill or order.is_parcel or order.group_order_id:
+                    raise InvalidTransition(f"Order {order.short_code} is paid on its own")
+                if order.status not in (S.DRAFT, S.PENDING_PAYMENT):
+                    raise InvalidTransition(f"Order {order.short_code} is already {order.status.value}")
         if len(ids) == 1 or provider == "cash":
+            if len(ids) > 1:
+                # Every order is checked before any is placed: a refusal must not leave part of the cart sent to
+                # its shop as pay on delivery and the rest unpaid. The cart's own orders are one trip, not "another
+                # pay-on-delivery order on the way".
+                for order in orders:
+                    await self.cash.assert_pay_on_delivery(principal, order, together=ids)
             placed = [
                 await self.checkout(
-                    principal, oid, provider=provider, idempotency_key=f"{idempotency_key}:{oid}"
+                    principal,
+                    oid,
+                    provider=provider,
+                    idempotency_key=f"{idempotency_key}:{oid}",
+                    together=ids,
                 )
                 for oid in ids
             ]
@@ -494,14 +525,6 @@ class OrderService:
                     for p in placed
                 ],
             }
-        orders = [await self.get(oid) for oid in ids]
-        for order in orders:
-            if order.customer_id != principal.uid:
-                raise NotFound("Order not found")
-            if order.is_leg or order.is_waybill or order.is_parcel or order.group_order_id:
-                raise InvalidTransition(f"Order {order.short_code} is paid on its own")
-            if order.status not in (S.DRAFT, S.PENDING_PAYMENT):
-                raise InvalidTransition(f"Order {order.short_code} is already {order.status.value}")
         orders = [
             await self.transition(o.id, S.PENDING_PAYMENT, actor_type=A.CUSTOMER, actor_id=principal.uid)
             if o.status == S.DRAFT
@@ -548,6 +571,15 @@ class OrderService:
             if o.status in (S.DRAFT, S.PENDING_PAYMENT)
             and o.fulfillment == Fulfillment.DELIVERY
             and not (o.is_leg or o.is_waybill or o.is_parcel or o.group_order_id)
+        ]
+        # Only orders going to the same door: the rider takes the whole trip to the first order's address.
+        door = next((o.delivery_address.location for o in waiting if o.delivery_address), None)
+        waiting = [
+            o
+            for o in waiting
+            if door is not None
+            and o.delivery_address is not None
+            and haversine_km(o.delivery_address.location, door) <= SAME_DOOR_KM
         ]
         if len(waiting) < 2:
             return
@@ -1184,7 +1216,10 @@ class OrderService:
                 details={"cash_to_collect_kobo": due},
             )
         _expect(order, {S.PICKED_UP, S.IN_TRANSIT})
-        await self.verify_code(order_id, "delivery_code", code)
+        # A trip's orders share one delivery code: wrong guesses count against all of them, or each extra order
+        # of the cart would give the rider more tries at the same code.
+        linked = [o.id for o in await self.trip_orders(order) if o.id != order.id]
+        await self.verify_code(order_id, "delivery_code", code, linked=linked)
         now = utcnow()
         patch: dict[str, Any] = {"delivered_at": now}
         if due:
@@ -1217,8 +1252,15 @@ class OrderService:
         return patch, cash_held
 
     async def verify_code(
-        self, order_id: str, field: Literal["delivery_code", "pickup_code"], code: str
+        self,
+        order_id: str,
+        field: Literal["delivery_code", "pickup_code"],
+        code: str,
+        *,
+        linked: Sequence[str] = (),
     ) -> None:
+        """Check a confirmation code; too many wrong tries lock it. `linked` orders (the rest of a trip) that have
+        the same code share its tries and its lock."""
         path = self.repos.codes_path(order_id)
         max_attempts = self.code_max_attempts
 
@@ -1226,13 +1268,21 @@ class OrderService:
             doc = await tx.get(path)
             if doc is None:
                 return "missing"
-            if doc.get("locked"):
+            others: dict[str, dict[str, Any]] = {}
+            for oid in linked:
+                other_path = self.repos.codes_path(oid)
+                other = await tx.get(other_path)
+                if other and str(other.get(field, "")) == str(doc.get(field, "")):
+                    others[other_path] = other
+            if doc.get("locked") or any(o.get("locked") for o in others.values()):
                 return "locked"
             if hmac.compare_digest(str(doc.get(field, "")), (code or "").strip()):
-                tx.update(path, {"attempts": 0})
+                for p in (path, *others):
+                    tx.update(p, {"attempts": 0})
                 return "ok"
-            attempts = int(doc.get("attempts", 0)) + 1
-            tx.update(path, {"attempts": attempts, "locked": attempts >= max_attempts})
+            attempts = max(int(d.get("attempts", 0)) for d in (doc, *others.values())) + 1
+            for p in (path, *others):
+                tx.update(p, {"attempts": attempts, "locked": attempts >= max_attempts})
             return "wrong"
 
         outcome = await self.repos.store.run_transaction(fn)
@@ -1242,7 +1292,7 @@ class OrderService:
             raise PermissionDenied("Too many incorrect codes. Please contact support.")
         if outcome == "missing":
             raise InvalidTransition("This order has no confirmation code")
-        raise ValidationFailed("Incorrect code")
+        raise IncorrectCode("Incorrect code")
 
     async def complete_after_delivery(self, payload: dict[str, Any]) -> None:
         order = await self.repos.orders.get(str(payload["order_id"]))

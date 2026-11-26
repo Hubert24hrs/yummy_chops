@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:gud_meal_core/gud_meal_core.dart';
 import 'package:gud_meal_rider/providers.dart';
 import 'package:gud_meal_rider/screens/delivery_screen.dart';
+import 'package:gud_meal_rider/screens/earnings_screen.dart';
 import 'package:gud_meal_rider/screens/home_screen.dart';
 import 'package:gud_meal_rider/screens/trip_screen.dart';
 
@@ -55,12 +58,26 @@ class _TripApi extends GudMealApi {
   final calls = <String>[];
   final delivered = <(String, String, bool)>[];
   ApiException? pickupError;
+  ApiException? inTransitError;
+  ApiException? tripsError;
+  ApiException? activeError;
+  /// Orders whose next delivery fails once.
+  final failDeliveryOnce = <String>{};
+  Completer<Order>? acceptGate;
+  final payoutKeys = <String>[];
+  int availableKobo = 0;
 
   @override
-  Future<List<RiderTrip>> riderTrips() async => trips;
+  Future<List<RiderTrip>> riderTrips() async => tripsError != null ? throw tripsError! : trips;
 
   @override
-  Future<List<Order>> activeDeliveries() async => orders;
+  Future<List<Order>> activeDeliveries() async => activeError != null ? throw activeError! : orders;
+
+  @override
+  Future<Order> acceptOffer(String id) => acceptGate!.future;
+
+  @override
+  Future<void> requestPayout(int amountKobo, String key) async => payoutKeys.add(key);
 
   @override
   Future<Order> pickup(String orderId) async {
@@ -72,12 +89,14 @@ class _TripApi extends GudMealApi {
   @override
   Future<Order> inTransit(String orderId) async {
     calls.add('in-transit $orderId');
+    if (inTransitError != null) throw inTransitError!;
     return orders.firstWhere((o) => o.id == orderId).copyWith(status: 'in_transit');
   }
 
   @override
   Future<Order> deliver(String orderId, String code, {bool cashCollected = false}) async {
     calls.add('deliver $orderId');
+    if (failDeliveryOnce.remove(orderId)) throw ApiException(503, 'unavailable', 'No connection. Try again.');
     delivered.add((orderId, code, cashCollected));
     return orders.firstWhere((o) => o.id == orderId).copyWith(status: 'delivered');
   }
@@ -90,8 +109,8 @@ class _TripApi extends GudMealApi {
   Future<List<DeliveryOffer>> offers() async => const [];
 
   @override
-  Future<Earnings> earnings() async =>
-      const Earnings(balanceKobo: 0, pendingPayoutsKobo: 0, availableKobo: 0, deliveriesCompleted: 0, earnedLast7DaysKobo: 0);
+  Future<Earnings> earnings() async => Earnings(
+      balanceKobo: availableKobo, pendingPayoutsKobo: 0, availableKobo: availableKobo, deliveriesCompleted: 0, earnedLast7DaysKobo: 0);
 
   @override
   Future<void> sendLocation(GeoPoint p, {double? accuracyM}) async {}
@@ -288,4 +307,208 @@ void main() {
     expect(jobs.single.order?.id, 'o1');
     expect(jobs.single.trip, isNull);
   });
+
+  testWidgets('a partial failure at the door: the retry delivers only what is left, never an order twice', (tester) async {
+    final api = _TripApi([_trip(firstDone: true, secondDone: true)],
+        [_order('o1', 'in_transit', vertical: 'pharmacy'), _order('o2', 'in_transit')])
+      ..failDeliveryOnce.add('o2');
+    await _pumpTrip(tester, api);
+    await tester.enterText(find.byType(TextField), '4118');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delivered'));
+    await tester.pumpAndSettle();
+    expect(find.text('No connection. Try again.'), findsOneWidget);
+    expect(find.text('HOME'), findsNothing);
+    // The trip has not caught up yet (o1 still shows as on the way): o1 must not be delivered again.
+    await tester.tap(find.widgetWithText(FilledButton, 'Delivered'));
+    await tester.pumpAndSettle();
+    expect(api.calls, ['deliver o1', 'deliver o2', 'deliver o2']);
+    expect(api.delivered.map((d) => d.$1), ['o1', 'o2']);
+    expect(find.text('HOME'), findsOneWidget);
+  });
+
+  testWidgets('a refused "on the way" does not stop the delivery (the API delivers a picked-up order)', (tester) async {
+    final api = _TripApi([_trip(firstDone: true, secondDone: true)],
+        [_order('o1', 'picked_up', vertical: 'pharmacy'), _order('o2', 'in_transit')])
+      ..inTransitError = ApiException(409, 'invalid_transition', 'Order is already on the way');
+    await _pumpTrip(tester, api);
+    await tester.enterText(find.byType(TextField), '4118');
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delivered'));
+    await tester.pumpAndSettle();
+    expect(api.delivered.map((d) => d.$1), ['o1', 'o2']);
+    expect(find.text('HOME'), findsOneWidget);
+  });
+
+  testWidgets('the order a trip was opened by is cancelled: the rest of the trip stays on screen', (tester) async {
+    final api = _TripApi([_trip()], [_order('o1', 'rider_assigned', vertical: 'pharmacy'), _order('o2', 'rider_assigned')]);
+    await _pumpTrip(tester, api, tripId: null, orderId: 'o1');
+    expect(find.text('Trip · 2 orders'), findsOneWidget);
+    final full = _trip();
+    api
+      ..trips = [
+        full.copyWith(orderIds: const ['o2'], stops: [full.stops[1], full.stops[2].copyWith(orderIds: const ['o2'])]),
+      ]
+      ..orders = [_order('o2', 'rider_assigned')];
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.text('This delivery is no longer active'), findsNothing);
+    expect(find.text('Delivery'), findsOneWidget); // now a trip of one order
+    expect(_inStop(0, find.text('Jollof Junction')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('without a usable route link, "Start navigation" goes to the next stop', (tester) async {
+    final api = _TripApi([_trip().copyWith(navigationUrl: '')],
+        [_order('o1', 'rider_assigned', vertical: 'pharmacy'), _order('o2', 'rider_assigned')]);
+    final opened = await _pumpTrip(tester, api);
+    await tester.tap(find.byKey(const ValueKey('start-navigation')));
+    await tester.pump();
+    expect(opened.single, navigationUri(const GeoPoint(lat: 6.44, lng: 3.47)));
+    expect(routeUri('not a link'), isNull);
+    expect(routeUri(_navUrl).toString(), _navUrl);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the trip screen shows a failure of both calls instead of leaving one unhandled', (tester) async {
+    final api = _TripApi([_trip()], const [])
+      ..tripsError = ApiException(500, 'internal', 'Trips are unavailable')
+      ..activeError = ApiException(500, 'internal', 'Deliveries are unavailable');
+    await _pumpTrip(tester, api);
+    expect(find.textContaining('Trips are unavailable'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the cash confirmation is asked again when the amount to collect changes', (tester) async {
+    final code = TextEditingController(text: '4118');
+    addTearDown(code.dispose);
+    var cash = 500000;
+    late StateSetter setOuter;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: StatefulBuilder(builder: (context, set) {
+          setOuter = set;
+          return DeliveryCodeForm(controller: code, cashToCollectKobo: cash, onSubmit: (_) {});
+        }),
+      ),
+    ));
+    await tester.tap(find.byKey(const ValueKey('cash-taken')));
+    await tester.pump();
+    expect(tester.widget<CheckboxListTile>(find.byKey(const ValueKey('cash-taken'))).value, isTrue);
+    setOuter(() => cash = 800000); // another cash order joined the trip
+    await tester.pump();
+    expect(find.text('I collected ₦8,000 in cash'), findsOneWidget);
+    expect(tester.widget<CheckboxListTile>(find.byKey(const ValueKey('cash-taken'))).value, isFalse);
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Complete delivery')).onPressed, isNull);
+  });
+
+  testWidgets('accepting still opens the trip when the offer card leaves the list during the request', (tester) async {
+    final offer = DeliveryOffer(
+      id: 'a1', orderId: 'o1', restaurantName: 'CareFirst Pharmacy', distanceToRestaurantKm: 1.2, payoutKobo: 50000,
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 5)), pickup: const GeoPoint(lat: 6.44, lng: 3.47),
+    );
+    final api = _TripApi(const [], const [])..acceptGate = Completer<Order>();
+    final showCard = ValueNotifier(true);
+    addTearDown(showCard.dispose);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(const GmUser(uid: 'demo-rider-1'))),
+        apiProvider.overrideWithValue(api),
+      ],
+      child: MaterialApp.router(
+        routerConfig: GoRouter(routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => Scaffold(
+              body: ValueListenableBuilder<bool>(
+                valueListenable: showCard,
+                builder: (_, show, _) => show ? OfferCard(offer: offer) : const Text('No offers'),
+              ),
+            ),
+          ),
+          GoRoute(path: '/deliveries/:id', builder: (_, s) => Text('TRIP ${s.pathParameters['id']}')),
+        ]),
+      ),
+    ));
+    await tester.tap(find.widgetWithText(FilledButton, 'Accept'));
+    await tester.pump();
+    showCard.value = false; // the dashboard's poll no longer lists the (accepted) offer
+    await tester.pump();
+    api.acceptGate!.complete(_order('o1', 'rider_assigned'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('TRIP o1'), findsOneWidget);
+  });
+
+  testWidgets('the offer countdown uses the seconds left from the API, whatever the phone clock says', (tester) async {
+    final watch = _FakeStopwatch();
+    // The phone's clock runs 10 minutes fast: by expires_at alone the offer would look long expired.
+    final phoneNow = DateTime.utc(2026, 11, 25, 12, 10);
+    DeliveryOffer offer(int left) => DeliveryOffer(
+          id: 'a1', orderId: 'o1', restaurantName: 'CareFirst Pharmacy', distanceToRestaurantKm: 1.2, payoutKobo: 50000,
+          expiresAt: DateTime.utc(2026, 11, 25, 12, 0, 40), pickup: const GeoPoint(lat: 6.44, lng: 3.47),
+          expiresInSeconds: left,
+        );
+    var current = offer(40);
+    late StateSetter setOuter;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [authRepositoryProvider.overrideWithValue(FakeAuthRepository())],
+      child: MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(builder: (context, set) {
+            setOuter = set;
+            return OfferCard(offer: current, now: () => phoneNow, stopwatch: () => watch);
+          }),
+        ),
+      ),
+    ));
+    Finder accept() => find.widgetWithText(FilledButton, 'Accept');
+    expect(find.text('40s'), findsOneWidget);
+    expect(tester.widget<FilledButton>(accept()).onPressed, isNotNull);
+    watch.fake = const Duration(seconds: 12);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('28s'), findsOneWidget);
+    // The next fetch says 25 s left: the countdown starts again from it.
+    watch.fake = Duration.zero;
+    setOuter(() => current = offer(25));
+    await tester.pump();
+    expect(find.text('25s'), findsOneWidget);
+    watch.fake = const Duration(seconds: 25);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Expired'), findsOneWidget);
+    expect(tester.widget<FilledButton>(accept()).onPressed, isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('each withdrawal gets its own idempotency key', (tester) async {
+    final api = _TripApi(const [], const [])..availableKobo = 250000;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(const GmUser(uid: 'demo-rider-1'))),
+        apiProvider.overrideWithValue(api),
+      ],
+      child: const MaterialApp(home: EarningsScreen()),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Withdraw ₦2,500'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Withdraw ₦2,500'));
+    await tester.pumpAndSettle();
+    expect(api.payoutKeys, hasLength(2));
+    expect(api.payoutKeys.toSet(), hasLength(2));
+  });
+}
+
+/// A stopwatch whose elapsed time the test sets.
+class _FakeStopwatch implements Stopwatch {
+  Duration fake = Duration.zero;
+
+  @override
+  Duration get elapsed => fake;
+
+  @override
+  void start() {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

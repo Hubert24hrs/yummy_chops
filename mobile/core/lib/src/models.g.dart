@@ -1407,6 +1407,7 @@ _DeliveryOffer _$DeliveryOfferFromJson(Map<String, dynamic> json) =>
               ?.map((e) => OfferPickup.fromJson(e as Map<String, dynamic>))
               .toList() ??
           const <OfferPickup>[],
+      expiresInSeconds: (json['expires_in_seconds'] as num?)?.toInt(),
     );
 
 Map<String, dynamic> _$DeliveryOfferToJson(_DeliveryOffer instance) =>
@@ -1422,6 +1423,7 @@ Map<String, dynamic> _$DeliveryOfferToJson(_DeliveryOffer instance) =>
       'dropoff_area': ?instance.dropoffArea,
       'trip_order_ids': instance.tripOrderIds,
       'pickups': instance.pickups.map((e) => e.toJson()).toList(),
+      'expires_in_seconds': ?instance.expiresInSeconds,
     };
 
 _OfferPickup _$OfferPickupFromJson(Map<String, dynamic> json) => _OfferPickup(

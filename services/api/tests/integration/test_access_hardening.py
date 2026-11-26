@@ -5,10 +5,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import httpx
+import pytest
 
 from conftest import Flow, auth
 from gudmeal_api.api.deps import client_ip
 from gudmeal_api.config import Settings
+from gudmeal_api.errors import RateLimited
 from gudmeal_api.security.compare import same_secret
 from gudmeal_api.security.rate_limit import RateLimiter
 
@@ -139,3 +141,20 @@ async def test_profile_and_address_edits(client: httpx.AsyncClient) -> None:
     assert (
         await client.put(f"/v1/me/addresses/{first}", json=address, headers=auth("customer2"))
     ).status_code == 200
+
+
+def test_checking_a_payment_every_two_seconds_is_never_refused(monkeypatch) -> None:
+    """The app and the website poll /v1/payments/verify every 2 s while the payment page is open (~10 min)."""
+    from gudmeal_api.security import rate_limit
+
+    now = [1000.0]
+    monkeypatch.setattr(rate_limit.time, "monotonic", lambda: now[0])
+    capacity, refill = rate_limit.LIMITS["payment_verify"]
+    limiter = RateLimiter()
+    for _ in range(300):  # 10 minutes
+        limiter.check("payment_verify:cust-1", capacity=capacity, refill_per_second=refill)
+        now[0] += 2.0
+    for _ in range(capacity):  # a burst still runs out
+        limiter.check("payment_verify:cust-1", capacity=capacity, refill_per_second=refill)
+    with pytest.raises(RateLimited):
+        limiter.check("payment_verify:cust-1", capacity=capacity, refill_per_second=refill)

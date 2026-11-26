@@ -794,6 +794,8 @@ abstract class DeliveryOffer with _$DeliveryOffer {
     @Default(<String>[]) List<String> tripOrderIds,
     /// The places to collect from (one per order of the trip).
     @Default(<OfferPickup>[]) List<OfferPickup> pickups,
+    /// Seconds left when the API answered, by the server's clock (apps count down from it; null on older servers).
+    int? expiresInSeconds,
   }) = _DeliveryOffer;
   factory DeliveryOffer.fromJson(Map<String, dynamic> json) => _$DeliveryOfferFromJson(json);
 }

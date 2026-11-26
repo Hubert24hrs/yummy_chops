@@ -73,6 +73,7 @@ class _RiderHomeScreenState extends ConsumerState<RiderHomeScreen> {
 
   Future<void> _setOnline(bool online) async {
     final message = await setRiderOnline(ref.read(apiProvider), ref.read(locationReporterProvider), online);
+    if (!mounted) return;
     ref.invalidate(riderProfileProvider);
     ref.invalidate(offersProvider);
     if (mounted) setState(() => _message = message);
@@ -209,8 +210,9 @@ class _RiderHomeScreenState extends ConsumerState<RiderHomeScreen> {
     final description = typed.length >= 3 ? typed : 'Emergency (the rider did not say more)';
     try {
       // Where the rider is: the last shared position, or a fresh one when they are offline.
+      final api = ref.read(apiProvider); // before the (up to 15 s) position wait: the screen may be gone after it
       final at = ref.read(locationReporterProvider).last ?? (await ref.read(locationSourceProvider).current())?.$1;
-      await ref.read(apiProvider).emergency(description, at);
+      await api.emergency(description, at);
       messenger.showSnackBar(const SnackBar(content: Text('Our operations team has been alerted. If you are in danger, call 112.')));
     } catch (_) {
       messenger.showSnackBar(const SnackBar(
@@ -223,9 +225,12 @@ class _RiderHomeScreenState extends ConsumerState<RiderHomeScreen> {
 
 /// A delivery offer with a live countdown. Accepting after expiry is impossible (the API rejects it too).
 class OfferCard extends ConsumerStatefulWidget {
-  const OfferCard({super.key, required this.offer, this.now});
+  const OfferCard({super.key, required this.offer, this.now, this.stopwatch});
   final DeliveryOffer offer;
   final DateTime Function()? now;
+
+  /// Measures time since the offer's seconds left arrived (a fake in tests).
+  final Stopwatch Function()? stopwatch;
 
   @override
   ConsumerState<OfferCard> createState() => _OfferCardState();
@@ -235,11 +240,34 @@ class _OfferCardState extends ConsumerState<OfferCard> {
   Timer? _tick;
   bool _busy = false;
 
+  /// The countdown runs on the phone's monotonic clock from the seconds left the API sent with this fetch, so a
+  /// phone whose clock is wrong (or changes) still shows the right time and can accept. `expires_at` is only used
+  /// with a server that does not send `expires_in_seconds`.
+  late Stopwatch _sinceFetch;
+
   DateTime _now() => (widget.now ?? DateTime.now)().toUtc();
+
+  Stopwatch _startStopwatch() => (widget.stopwatch ?? Stopwatch.new)()..start();
+
+  int get _remaining {
+    final left = widget.offer.expiresInSeconds;
+    if (left != null) return left - _sinceFetch.elapsed.inSeconds;
+    return widget.offer.expiresAt.toUtc().difference(_now()).inSeconds;
+  }
+
+  @override
+  void didUpdateWidget(OfferCard old) {
+    super.didUpdateWidget(old);
+    // A newer fetch: count down from its seconds left.
+    if (old.offer.id != widget.offer.id || old.offer.expiresInSeconds != widget.offer.expiresInSeconds) {
+      _sinceFetch = _startStopwatch();
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _sinceFetch = _startStopwatch();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => mounted ? setState(() {}) : null);
   }
 
@@ -252,7 +280,7 @@ class _OfferCardState extends ConsumerState<OfferCard> {
   @override
   Widget build(BuildContext context) {
     final o = widget.offer;
-    final remaining = o.expiresAt.toUtc().difference(_now()).inSeconds;
+    final remaining = _remaining;
     final expired = remaining <= 0;
     final multi = o.pickups.length > 1;
     return Card(
@@ -293,14 +321,21 @@ class _OfferCardState extends ConsumerState<OfferCard> {
                 onPressed: expired || _busy
                     ? null
                     : () async {
+                        // Taken before the request: the dashboard's poll can drop this offer (it was just
+                        // accepted) and remove this card while the request runs, and the rider must still get
+                        // to the trip.
+                        final container = ProviderScope.containerOf(context, listen: false);
+                        final router = GoRouter.of(context);
+                        final messenger = ScaffoldMessenger.of(context);
                         setState(() => _busy = true);
                         try {
-                          final order = await ref.read(apiProvider).acceptOffer(o.id);
-                          ref.invalidate(offersProvider);
-                          ref.invalidate(activeDeliveriesProvider);
-                          if (context.mounted) context.push('/deliveries/${order.id}');
+                          final order = await container.read(apiProvider).acceptOffer(o.id);
+                          container.invalidate(offersProvider);
+                          container.invalidate(activeDeliveriesProvider);
+                          container.invalidate(riderTripsProvider);
+                          router.push('/deliveries/${order.id}');
                         } on ApiException catch (e) {
-                          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+                          messenger.showSnackBar(SnackBar(content: Text(e.message)));
                         } finally {
                           if (mounted) setState(() => _busy = false);
                         }

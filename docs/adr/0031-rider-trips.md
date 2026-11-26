@@ -41,3 +41,9 @@ rider app showed one order at a time, with the shop's address but not its phone 
   each leg are measured when Google is configured. The turn-by-turn route itself comes from Google Maps on the phone.
 - A trip from many shops can exceed the usual two active jobs for one rider; that is intended, since it is one door.
 - End-to-end journey `mixed_cart_one_payment` now checks one offer, one rider, the planned stops with phones, one code.
+- Audit of 2026-11-26: wrong delivery codes count across the whole trip (orders sharing a code share the tries and
+  the lock), and a correct code does not use up the rider's tries; a rider who declined or let a trip offer run out
+  is not offered its other orders; an order the rider hands back goes to another rider; the rider's cash limit counts
+  every cash order of the trip; an order called off while the trip offer is out frees the rest of the trip for a new
+  offer; only orders going to the same door (within 100 m) become one trip; the rider's trip is read from the
+  orders themselves, so it always matches the delivery list.

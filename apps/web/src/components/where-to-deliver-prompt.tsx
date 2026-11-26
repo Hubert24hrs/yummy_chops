@@ -5,8 +5,11 @@ import { useEffect } from "react";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
-/** Pages where being sent to "Where should we deliver?" would get in the way; the question waits for the next page. */
-const NOT_HERE = ["/where-to-deliver", "/login", "/checkout/callback", "/ride", "/partner-with-us", "/track", "/help"];
+/**
+ * Pages where being sent to "Where should we deliver?" would get in the way; the question waits for the next page.
+ * The cart and checkout too: checkout asks for the address itself, and a guest with a leftover cart is about to pay.
+ */
+const NOT_HERE = ["/where-to-deliver", "/login", "/cart", "/checkout", "/ride", "/partner-with-us", "/track", "/help"];
 
 /**
  * Guest mode (ADR-0032): nobody signs in through /login any more, so a fresh guest is asked where to deliver once,
@@ -20,6 +23,11 @@ export function WhereToDeliverPrompt() {
 
   useEffect(() => {
     if (!askWhereToDeliver || !user) return;
+    // Already on the question (e.g. sent there by the sign-in page): asked, so "Not now" is not followed by it again.
+    if (path === "/where-to-deliver") {
+      askedWhereToDeliver();
+      return;
+    }
     if (NOT_HERE.some((p) => path === p || path.startsWith(`${p}/`))) return;
     askedWhereToDeliver(); // once: the answer below is not cancelled when this page re-renders
     api.me.addresses().then((saved) => {

@@ -16639,7 +16639,8 @@ mixin _$DeliveryOffer {
 
  String get id; String get orderId; String get restaurantName; double get distanceToRestaurantKm; int get payoutKobo; DateTime get expiresAt; GeoPoint get pickup; GeoPoint? get dropoff; String? get dropoffArea;/// Every order this offer covers: one for a normal job, several for a mixed cart (one trip, one rider).
  List<String> get tripOrderIds;/// The places to collect from (one per order of the trip).
- List<OfferPickup> get pickups;
+ List<OfferPickup> get pickups;/// Seconds left when the API answered, by the server's clock (apps count down from it; null on older servers).
+ int? get expiresInSeconds;
 /// Create a copy of DeliveryOffer
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -16653,20 +16654,20 @@ $DeliveryOfferCopyWith<DeliveryOffer> get copyWith => _$DeliveryOfferCopyWithImp
 @override
 bool operator ==(Object other) {
   final _this = this as DeliveryOffer;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is DeliveryOffer&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.orderId, _this.orderId) || other.orderId == _this.orderId)&&(identical(other.restaurantName, _this.restaurantName) || other.restaurantName == _this.restaurantName)&&(identical(other.distanceToRestaurantKm, _this.distanceToRestaurantKm) || other.distanceToRestaurantKm == _this.distanceToRestaurantKm)&&(identical(other.payoutKobo, _this.payoutKobo) || other.payoutKobo == _this.payoutKobo)&&(identical(other.expiresAt, _this.expiresAt) || other.expiresAt == _this.expiresAt)&&(identical(other.pickup, _this.pickup) || other.pickup == _this.pickup)&&(identical(other.dropoff, _this.dropoff) || other.dropoff == _this.dropoff)&&(identical(other.dropoffArea, _this.dropoffArea) || other.dropoffArea == _this.dropoffArea)&&const DeepCollectionEquality().equals(other.tripOrderIds, _this.tripOrderIds)&&const DeepCollectionEquality().equals(other.pickups, _this.pickups));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is DeliveryOffer&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.orderId, _this.orderId) || other.orderId == _this.orderId)&&(identical(other.restaurantName, _this.restaurantName) || other.restaurantName == _this.restaurantName)&&(identical(other.distanceToRestaurantKm, _this.distanceToRestaurantKm) || other.distanceToRestaurantKm == _this.distanceToRestaurantKm)&&(identical(other.payoutKobo, _this.payoutKobo) || other.payoutKobo == _this.payoutKobo)&&(identical(other.expiresAt, _this.expiresAt) || other.expiresAt == _this.expiresAt)&&(identical(other.pickup, _this.pickup) || other.pickup == _this.pickup)&&(identical(other.dropoff, _this.dropoff) || other.dropoff == _this.dropoff)&&(identical(other.dropoffArea, _this.dropoffArea) || other.dropoffArea == _this.dropoffArea)&&const DeepCollectionEquality().equals(other.tripOrderIds, _this.tripOrderIds)&&const DeepCollectionEquality().equals(other.pickups, _this.pickups)&&(identical(other.expiresInSeconds, _this.expiresInSeconds) || other.expiresInSeconds == _this.expiresInSeconds));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as DeliveryOffer;
-  return Object.hash(runtimeType,_this.id,_this.orderId,_this.restaurantName,_this.distanceToRestaurantKm,_this.payoutKobo,_this.expiresAt,_this.pickup,_this.dropoff,_this.dropoffArea,const DeepCollectionEquality().hash(_this.tripOrderIds),const DeepCollectionEquality().hash(_this.pickups));
+  return Object.hash(runtimeType,_this.id,_this.orderId,_this.restaurantName,_this.distanceToRestaurantKm,_this.payoutKobo,_this.expiresAt,_this.pickup,_this.dropoff,_this.dropoffArea,const DeepCollectionEquality().hash(_this.tripOrderIds),const DeepCollectionEquality().hash(_this.pickups),_this.expiresInSeconds);
 }
 
 @override
 String toString() {
   final _this = this as DeliveryOffer;
-  return 'DeliveryOffer(id: ${_this.id}, orderId: ${_this.orderId}, restaurantName: ${_this.restaurantName}, distanceToRestaurantKm: ${_this.distanceToRestaurantKm}, payoutKobo: ${_this.payoutKobo}, expiresAt: ${_this.expiresAt}, pickup: ${_this.pickup}, dropoff: ${_this.dropoff}, dropoffArea: ${_this.dropoffArea}, tripOrderIds: ${_this.tripOrderIds}, pickups: ${_this.pickups})';
+  return 'DeliveryOffer(id: ${_this.id}, orderId: ${_this.orderId}, restaurantName: ${_this.restaurantName}, distanceToRestaurantKm: ${_this.distanceToRestaurantKm}, payoutKobo: ${_this.payoutKobo}, expiresAt: ${_this.expiresAt}, pickup: ${_this.pickup}, dropoff: ${_this.dropoff}, dropoffArea: ${_this.dropoffArea}, tripOrderIds: ${_this.tripOrderIds}, pickups: ${_this.pickups}, expiresInSeconds: ${_this.expiresInSeconds})';
 }
 
 
@@ -16677,7 +16678,7 @@ abstract mixin class $DeliveryOfferCopyWith<$Res>  {
   factory $DeliveryOfferCopyWith(DeliveryOffer value, $Res Function(DeliveryOffer) _then) = _$DeliveryOfferCopyWithImpl;
 @useResult
 $Res call({
- String id, String orderId, String restaurantName, double distanceToRestaurantKm, int payoutKobo, DateTime expiresAt, GeoPoint pickup, GeoPoint? dropoff, String? dropoffArea, List<String> tripOrderIds, List<OfferPickup> pickups
+ String id, String orderId, String restaurantName, double distanceToRestaurantKm, int payoutKobo, DateTime expiresAt, GeoPoint pickup, GeoPoint? dropoff, String? dropoffArea, List<String> tripOrderIds, List<OfferPickup> pickups, int? expiresInSeconds
 });
 
 
@@ -16694,7 +16695,7 @@ class _$DeliveryOfferCopyWithImpl<$Res>
 
 /// Create a copy of DeliveryOffer
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? orderId = null,Object? restaurantName = null,Object? distanceToRestaurantKm = null,Object? payoutKobo = null,Object? expiresAt = null,Object? pickup = null,Object? dropoff = freezed,Object? dropoffArea = freezed,Object? tripOrderIds = null,Object? pickups = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? orderId = null,Object? restaurantName = null,Object? distanceToRestaurantKm = null,Object? payoutKobo = null,Object? expiresAt = null,Object? pickup = null,Object? dropoff = freezed,Object? dropoffArea = freezed,Object? tripOrderIds = null,Object? pickups = null,Object? expiresInSeconds = freezed,}) {
   return _then(DeliveryOffer(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,orderId: null == orderId ? _self.orderId : orderId // ignore: cast_nullable_to_non_nullable
@@ -16707,7 +16708,8 @@ as GeoPoint,dropoff: freezed == dropoff ? _self.dropoff : dropoff // ignore: cas
 as GeoPoint?,dropoffArea: freezed == dropoffArea ? _self.dropoffArea : dropoffArea // ignore: cast_nullable_to_non_nullable
 as String?,tripOrderIds: null == tripOrderIds ? _self.tripOrderIds : tripOrderIds // ignore: cast_nullable_to_non_nullable
 as List<String>,pickups: null == pickups ? _self.pickups : pickups // ignore: cast_nullable_to_non_nullable
-as List<OfferPickup>,
+as List<OfferPickup>,expiresInSeconds: freezed == expiresInSeconds ? _self.expiresInSeconds : expiresInSeconds // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 /// Create a copy of DeliveryOffer
@@ -16813,10 +16815,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String orderId,  String restaurantName,  double distanceToRestaurantKm,  int payoutKobo,  DateTime expiresAt,  GeoPoint pickup,  GeoPoint? dropoff,  String? dropoffArea,  List<String> tripOrderIds,  List<OfferPickup> pickups)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String orderId,  String restaurantName,  double distanceToRestaurantKm,  int payoutKobo,  DateTime expiresAt,  GeoPoint pickup,  GeoPoint? dropoff,  String? dropoffArea,  List<String> tripOrderIds,  List<OfferPickup> pickups,  int? expiresInSeconds)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _DeliveryOffer() when $default != null:
-return $default(_that.id,_that.orderId,_that.restaurantName,_that.distanceToRestaurantKm,_that.payoutKobo,_that.expiresAt,_that.pickup,_that.dropoff,_that.dropoffArea,_that.tripOrderIds,_that.pickups);case _:
+return $default(_that.id,_that.orderId,_that.restaurantName,_that.distanceToRestaurantKm,_that.payoutKobo,_that.expiresAt,_that.pickup,_that.dropoff,_that.dropoffArea,_that.tripOrderIds,_that.pickups,_that.expiresInSeconds);case _:
   return orElse();
 
 }
@@ -16834,10 +16836,10 @@ return $default(_that.id,_that.orderId,_that.restaurantName,_that.distanceToRest
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String orderId,  String restaurantName,  double distanceToRestaurantKm,  int payoutKobo,  DateTime expiresAt,  GeoPoint pickup,  GeoPoint? dropoff,  String? dropoffArea,  List<String> tripOrderIds,  List<OfferPickup> pickups)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String orderId,  String restaurantName,  double distanceToRestaurantKm,  int payoutKobo,  DateTime expiresAt,  GeoPoint pickup,  GeoPoint? dropoff,  String? dropoffArea,  List<String> tripOrderIds,  List<OfferPickup> pickups,  int? expiresInSeconds)  $default,) {final _that = this;
 switch (_that) {
 case _DeliveryOffer():
-return $default(_that.id,_that.orderId,_that.restaurantName,_that.distanceToRestaurantKm,_that.payoutKobo,_that.expiresAt,_that.pickup,_that.dropoff,_that.dropoffArea,_that.tripOrderIds,_that.pickups);case _:
+return $default(_that.id,_that.orderId,_that.restaurantName,_that.distanceToRestaurantKm,_that.payoutKobo,_that.expiresAt,_that.pickup,_that.dropoff,_that.dropoffArea,_that.tripOrderIds,_that.pickups,_that.expiresInSeconds);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -16854,10 +16856,10 @@ return $default(_that.id,_that.orderId,_that.restaurantName,_that.distanceToRest
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String orderId,  String restaurantName,  double distanceToRestaurantKm,  int payoutKobo,  DateTime expiresAt,  GeoPoint pickup,  GeoPoint? dropoff,  String? dropoffArea,  List<String> tripOrderIds,  List<OfferPickup> pickups)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String orderId,  String restaurantName,  double distanceToRestaurantKm,  int payoutKobo,  DateTime expiresAt,  GeoPoint pickup,  GeoPoint? dropoff,  String? dropoffArea,  List<String> tripOrderIds,  List<OfferPickup> pickups,  int? expiresInSeconds)?  $default,) {final _that = this;
 switch (_that) {
 case _DeliveryOffer() when $default != null:
-return $default(_that.id,_that.orderId,_that.restaurantName,_that.distanceToRestaurantKm,_that.payoutKobo,_that.expiresAt,_that.pickup,_that.dropoff,_that.dropoffArea,_that.tripOrderIds,_that.pickups);case _:
+return $default(_that.id,_that.orderId,_that.restaurantName,_that.distanceToRestaurantKm,_that.payoutKobo,_that.expiresAt,_that.pickup,_that.dropoff,_that.dropoffArea,_that.tripOrderIds,_that.pickups,_that.expiresInSeconds);case _:
   return null;
 
 }
@@ -16869,7 +16871,7 @@ return $default(_that.id,_that.orderId,_that.restaurantName,_that.distanceToRest
 @JsonSerializable()
 
 class _DeliveryOffer implements DeliveryOffer {
-  const _DeliveryOffer({required this.id, required this.orderId, required this.restaurantName, required this.distanceToRestaurantKm, required this.payoutKobo, required this.expiresAt, required this.pickup, this.dropoff, this.dropoffArea,  List<String> tripOrderIds = const <String>[],  List<OfferPickup> pickups = const <OfferPickup>[]}): _tripOrderIds = tripOrderIds,_pickups = pickups;
+  const _DeliveryOffer({required this.id, required this.orderId, required this.restaurantName, required this.distanceToRestaurantKm, required this.payoutKobo, required this.expiresAt, required this.pickup, this.dropoff, this.dropoffArea,  List<String> tripOrderIds = const <String>[],  List<OfferPickup> pickups = const <OfferPickup>[], this.expiresInSeconds}): _tripOrderIds = tripOrderIds,_pickups = pickups;
   factory _DeliveryOffer.fromJson(Map<String, dynamic> json) => _$DeliveryOfferFromJson(json);
 
 @override final  String id;
@@ -16899,6 +16901,8 @@ class _DeliveryOffer implements DeliveryOffer {
   return EqualUnmodifiableListView(_pickups);
 }
 
+/// Seconds left when the API answered, by the server's clock (apps count down from it; null on older servers).
+@override final  int? expiresInSeconds;
 
 /// Create a copy of DeliveryOffer
 /// with the given fields replaced by the non-null parameter values.
@@ -16913,18 +16917,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _DeliveryOffer&&(identical(other.id, id) || other.id == id)&&(identical(other.orderId, orderId) || other.orderId == orderId)&&(identical(other.restaurantName, restaurantName) || other.restaurantName == restaurantName)&&(identical(other.distanceToRestaurantKm, distanceToRestaurantKm) || other.distanceToRestaurantKm == distanceToRestaurantKm)&&(identical(other.payoutKobo, payoutKobo) || other.payoutKobo == payoutKobo)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt)&&(identical(other.pickup, pickup) || other.pickup == pickup)&&(identical(other.dropoff, dropoff) || other.dropoff == dropoff)&&(identical(other.dropoffArea, dropoffArea) || other.dropoffArea == dropoffArea)&&const DeepCollectionEquality().equals(other.tripOrderIds, _tripOrderIds)&&const DeepCollectionEquality().equals(other.pickups, _pickups));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _DeliveryOffer&&(identical(other.id, id) || other.id == id)&&(identical(other.orderId, orderId) || other.orderId == orderId)&&(identical(other.restaurantName, restaurantName) || other.restaurantName == restaurantName)&&(identical(other.distanceToRestaurantKm, distanceToRestaurantKm) || other.distanceToRestaurantKm == distanceToRestaurantKm)&&(identical(other.payoutKobo, payoutKobo) || other.payoutKobo == payoutKobo)&&(identical(other.expiresAt, expiresAt) || other.expiresAt == expiresAt)&&(identical(other.pickup, pickup) || other.pickup == pickup)&&(identical(other.dropoff, dropoff) || other.dropoff == dropoff)&&(identical(other.dropoffArea, dropoffArea) || other.dropoffArea == dropoffArea)&&const DeepCollectionEquality().equals(other.tripOrderIds, _tripOrderIds)&&const DeepCollectionEquality().equals(other.pickups, _pickups)&&(identical(other.expiresInSeconds, expiresInSeconds) || other.expiresInSeconds == expiresInSeconds));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,id,orderId,restaurantName,distanceToRestaurantKm,payoutKobo,expiresAt,pickup,dropoff,dropoffArea,const DeepCollectionEquality().hash(_tripOrderIds),const DeepCollectionEquality().hash(_pickups));
+    return Object.hash(runtimeType,id,orderId,restaurantName,distanceToRestaurantKm,payoutKobo,expiresAt,pickup,dropoff,dropoffArea,const DeepCollectionEquality().hash(_tripOrderIds),const DeepCollectionEquality().hash(_pickups),expiresInSeconds);
 }
 
 @override
 String toString() {
-    return 'DeliveryOffer(id: $id, orderId: $orderId, restaurantName: $restaurantName, distanceToRestaurantKm: $distanceToRestaurantKm, payoutKobo: $payoutKobo, expiresAt: $expiresAt, pickup: $pickup, dropoff: $dropoff, dropoffArea: $dropoffArea, tripOrderIds: $tripOrderIds, pickups: $pickups)';
+    return 'DeliveryOffer(id: $id, orderId: $orderId, restaurantName: $restaurantName, distanceToRestaurantKm: $distanceToRestaurantKm, payoutKobo: $payoutKobo, expiresAt: $expiresAt, pickup: $pickup, dropoff: $dropoff, dropoffArea: $dropoffArea, tripOrderIds: $tripOrderIds, pickups: $pickups, expiresInSeconds: $expiresInSeconds)';
 }
 
 
@@ -16935,7 +16939,7 @@ abstract mixin class _$DeliveryOfferCopyWith<$Res> implements $DeliveryOfferCopy
   factory _$DeliveryOfferCopyWith(_DeliveryOffer value, $Res Function(_DeliveryOffer) _then) = __$DeliveryOfferCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String orderId, String restaurantName, double distanceToRestaurantKm, int payoutKobo, DateTime expiresAt, GeoPoint pickup, GeoPoint? dropoff, String? dropoffArea, List<String> tripOrderIds, List<OfferPickup> pickups
+ String id, String orderId, String restaurantName, double distanceToRestaurantKm, int payoutKobo, DateTime expiresAt, GeoPoint pickup, GeoPoint? dropoff, String? dropoffArea, List<String> tripOrderIds, List<OfferPickup> pickups, int? expiresInSeconds
 });
 
 
@@ -16952,7 +16956,7 @@ class __$DeliveryOfferCopyWithImpl<$Res>
 
 /// Create a copy of DeliveryOffer
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? orderId = null,Object? restaurantName = null,Object? distanceToRestaurantKm = null,Object? payoutKobo = null,Object? expiresAt = null,Object? pickup = null,Object? dropoff = freezed,Object? dropoffArea = freezed,Object? tripOrderIds = null,Object? pickups = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? orderId = null,Object? restaurantName = null,Object? distanceToRestaurantKm = null,Object? payoutKobo = null,Object? expiresAt = null,Object? pickup = null,Object? dropoff = freezed,Object? dropoffArea = freezed,Object? tripOrderIds = null,Object? pickups = null,Object? expiresInSeconds = freezed,}) {
   return _then(_DeliveryOffer(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,orderId: null == orderId ? _self.orderId : orderId // ignore: cast_nullable_to_non_nullable
@@ -16965,7 +16969,8 @@ as GeoPoint,dropoff: freezed == dropoff ? _self.dropoff : dropoff // ignore: cas
 as GeoPoint?,dropoffArea: freezed == dropoffArea ? _self.dropoffArea : dropoffArea // ignore: cast_nullable_to_non_nullable
 as String?,tripOrderIds: null == tripOrderIds ? _self._tripOrderIds : tripOrderIds // ignore: cast_nullable_to_non_nullable
 as List<String>,pickups: null == pickups ? _self._pickups : pickups // ignore: cast_nullable_to_non_nullable
-as List<OfferPickup>,
+as List<OfferPickup>,expiresInSeconds: freezed == expiresInSeconds ? _self.expiresInSeconds : expiresInSeconds // ignore: cast_nullable_to_non_nullable
+as int?,
   ));
 }
 

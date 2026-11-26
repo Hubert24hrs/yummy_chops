@@ -10,7 +10,11 @@ import '../location/delivery_location.dart';
 
 /// Accepts 0803…, 803… or +234803… and returns E.164 (+234…), or null if not a Nigerian mobile number.
 String? normaliseNigerianPhone(String input) {
-  final digits = input.replaceAll(RegExp(r'[^\d+]'), '');
+  var digits = input.replaceAll(RegExp(r'[^\d+]'), '');
+  // Also written as 234803… (no plus), 002348…, or +234 0803… (the trunk 0 kept after the country code).
+  if (digits.startsWith('00234')) digits = '+${digits.substring(2)}';
+  if (RegExp(r'^234\d{10,11}$').hasMatch(digits)) digits = '+$digits';
+  if (RegExp(r'^\+2340\d{10}$').hasMatch(digits)) digits = '+234${digits.substring(5)}';
   if (RegExp(r'^\+234[789][01]\d{8}$').hasMatch(digits)) return digits;
   if (RegExp(r'^0[789][01]\d{8}$').hasMatch(digits)) return '+234${digits.substring(1)}';
   if (RegExp(r'^[789][01]\d{8}$').hasMatch(digits)) return '+234$digits';

@@ -61,6 +61,7 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
     });
     try {
       final updated = await action(ref.read(apiProvider));
+      if (!mounted) return; // the rider left the screen while the request ran: `ref` is unusable then
       ref.invalidate(_deliveryProvider(widget.orderId));
       ref.invalidate(activeDeliveriesProvider);
       if (updated.status == 'delivered' || updated.status == 'completed') {
@@ -73,7 +74,7 @@ class _DeliveryScreenState extends ConsumerState<DeliveryScreen> {
         }
       }
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      if (mounted) setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -414,6 +415,13 @@ class DeliveryCodeForm extends StatefulWidget {
 
 class _DeliveryCodeFormState extends State<DeliveryCodeForm> {
   bool _cashTaken = false;
+
+  @override
+  void didUpdateWidget(DeliveryCodeForm old) {
+    super.didUpdateWidget(old);
+    // The amount changed (an order joined or left the trip): the rider confirms the new amount again.
+    if (old.cashToCollectKobo != widget.cashToCollectKobo) _cashTaken = false;
+  }
 
   @override
   Widget build(BuildContext context) {

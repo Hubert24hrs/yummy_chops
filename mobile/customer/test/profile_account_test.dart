@@ -21,8 +21,16 @@ class _Api extends MapsApi {
   @override
   Future<List<DeliveryAddress>> addresses() async => List.of(saved);
 
+  final updated = <String>[];
+
   @override
-  Future<void> saveAddress(DeliveryAddress a) async => saved.add(a);
+  Future<void> saveAddress(DeliveryAddress a) async => saved.add(a.copyWith(id: 'a${saved.length + 1}'));
+
+  @override
+  Future<void> updateAddress(String id, DeliveryAddress a) async {
+    updated.add(id);
+    saved[saved.indexWhere((s) => s.id == id)] = a.copyWith(id: id);
+  }
 }
 
 class FakeBiometrics implements BiometricAuth {
@@ -156,6 +164,18 @@ void main() {
     expect(find.textContaining('12 Herbert Macaulay Way'), findsOneWidget);
     expect(find.byKey(const ValueKey('home-address-change')), findsOneWidget);
     expect(find.text('Use my location'), findsNothing);
+
+    // Change replaces the Home address (found in review: a second "Home" was added, and the address book's order
+    // by id decided which one showed and which one checkout used).
+    await tester.tap(find.byKey(const ValueKey('home-address-change')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Street and house number'), '3 Commercial Avenue');
+    await tester.tap(find.text('Use this address'));
+    await tester.pumpAndSettle();
+    expect(api.updated, ['a1']);
+    expect(api.saved.single.line1, '3 Commercial Avenue');
+    expect(api.saved.single.label, 'Home');
+    expect(find.textContaining('3 Commercial Avenue'), findsOneWidget);
   });
 
   testWidgets('Unlock with fingerprint is offered only to a saved account on a phone that can check it', (tester) async {

@@ -185,6 +185,16 @@ describe("checkout", () => {
     expect(api.request.mock.calls[0]![2]!.body).not.toHaveProperty("id");
   });
 
+  it("asks for one price as the page opens with a saved address, its phone number and instructions filled in", async () => {
+    api.me.addresses.mockResolvedValue([{ ...home, instructions: "Blue gate" }]);
+    show();
+    await waitFor(() => expect(payButton().disabled).toBe(false), ready);
+    expect(api.orders.quote).toHaveBeenCalledTimes(1);
+    expect(api.orders.quote.mock.calls[0]![0].delivery_address).toEqual(expect.objectContaining({
+      id: "a1", instructions: "Blue gate", contact_phone: "+2348030000000",
+    }));
+  });
+
   it("fills the phone number in from this browser or the saved address", async () => {
     window.localStorage.setItem("gudmeal.contact-phone.v1", "+2348035550000");
     show();
@@ -277,6 +287,54 @@ describe("checkout", () => {
     expect(api.orders.checkoutMany).toHaveBeenCalledWith(["o-r1", "o-p1"], expect.stringMatching(/^checkout-/), "cash");
     expect(api.orders.checkout).not.toHaveBeenCalled();
     expect(JSON.parse(window.localStorage.getItem("gudmeal.cart.v2")!).items).toEqual([]);
+  });
+
+  it("when one shop's price changed, only that shop is priced again: the other shop's order is not made twice", async () => {
+    saveCart([line("r1", "Ofada Hub", "ofada", "Ofada rice"), line("p1", "MedPlus", "para", "Paracetamol")]);
+    api.me.addresses.mockResolvedValue([home]);
+    api.orders.create.mockImplementation(async (quote: string) => ({ id: `o-${quote}` }));
+    show();
+    await waitFor(() => expect(payButton().disabled).toBe(false), ready);
+    const quotedFor = (shop: string) => api.orders.quote.mock.calls.filter(([r]) => r.restaurant_id === shop).length;
+    const r1Before = quotedFor("r1");
+    const p1Before = quotedFor("p1");
+
+    // The first shop's order is made; the second shop's price changed.
+    api.orders.create
+      .mockImplementationOnce(async (quote: string) => ({ id: `o-${quote}` }))
+      .mockRejectedValueOnce(new ApiError(409, "price_changed", "Prices changed since your quote; please review your cart"));
+    fireEvent.click(payButton());
+    expect(await screen.findByText(/Prices changed since your quote/)).toBeTruthy();
+    await waitFor(() => expect(quotedFor("p1")).toBe(p1Before + 1));
+    expect(quotedFor("r1")).toBe(r1Before);
+
+    await waitFor(() => expect(payButton().disabled).toBe(false), ready);
+    fireEvent.click(payButton());
+    await waitFor(() => expect(api.orders.checkoutMany).toHaveBeenCalledTimes(1));
+    const calls = api.orders.create.mock.calls.map((c) => c[0]);
+    // The first shop's order comes from the same quote both times (the API gives back the same order).
+    expect(quoteShop.get(calls[0]!)).toBe("r1");
+    expect(calls[2]).toBe(calls[0]);
+    expect(quoteShop.get(calls[3]!)).toBe("p1");
+    expect(calls[3]).not.toBe(calls[1]);
+    expect(api.orders.checkoutMany.mock.calls[0]![0]).toEqual([`o-${calls[0]}`, `o-${calls[3]}`]);
+  });
+
+  it("a new address is saved once, even when paying is tried again", async () => {
+    show();
+    expect(await screen.findByText(/1 product from/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /Add a delivery address/ }));
+    type("Street address", "12 Ogui Road");
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Done" }));
+    inSheet(/Phone number/, () => type("Phone number", "08030000000"));
+    await waitFor(() => expect(payButton().disabled).toBe(false), ready);
+
+    api.orders.checkout.mockRejectedValueOnce(new ApiError(400, "validation_failed", "Card payments are down for a moment"));
+    fireEvent.click(payButton());
+    expect(await screen.findByText(/Card payments are down/)).toBeTruthy();
+    fireEvent.click(payButton());
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/orders/o1"));
+    expect(api.me.addAddress).toHaveBeenCalledTimes(1);
   });
 
   it("sends the allergy note with each shop's order, on that shop's first line", async () => {

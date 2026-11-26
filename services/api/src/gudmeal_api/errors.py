@@ -71,6 +71,10 @@ class ValidationFailed(DomainError):
     status_code = 422
 
 
+class IncorrectCode(ValidationFailed):
+    """A wrong confirmation code (same error code for clients; only wrong codes count against the code limit)."""
+
+
 class VoucherInvalid(ValidationFailed):
     code = "voucher_invalid"
 

@@ -121,6 +121,8 @@ function Checkout() {
     return send;
   };
   const [sendCheckout] = useState(() => idempotentCalls("checkout"));
+  /** The new address already saved by an earlier press of Pay (as text): trying again does not save it twice. */
+  const [savedNew] = useState(() => ({ address: null as string | null }));
   // The street, the instructions and the allergy note are part of the quote (the order takes its address and lines
   // from it), so the price is asked for again when they change: once typing stops, because the API allows about one
   // quote every two seconds. Quantities changed on the cart page are settled the same way.
@@ -194,7 +196,9 @@ function Checkout() {
       const voucher = i === 0 ? appliedVoucher : null;
       return {
         queryKey: ["quote", shop.restaurant_id, shop.lines, fulfillment, address, voucher, scheduledFor],
-        enabled: quoteReady,
+        // Not while the page is still settling (the phone number and instructions are filled in as it opens, the
+        // customer is typing): each shop is asked once for the settled values, not once more for the values before.
+        enabled: quoteReady && !typing,
         queryFn: () => api.orders.quote({
           restaurant_id: shop.restaurant_id, lines: shop.lines, fulfillment, delivery_address: address, voucher_code: voucher,
           scheduled_for: scheduledFor,
@@ -205,7 +209,13 @@ function Checkout() {
   });
   const allQuotes = quoteReady && quotes.length > 0 && quotes.every((q) => q.data) ? quotes.map((q) => q.data!) : null;
   const totalKobo = allQuotes ? allQuotes.reduce((sum, q) => sum + q.breakdown.total_kobo, 0) : null;
-  const refetchQuotes = () => quotes.forEach((q) => void q.refetch());
+  /** Quotes an order has already been made from (the API gives the same order for the same quote again). */
+  const [ordered] = useState(() => new Set<string>());
+  /**
+   * New prices for the shops that have no order yet. A shop whose order was already made from its quote keeps that
+   * quote, so pressing Pay again gives the same order, not a second one.
+   */
+  const refetchQuotes = () => quotes.forEach((q) => { if (!q.data || !ordered.has(q.data.id)) void q.refetch(); });
   const tooManyShops = shops.length > MAX_SHOPS_PER_PAYMENT;
 
   /** Delivery needs a number the rider can call; pickup does not. */
@@ -216,13 +226,18 @@ function Checkout() {
       const contact = contactPhone ?? undefined;
       if (fulfillment === "delivery" && !contact) throw new Error(phoneProblem(phone) ?? "");
       if (addressId === "new" && address && fulfillment === "delivery") {
-        await api.me.addAddress({ ...address, contact_phone: contact ?? null, label: "Saved at checkout" }).catch(() => undefined);
+        const toSave = { ...address, contact_phone: contact ?? null, label: "Saved at checkout" };
+        const text = JSON.stringify(toSave);
+        if (savedNew.address !== text) {
+          await api.me.addAddress(toSave).then(() => { savedNew.address = text; }, () => undefined);
+        }
       }
       // Each request keeps its key only until the API answers it: a new quote, phone number or payment method is a
       // new request, and so is trying again after a refusal. Asking twice for one quote gives the same order.
       const ids: string[] = [];
       for (const q of qs) {
         const order = await sendOrder(q.id)({ quote: q.id, contact }, (key) => api.orders.create(q.id, key, "web", contact));
+        ordered.add(q.id);
         ids.push(order.id);
       }
       const provider = checkoutProvider(method);
@@ -448,7 +463,7 @@ function Checkout() {
                   <h3 className="font-semibold">{shop.restaurant_name}</h3>
                   <span className="text-sm text-muted">{shop.count} {shop.count === 1 ? "item" : "items"}</span>
                 </div>
-                {!quoteReady ? null : !q || q.isLoading ? <Skeleton className="h-20" /> : quoteError ? (
+                {!quoteReady ? null : !q || q.isPending ? <Skeleton className="h-20" /> : quoteError ? (
                   <ErrorState message={quoteError} onRetry={() => q.refetch()} />
                 ) : q.data ? (
                   <>
@@ -463,7 +478,7 @@ function Checkout() {
             );
           })}
 
-          {!several && quoteReady && quotes[0] && (quotes[0].isLoading ? <Skeleton className="h-28" /> : quotes[0].error && !voucherError ? (
+          {!several && quoteReady && quotes[0] && (quotes[0].isPending ? <Skeleton className="h-28" /> : quotes[0].error && !voucherError ? (
             <ErrorState message={(quotes[0].error as Error).message} onRetry={() => quotes[0]!.refetch()} />
           ) : null)}
 
@@ -483,7 +498,7 @@ function Checkout() {
               <Savings quotes={allQuotes} />
             </>
           )}
-          {quoteReady && !allQuotes && quotes.some((q) => q.isLoading) && several && <Skeleton className="h-24" />}
+          {quoteReady && !allQuotes && quotes.some((q) => q.isPending) && several && <Skeleton className="h-24" />}
 
           {tooManyShops && (
             <p className="text-sm text-danger" role="alert">

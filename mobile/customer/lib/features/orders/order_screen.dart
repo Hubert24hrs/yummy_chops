@@ -61,11 +61,15 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
   /// The customer left the payment page before it was paid.
   String? _payNote;
 
+  /// The payment being watched covers several shops' orders. Not once this order was paid again on its own from
+  /// this screen (the shared payment did not go through): then only this order is paid.
+  bool get _together => widget.paidTogether && _payReference == null && !_paidHere;
+
   bool get _cameFromPaying => widget.justPaid || _paidHere || widget.paymentReference != null || _payReference != null;
 
   void _offerReceipt(Order? o) {
     // Several shops paid at once: Orders lists them, each with its own receipt.
-    if (o == null || _receiptOffered || !_cameFromPaying || widget.paidTogether || o.payment.status != 'paid' || !mounted) return;
+    if (o == null || _receiptOffered || !_cameFromPaying || _together || o.payment.status != 'paid' || !mounted) return;
     _receiptOffered = true;
     context.push('/orders/${o.id}/receipt');
   }
@@ -81,17 +85,23 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
       final checkout = await _payKeys
           .putIfAbsent(method, () => IdempotencyKey('checkout'))
           .send(o.id, (key) => api.checkout(o.id, key, provider: method.provider));
+      if (!mounted) return;
       ref.invalidate(walletProvider);
       final url = checkout.authorizationUrl;
       if (url != null) {
         _payReference = checkout.reference;
         _payNote = null;
-        await ref.read(paymentPageProvider).open(Uri.parse(url));
+        // Watched from now on (a page that fails to open is still watched: a payment may already be under way).
         _watchPayment(checkout.reference);
+        try {
+          await ref.read(paymentPageProvider).open(Uri.parse(url));
+        } catch (_) {
+          if (mounted) setState(() => _payError = "The payment page didn't open. Please try again.");
+        }
       } else if (checkout.provider == 'wallet') {
         _paidHere = true; // paid on the spot: the receipt printer comes up
       }
-      ref.invalidate(orderProvider(o.id));
+      if (mounted) ref.invalidate(orderProvider(o.id));
     } on ApiException catch (e) {
       if (mounted) setState(() => _payError = e.message);
     } finally {
@@ -139,11 +149,17 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
   void _watchPayment(String reference) {
     _watcher?.stop();
     final api = ref.read(apiProvider);
-    _watcher = PaymentWatcher(
+    late final PaymentWatcher watcher;
+    watcher = PaymentWatcher(
       verify: () => api.verifyPayment(reference),
-      onSettled: _paymentSettled,
+      // A replaced watcher may still get an answer for its own (older) payment: that must not close the page of the
+      // payment now open, nor say it failed.
+      onSettled: (result) {
+        if (identical(_watcher, watcher)) _paymentSettled(result);
+      },
       timing: ref.read(paymentWatchTimingProvider),
-    )..start();
+    );
+    _watcher = watcher..start();
   }
 
   void _paymentSettled(PaymentCheck result) {
@@ -155,10 +171,10 @@ class _OrderScreenState extends ConsumerState<OrderScreen> with WidgetsBindingOb
     ref.invalidate(walletProvider);
     if (result == PaymentCheck.succeeded) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text(widget.paidTogether ? 'Payment received. Your orders are on their way to the shops.' : 'Payment received')),
+        SnackBar(content: Text(_together ? 'Payment received. Your orders are on their way to the shops.' : 'Payment received')),
       );
       setState(() => _payNote = null);
-      if (widget.paidTogether) GoRouter.maybeOf(context)?.go('/orders');
+      if (_together) GoRouter.maybeOf(context)?.go('/orders');
     } else {
       setState(() {
         _payNote = null;

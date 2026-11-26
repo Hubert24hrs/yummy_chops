@@ -15,19 +15,29 @@ const invalidPhoneMessage = 'Enter a Nigerian phone number, like 0803 000 0000 o
 /// The number the rider calls, in E.164 (+234…), or null when [input] is not a Nigerian phone number.
 String? riderContactPhone(String? input) => input == null ? null : normaliseNigerianPhone(input);
 
-/// The phone number used at the last checkout, kept on this phone so the next checkout is filled in.
+/// The phone number used at the last checkout, kept on this phone so the next checkout is filled in. It belongs to
+/// the customer who used it: after they sign out, the next person on the phone does not get their number (the rider
+/// would call the wrong person).
 abstract class ContactPhoneStore {
-  String? get phone;
-  Future<void> save(String phone);
+  /// The number [uid] used last, or null when the last checkout on this phone was someone else's.
+  String? phoneFor(String? uid);
+  Future<void> save(String phone, {String? uid});
 }
 
-/// In memory (tests, and when the phone's storage can't be read).
+/// In memory (tests, and when the phone's storage can't be read). A number given without [uid] is anyone's.
 class MemoryContactPhoneStore implements ContactPhoneStore {
-  MemoryContactPhoneStore([this.phone]);
-  @override
+  MemoryContactPhoneStore([this.phone, this.uid]);
   String? phone;
+  String? uid;
+
   @override
-  Future<void> save(String value) async => phone = value;
+  String? phoneFor(String? uid) => this.uid == null || this.uid == uid ? phone : null;
+
+  @override
+  Future<void> save(String value, {String? uid}) async {
+    phone = value;
+    this.uid = uid;
+  }
 }
 
 /// In the app's shared preferences, read once in `main()`.
@@ -35,6 +45,7 @@ class SharedPrefsContactPhoneStore implements ContactPhoneStore {
   SharedPrefsContactPhoneStore._(this._prefs);
   final SharedPreferences _prefs;
   static const _key = 'checkout_contact_phone';
+  static const _uidKey = 'checkout_contact_phone_uid';
 
   /// The store, or one in memory when the phone's storage can't be read.
   static Future<ContactPhoneStore> open() async {
@@ -46,10 +57,20 @@ class SharedPrefsContactPhoneStore implements ContactPhoneStore {
   }
 
   @override
-  String? get phone => _prefs.getString(_key);
+  String? phoneFor(String? uid) {
+    final owner = _prefs.getString(_uidKey);
+    return owner == null || owner == uid ? _prefs.getString(_key) : null;
+  }
 
   @override
-  Future<void> save(String value) => _prefs.setString(_key, value);
+  Future<void> save(String value, {String? uid}) async {
+    await _prefs.setString(_key, value);
+    if (uid == null) {
+      await _prefs.remove(_uidKey);
+    } else {
+      await _prefs.setString(_uidKey, uid);
+    }
+  }
 }
 
 final contactPhoneStoreProvider = Provider<ContactPhoneStore>((ref) => MemoryContactPhoneStore());
@@ -68,6 +89,7 @@ String? initialContactPhone({DeliveryAddress? address, String? remembered, List<
 /// may finish after checkout has gone (everything it needs is read straight away).
 Future<void> rememberContactPhone(WidgetRef ref, String phone, {DeliveryAddress? deliveredTo}) async {
   final store = ref.read(contactPhoneStoreProvider);
+  final uid = ref.read(authRepositoryProvider).currentUser?.uid;
   final api = ref.read(apiProvider);
   final addresses = ref.read(addressesProvider.future);
   void refresh() {
@@ -77,7 +99,7 @@ Future<void> rememberContactPhone(WidgetRef ref, String phone, {DeliveryAddress?
   }
 
   try {
-    await store.save(phone);
+    await store.save(phone, uid: uid);
   } catch (_) {}
   try {
     final saved = await addresses;

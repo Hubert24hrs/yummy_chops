@@ -83,9 +83,11 @@ function Callback() {
   }, [status, qc]);
   // An order that has just been paid for: straight to the receipt printer (ADR-0019).
   const router = useRouter();
-  const paidOrder = status === "succeeded" && !isTopUp && (verify.data?.purpose ?? "order") === "order";
+  // One payment for several shops' orders is a "basket" payment (no order of its own): those orders are paid too.
+  const purpose = verify.data?.purpose ?? "order";
+  const paidOrder = status === "succeeded" && !isTopUp && (purpose === "order" || purpose === "basket");
   const paidOrderId = paidOrder ? verify.data?.order_id ?? orderId : undefined;
-  const severalOrders = paidTogether.length > 1;
+  const severalOrders = paidTogether.length > 1 || purpose === "basket" || (paidOrder && !paidOrderId);
   useEffect(() => {
     // Several orders: each is listed on its own on the Orders page (each has its own receipt there).
     if (paidOrder && severalOrders) router.replace("/orders");
@@ -145,7 +147,7 @@ function Callback() {
             ) : severalOrders ? (
               <>
                 <h1 className="font-display text-2xl">Payment confirmed</h1>
-                <p className="text-sm text-muted">Your {paidTogether.length} orders have been sent to their shops. Opening your orders…</p>
+                <p className="text-sm text-muted">Your {paidTogether.length > 1 ? `${paidTogether.length} ` : ""}orders have been sent to their shops. Opening your orders…</p>
                 <Link href="/orders"><Button size="lg" block>Track my orders</Button></Link>
               </>
             ) : (

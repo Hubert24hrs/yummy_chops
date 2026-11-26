@@ -47,6 +47,12 @@ class RateLimiter:
             )
         bucket.tokens -= 1
 
+    def give_back(self, key: str, *, capacity: int) -> None:
+        """Return the token a request took (it turned out not to be the kind of try the limit is for)."""
+        bucket = self._buckets.get(key)
+        if bucket is not None:
+            bucket.tokens = min(capacity, bucket.tokens + 1)
+
 
 # Named limits used by routes: (capacity, refill per second)
 LIMITS: dict[str, tuple[int, float]] = {
@@ -59,7 +65,9 @@ LIMITS: dict[str, tuple[int, float]] = {
     "group_join": (10, 0.05),  # joining a group order by code (slows down code guessing)
     "payout": (10, 0.05),
     "track": (30, 0.5),  # public waybill tracking, per client address
-    "payment_verify": (20, 0.3),
+    # The app and the website check a payment every 2 s while its page is open (up to ~10 min): one call per 2 s
+    # per user must never be refused.
+    "payment_verify": (30, 0.5),
     "code_attempt": (5, 0.02),
     "rider_location": (30, 1.0),
     "places": (40, 0.5),  # address search: each call can cost a Google request

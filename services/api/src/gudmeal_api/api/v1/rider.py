@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from ...domain.geo import GeoPoint
 from ...domain.order_state import OrderStatus
+from ...errors import IncorrectCode
 from ...security.rbac import require_rider
 from ...services.rider_kyc import KycDetailsInput, KycUploadInput
 from ..deps import Ctr, CurrentPrincipal, limit, run_idempotent
@@ -129,8 +130,19 @@ async def in_transit(order_id: str, c: Ctr, principal: CurrentPrincipal) -> Any:
 @router.post("/deliveries/{order_id}/deliver")
 async def deliver(order_id: str, data: DeliverInput, c: Ctr, principal: CurrentPrincipal) -> Any:
     require_rider(principal)
-    c.rate_limiter.check(f"code:{principal.uid}", capacity=5, refill_per_second=0.02)
-    order = await c.orders.rider_deliver(principal, order_id, data.code, cash_collected=data.cash_collected)
+    key = f"code:{principal.uid}"
+    c.rate_limiter.check(key, capacity=5, refill_per_second=0.02)
+    try:
+        order = await c.orders.rider_deliver(
+            principal, order_id, data.code, cash_collected=data.cash_collected
+        )
+    except IncorrectCode:
+        raise  # only wrong codes use up the rider's tries
+    except Exception:
+        c.rate_limiter.give_back(key, capacity=5)
+        raise
+    # A right code is not a guess: a trip of many orders is delivered with one code, one call per order.
+    c.rate_limiter.give_back(key, capacity=5)
     return order_view(order, principal)
 
 

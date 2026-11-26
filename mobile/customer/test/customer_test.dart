@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,6 +37,12 @@ class FakePaymentPage extends PaymentPage {
   Future<void> open(Uri url) async => opened.add(url);
   @override
   Future<void> close() async => closed++;
+}
+
+/// A phone whose payment page cannot open (no browser component).
+class _BrokenPaymentPage extends FakePaymentPage {
+  @override
+  Future<void> open(Uri url) async => throw Exception('no browser');
 }
 
 /// Records quotes; never hits the network.
@@ -121,6 +129,9 @@ class _MixedApi extends FakeApi {
   /// Set: card payments continue on this page.
   String? payUrl;
 
+  /// Set: the checkout waits for it (a slow connection).
+  Completer<void>? hold;
+
   @override
   Future<List<Order>> myOrders() async {
     orderListReads++;
@@ -159,6 +170,7 @@ class _MixedApi extends FakeApi {
   @override
   Future<MultiCheckoutResult> checkoutMany(List<String> orderIds, String idempotencyKey, {String? provider}) async {
     checkouts.add((orderIds, idempotencyKey, provider));
+    if (hold != null) await hold!.future;
     return MultiCheckoutResult(
       orderIds: orderIds, provider: provider ?? 'paystack', reference: 'YC-B-1', amountKobo: 1636500,
       authorizationUrl: provider == null || provider == 'paystack' ? payUrl : null, paymentStatus: payUrl == null ? 'succeeded' : 'pending',
@@ -237,6 +249,18 @@ void main() {
     expect(normaliseNigerianPhone('+2349061234567'), '+2349061234567');
     expect(normaliseNigerianPhone('8031234567'), '+2348031234567');
     expect(normaliseNigerianPhone('12345'), isNull);
+    // Other ways people write the same number.
+    expect(normaliseNigerianPhone('2348031234567'), '+2348031234567');
+    expect(normaliseNigerianPhone('+234 0803 123 4567'), '+2348031234567');
+    expect(normaliseNigerianPhone('002348031234567'), '+2348031234567');
+    expect(normaliseNigerianPhone('234 0803 123 4567'), '+2348031234567');
+    expect(normaliseNigerianPhone('+234 (0) 803 123 4567'), '+2348031234567');
+    // Checkout's rider number uses the same rules as the website (apps/web/src/lib/contact-phone.ts).
+    expect(riderContactPhone('2348031234567'), '+2348031234567');
+    expect(riderContactPhone('+234 (0) 803 123 4567'), '+2348031234567');
+    expect(riderContactPhone(null), isNull);
+    expect(normaliseNigerianPhone('+234 1234 5678'), isNull);
+    expect(normaliseNigerianPhone('+2341803123456'), isNull);
   });
 
   testWidgets('item sheet requires the mandatory choice before adding', (tester) async {
@@ -768,6 +792,82 @@ void main() {
       expect(page.opened, [Uri.parse('https://checkout.paystack.com/abc')]);
       expect(find.text('order /orders/o-q-r-suya-1?ref=YC-B-1&many=1'), findsOneWidget);
       expect(api.orderListReads, greaterThan(readsBefore), reason: 'the orders list is read again after a checkout');
+    });
+
+    testWidgets('a payment page that cannot open still leaves the orders placed: the cart is emptied and the order shows', (tester) async {
+      final (api, container) = await openCheckout(tester, page: _BrokenPaymentPage());
+      api.payUrl = 'https://checkout.paystack.com/abc';
+      await tester.enterText(find.widgetWithText(TextField, 'Street address'), '5 Admiralty Road');
+      await settleQuote(tester);
+      await tester.tap(find.text('Pay to order'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(container.read(cartProvider).isEmpty, isTrue, reason: 'paying again from the cart would place the orders twice');
+      expect(find.text('order /orders/o-q-r-suya-1?ref=YC-B-1&many=1'), findsOneWidget, reason: 'the order screen offers to pay');
+    });
+
+    testWidgets('checkout cannot be left while the orders are being placed; the answer still empties the cart', (tester) async {
+      tester.view.physicalSize = const Size(1080, 5400);
+      tester.view.devicePixelRatio = 2.6;
+      addTearDown(tester.view.reset);
+      final api = _MixedApi()..hold = Completer<void>();
+      final container = ProviderContainer(overrides: [
+        authRepositoryProvider.overrideWithValue(FakeAuthRepository(const GmUser(uid: 'u1'))),
+        apiProvider.overrideWithValue(api),
+        contactPhoneStoreProvider.overrideWithValue(MemoryContactPhoneStore('08031234567')),
+        paymentPageProvider.overrideWithValue(FakePaymentPage()),
+      ]);
+      addTearDown(container.dispose);
+      fillCart(container);
+      final router = GoRouter(initialLocation: '/cart', routes: [
+        GoRoute(path: '/cart', builder: (_, _) => const Scaffold(body: Text('PAGE /cart'))),
+        GoRoute(path: '/checkout', builder: (_, _) => const CheckoutScreen()),
+        GoRoute(path: '/orders', builder: (_, s) => Scaffold(body: Text('orders ${s.uri}'))),
+      ]);
+      addTearDown(router.dispose);
+      await tester.pumpWidget(UncontrolledProviderScope(container: container, child: MaterialApp.router(routerConfig: router)));
+      router.push('/checkout');
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Street address'), '5 Admiralty Road');
+      await settleQuote(tester);
+      await tapVisible(tester, find.text('Yummy Chops wallet'));
+      await tester.tap(find.text('Pay to order'));
+      await tester.pump();
+      expect(api.checkouts, hasLength(1));
+
+      // Back (the phone's button, the arrow, "Your order") while the answer is on its way: checkout stays.
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(tester.widget<InkWell>(find.byKey(const ValueKey('checkout-your-order'), skipOffstage: false)).onTap, isNull);
+      expect(find.byType(CheckoutScreen), findsOneWidget);
+      expect(find.text('Please wait…'), findsOneWidget);
+
+      api.hold!.complete();
+      await tester.pumpAndSettle();
+      expect(container.read(cartProvider).isEmpty, isTrue);
+      expect(find.text('orders /orders'), findsOneWidget);
+    });
+
+    testWidgets("the number remembered on this phone is not filled in for someone else who signs in", (tester) async {
+      await openCheckout(tester, phones: MemoryContactPhoneStore('+2348031234567', 'u-someone-else'));
+      expect(find.text('+2348031234567'), findsNothing);
+      expect(find.text('Add your phone number'), findsOneWidget);
+    });
+
+    testWidgets('the number used at checkout is remembered for this customer only', (tester) async {
+      final phones = MemoryContactPhoneStore();
+      final (_, _) = await openCheckout(tester, phones: phones);
+      await tester.enterText(find.widgetWithText(TextField, 'Street address'), '5 Admiralty Road');
+      await settleQuote(tester);
+      await tapVisible(tester, find.byKey(const ValueKey('checkout-phone')));
+      await tester.enterText(find.widgetWithText(TextField, 'Phone number'), '0803 123 4567');
+      await tester.tap(find.text('Save'));
+      await settleQuote(tester);
+      await tapVisible(tester, find.text('Yummy Chops wallet'));
+      await tester.tap(find.text('Pay to order'));
+      await tester.pumpAndSettle();
+      expect(phones.phoneFor('u1'), '+2348031234567');
+      expect(phones.phoneFor('guest-2'), isNull);
     });
 
     testWidgets('"Your order" goes back to the cart', (tester) async {

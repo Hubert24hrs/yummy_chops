@@ -81,6 +81,27 @@ describe("payment return page", () => {
     window.sessionStorage.clear();
   });
 
+  it("a basket payment (the API's answer for several shops) opens Orders even without the remembered order list", async () => {
+    auth.user = { uid: "cust-1" };
+    window.sessionStorage.clear();
+    verify.mockResolvedValue({ status: "succeeded", order_id: null, purpose: "basket" });
+    show();
+    await waitFor(() => expect(screen.getByText(/orders have been sent to their shops/)).toBeTruthy());
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/orders"));
+    expect(replace).not.toHaveBeenCalledWith(expect.stringContaining("undefined"));
+    expect(document.querySelector('a[href*="undefined"]')).toBeNull();
+  });
+
+  it("a basket payment with the remembered order list says how many orders were sent", async () => {
+    auth.user = { uid: "cust-1" };
+    window.sessionStorage.setItem("gudmeal.checkout.orders.v1", JSON.stringify({ reference: "YC-ABC123", orderIds: ["o1", "o2", "o3"] }));
+    verify.mockResolvedValue({ status: "succeeded", order_id: null, purpose: "basket" });
+    show();
+    await waitFor(() => expect(screen.getByText(/Your 3 orders have been sent/)).toBeTruthy());
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/orders"));
+    window.sessionStorage.clear();
+  });
+
   it("does not open the receipt printer for a membership payment or while a payment is unconfirmed", async () => {
     auth.user = { uid: "cust-1" };
     verify.mockResolvedValue({ status: "succeeded", order_id: null, purpose: "plus" });

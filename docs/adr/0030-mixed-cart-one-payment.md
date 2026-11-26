@@ -45,3 +45,5 @@ shares (ADR-0009) are several payments for one order — the opposite of what a 
   settlement, as before splits existed. Single-shop carts still split.
 - The end-to-end check has a journey `mixed_cart_one_payment` (a meal, a pharmacy item and a beauty item, one item
   removed, paid once, each order delivered).
+- Pay on delivery for a mixed cart is checked for the whole cart before any order is placed (owner, kind, status and
+  cash rules; the "one cash order on the way" rule ignores the cart's own orders), so a cart is never half placed.

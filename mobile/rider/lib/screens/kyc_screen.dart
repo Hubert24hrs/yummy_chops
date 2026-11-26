@@ -121,17 +121,22 @@ class _KycScreenState extends ConsumerState<KycScreen> {
         ],
       };
 
-  void _say(String message, {bool error = false}) => setState(() {
-        _message = message;
-        _messageIsError = error;
-      });
+  void _say(String message, {bool error = false}) {
+    if (!mounted) return; // the rider left the screen while a request ran
+    setState(() {
+      _message = message;
+      _messageIsError = error;
+    });
+  }
 
   Future<bool> _save({bool quiet = false}) async {
     setState(() => _saving = true);
     try {
       await ref.read(apiProvider).updateRiderKyc(_details());
-      _nin.clear(); // saved: from now on only its last four digits are shown
-      ref.invalidate(riderKycProvider);
+      if (mounted) {
+        _nin.clear(); // saved: from now on only its last four digits are shown
+        ref.invalidate(riderKycProvider);
+      }
       if (!quiet) _say('Saved.');
       return true;
     } on ApiException catch (e) {
@@ -148,7 +153,7 @@ class _KycScreenState extends ConsumerState<KycScreen> {
     setState(() => _uploading = kind);
     try {
       await ref.read(apiProvider).uploadKycDocument(kind, base64Encode(bytes));
-      ref.invalidate(riderKycProvider);
+      if (mounted) ref.invalidate(riderKycProvider);
       _say('Uploaded.');
     } on ApiException catch (e) {
       _say(e.message, error: true);
@@ -158,12 +163,14 @@ class _KycScreenState extends ConsumerState<KycScreen> {
   }
 
   Future<void> _submit() async {
-    if (!await _save(quiet: true)) return;
+    if (!await _save(quiet: true) || !mounted) return;
     setState(() => _saving = true);
     try {
       await ref.read(apiProvider).submitRiderKyc();
-      ref.invalidate(riderKycProvider);
-      ref.invalidate(riderProfileProvider);
+      if (mounted) {
+        ref.invalidate(riderKycProvider);
+        ref.invalidate(riderProfileProvider);
+      }
       _say('Submitted. We check everything and let you know.');
     } on ApiException catch (e) {
       _say(e.message, error: true);

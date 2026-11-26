@@ -166,4 +166,15 @@ describe("account page", () => {
     expect(await screen.findByRole("button", { name: "Change" })).toBeTruthy();
     expect(screen.getAllByText(/5 Admiralty Way/).length).toBeGreaterThan(0);
   });
+
+  it("changing Home by location keeps the phone number saved on the old Home", async () => {
+    saved = [{ id: "old-home", label: "Home", line1: "1 Old Road", area: "Yaba", location: { lat: 6.5, lng: 3.37 }, contact_phone: "+2348031234567" }];
+    const getCurrentPosition = vi.fn((ok: PositionCallback) => ok({ coords: { latitude: 6.448, longitude: 3.4724 } } as GeolocationPosition));
+    Object.defineProperty(navigator, "geolocation", { value: { getCurrentPosition }, configurable: true });
+    show(<AccountPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Change" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use my location" }));
+    await waitFor(() => expect(api.me.addAddress).toHaveBeenCalledWith(expect.objectContaining({ label: "Home", contact_phone: "+2348031234567" })));
+    await waitFor(() => expect(api.me.deleteAddress).toHaveBeenCalledWith("old-home"));
+  });
 });

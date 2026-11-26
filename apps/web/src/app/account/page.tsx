@@ -179,6 +179,8 @@ function HomeAddress({ addresses, loading }: { addresses: SavedAddress[] | undef
       const saved = await api.me.addAddress({
         label: "Home", line1: found.place.formatted_address, area: found.place.area ?? nearestArea(point)?.name ?? null,
         city, state: city, location: point, place_id: found.place.place_id,
+        // The rider's number checkout kept on the old Home stays with the new one.
+        contact_phone: home?.contact_phone ?? null,
       });
       if (home) await api.me.deleteAddress(home.id).catch(() => undefined); // the new Home replaces the old one
       return saved;

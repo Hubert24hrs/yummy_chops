@@ -205,7 +205,8 @@ export interface MultiCheckoutResult {
   failover_from?: string;
 }
 export interface PaymentView {
-  id: string; order_id: string | null; purpose?: "order" | "wallet_topup" | "plus" | "group_share"; provider: string; reference: string;
+  id: string; order_id: string | null; /** "basket": one payment for several orders (one per shop); `order_id` is null. */
+  purpose?: "order" | "basket" | "wallet_topup" | "plus" | "group_share"; provider: string; reference: string;
   amount_kobo: Kobo; status: string; paid_at: string | null; refunded_kobo: Kobo; created_at: string;
   failure_reason: string | null; channel: string | null;
 }

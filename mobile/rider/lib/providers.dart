@@ -126,14 +126,17 @@ final activeDeliveriesProvider = FutureProvider<List<Order>>((ref) => ref.watch(
 final earningsProvider = FutureProvider<Earnings>((ref) => ref.watch(apiProvider).earnings());
 
 /// The rider's planned trips (shops in the fastest order, then the customer). A server without trips yet (404) has none.
-final riderTripsProvider = FutureProvider<List<RiderTrip>>((ref) async {
+final riderTripsProvider = FutureProvider<List<RiderTrip>>((ref) => tripsOrNone(ref.watch(apiProvider)));
+
+/// The rider's trips; none from a server without trips yet (404).
+Future<List<RiderTrip>> tripsOrNone(GudMealApi api) async {
   try {
-    return await ref.watch(apiProvider).riderTrips();
+    return await api.riderTrips();
   } on ApiException catch (e) {
     if (e.status == 404) return const <RiderTrip>[];
     rethrow;
   }
-});
+}
 
 /// Opens a link outside the app (Google Maps, the dialer, WhatsApp). Replaced in tests.
 typedef UrlOpener = Future<bool> Function(Uri uri);

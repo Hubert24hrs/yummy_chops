@@ -35,6 +35,7 @@ void main() {
       'pickup': {'lat': 6.43, 'lng': 3.42},
     };
     expect(offerFromJson(json, receivedAt).expiresAt, receivedAt.add(const Duration(seconds: 40)));
+    expect(offerFromJson(json, receivedAt).expiresInSeconds, 40);
     // A server that does not send the seconds left: keep its deadline.
     final older = Map<String, dynamic>.of(json)..remove('expires_in_seconds');
     expect(offerFromJson(older, receivedAt).expiresAt.toUtc(), DateTime.utc(2026, 11, 17, 4, 0, 24));

@@ -7,6 +7,7 @@ only a copy used by dispatch to stop offering cash jobs to riders who already ca
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -71,8 +72,11 @@ class CashService:
         flag = (await self.repos.list_feature_flags()).get(POD_FLAG)
         return True if flag is None else bool(flag.get("enabled"))
 
-    async def pay_on_delivery_status(self, principal: Principal, order: Order) -> tuple[bool, str | None]:
-        """Whether this customer may pay this order in cash at the door, and why not if they can't."""
+    async def pay_on_delivery_status(
+        self, principal: Principal, order: Order, *, together: Collection[str] = ()
+    ) -> tuple[bool, str | None]:
+        """Whether this customer may pay this order in cash at the door, and why not if they can't. `together` are
+        the other orders of the same cart (ADR-0030): one trip to one door, so they are not "another" order."""
         if not self.enabled or not await self._flag_allows():
             return False, "Pay on delivery is not available right now"
         if order.is_parcel or order.is_waybill:
@@ -96,7 +100,13 @@ class CashService:
         if completed < self.min_completed_orders:
             n = self.min_completed_orders
             return False, f"Pay on delivery unlocks after your first {'order' if n == 1 else f'{n} orders'}"
-        if any(o.id != order.id and o.is_pay_on_delivery and o.status in ACTIVE_FULFILMENT for o in orders):
+        if any(
+            o.id != order.id
+            and o.id not in together
+            and o.is_pay_on_delivery
+            and o.status in ACTIVE_FULFILMENT
+            for o in orders
+        ):
             return False, "You already have a pay-on-delivery order on the way"
         return True, None
 
@@ -122,8 +132,10 @@ class CashService:
         )
         return {"uid": uid, "pay_on_delivery_blocked": data.blocked}
 
-    async def assert_pay_on_delivery(self, principal: Principal, order: Order) -> None:
-        ok, reason = await self.pay_on_delivery_status(principal, order)
+    async def assert_pay_on_delivery(
+        self, principal: Principal, order: Order, *, together: Collection[str] = ()
+    ) -> None:
+        ok, reason = await self.pay_on_delivery_status(principal, order, together=together)
         if not ok:
             raise ValidationFailed(reason or "Pay on delivery is not available", details={"method": "cash"})
 

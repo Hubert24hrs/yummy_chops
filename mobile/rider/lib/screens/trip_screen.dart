@@ -14,9 +14,12 @@ typedef TripKey = ({String? tripId, String? orderId});
 
 /// What the trip screen needs: the planned trip and the rider's active orders (cash, address details, status).
 class TripView {
-  const TripView(this.trip, this.orders);
+  const TripView(this.trip, this.orders, [this.trips = const []]);
   final RiderTrip? trip;
   final Map<String, Order> orders;
+
+  /// Every active trip of the rider (to find this one again when the order it was opened by leaves it).
+  final List<RiderTrip> trips;
 }
 
 /// Packages and interstate legs keep their own screen (sender, recipient, hub handover).
@@ -33,16 +36,11 @@ RiderTrip? findTrip(List<RiderTrip> trips, TripKey key) {
 
 final tripViewProvider = FutureProvider.family<TripView, TripKey>((ref, key) async {
   final api = ref.watch(apiProvider);
-  final active = api.activeDeliveries();
-  List<RiderTrip> trips;
-  try {
-    trips = await api.riderTrips();
-  } on ApiException catch (e) {
-    if (e.status != 404) rethrow;
-    trips = const []; // a server without trips yet: the order keeps its old screen
-  }
-  final orders = {for (final o in await active) o.id: o};
-  return TripView(findTrip(trips, key), orders);
+  // Both at once, and both awaited: a failing trips call must not leave the deliveries call's error unhandled.
+  final results = await Future.wait<Object>([tripsOrNone(api), api.activeDeliveries()]);
+  final trips = results[0] as List<RiderTrip>;
+  final orders = {for (final o in results[1] as List<Order>) o.id: o};
+  return TripView(findTrip(trips, key), orders, trips);
 });
 
 /// What kind of place a pickup is, from the order's vertical.
@@ -54,6 +52,13 @@ String placeKind(String? vertical) => switch (vertical) {
       'beauty' => 'Beauty',
       _ => 'Shop',
     };
+
+/// The server's whole-route link, or null when it is missing, empty or not a web link.
+Uri? routeUri(String? url) {
+  final uri = Uri.tryParse((url ?? '').trim());
+  if (uri == null || !(uri.isScheme('https') || uri.isScheme('http')) || uri.host.isEmpty) return null;
+  return uri;
+}
 
 String _legText(double? km, int? minutes) => [
       if (km != null) '${km.toStringAsFixed(1)} km',
@@ -76,6 +81,13 @@ class _TripScreenState extends ConsumerState<TripScreen> {
   bool _busy = false;
   String? _error;
   Timer? _refresh;
+
+  /// The trip this screen shows, once found: it stays on screen when the order it was opened by leaves the trip
+  /// (cancelled, or delivered while another order failed).
+  String? _tripId;
+
+  /// Orders this screen already delivered: a retry after a partial failure never sends them again.
+  final _deliveredIds = <String>{};
 
   TripKey get _key => (tripId: widget.tripId, orderId: widget.orderId);
 
@@ -118,8 +130,11 @@ class _TripScreenState extends ConsumerState<TripScreen> {
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } finally {
-      _refreshAll();
-      if (mounted) setState(() => _busy = false);
+      // The rider may have left the screen while the request ran: `ref` is unusable then.
+      if (mounted) {
+        _refreshAll();
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -146,12 +161,20 @@ class _TripScreenState extends ConsumerState<TripScreen> {
     var finished = false;
     await _run((api) async {
       for (final id in ids) {
+        if (_deliveredIds.contains(id)) continue; // delivered on an earlier try (the trip may not have refreshed yet)
         final pickupStatus = trip.stops.where((s) => s.isPickup && s.orderId == id).map((s) => s.status).firstOrNull;
         final status = orders[id]?.status ?? pickupStatus;
         if (const {'delivered', 'completed', 'cancelled'}.contains(status)) continue;
-        if (status == 'picked_up') await api.inTransit(id);
+        if (status == 'picked_up') {
+          try {
+            await api.inTransit(id);
+          } on ApiException {
+            // Not required (the API delivers a picked-up order too), and the status shown may be out of date.
+          }
+        }
         final cash = orders[id]?.collectCashKobo ?? dropoff.cashToCollectKobo;
         await api.deliver(id, code, cashCollected: cash > 0);
+        _deliveredIds.add(id);
       }
       finished = true;
     });
@@ -171,7 +194,9 @@ class _TripScreenState extends ConsumerState<TripScreen> {
         body: Center(child: async.hasError ? Text('${async.error}') : const CircularProgressIndicator()),
       );
     }
-    final trip = view.trip;
+    // Opened by an order that has since left the trip (cancelled...): keep showing the rest of the trip.
+    final trip = view.trip ?? (_tripId == null ? null : findTrip(view.trips, (tripId: _tripId, orderId: null)));
+    if (trip != null) _tripId = trip.tripId;
     final parcel = trip?.orderIds.any((id) => view.orders[id] != null && isParcelJob(view.orders[id]!)) ?? false;
     if (trip == null || parcel) {
       final orderId = widget.orderId ?? trip?.orderIds.firstOrNull;
@@ -228,11 +253,8 @@ class _TripHeader extends StatelessWidget {
         trip.orderIds.map((id) => orders[id]?.riderPayKobo ?? 0).fold<int>(0, (a, b) => a + b);
     final pickups = trip.stops.where((s) => s.isPickup).length;
     final next = trip.nextStop < trip.stops.length ? trip.stops[trip.nextStop] : null;
-    final Uri? route = trip.navigationUrl != null
-        ? Uri.tryParse(trip.navigationUrl!)
-        : next?.location != null
-            ? navigationUri(next!.location!)
-            : null;
+    // The whole route when the server gives a usable link, else straight to the next stop.
+    final Uri? route = routeUri(trip.navigationUrl) ?? (next?.location != null ? navigationUri(next!.location!) : null);
     return Card(
       color: theme.colorScheme.secondaryContainer,
       child: Padding(

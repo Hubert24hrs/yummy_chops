@@ -92,10 +92,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   @override
   void initState() {
     super.initState();
-    _phone = initialContactPhone(
-      remembered: ref.read(contactPhoneStoreProvider).phone,
-      account: ref.read(authRepositoryProvider).currentUser?.phone,
-    );
+    final user = ref.read(authRepositoryProvider).currentUser;
+    _phone = initialContactPhone(remembered: ref.read(contactPhoneStoreProvider).phoneFor(user?.uid), account: user?.phone);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _getQuote();
@@ -317,6 +315,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       _busy = true;
       _payError = null;
     });
+    // Read now: once the orders are placed the cart must be emptied and Orders refreshed even if this screen has
+    // gone in the meantime (a `ref` can no longer be used then). A cart left full would place the orders again.
+    final container = ProviderScope.containerOf(context, listen: false);
     try {
       final api = ref.read(apiProvider);
       final phone = _contactPhone;
@@ -337,11 +338,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       final checkout = await _checkoutKeys
           .putIfAbsent(_method, () => IdempotencyKey('checkout'))
           .send(ids.join(','), (key) => api.checkoutMany(ids, key, provider: _method.provider));
-      ref.read(cartProvider.notifier).clear();
-      ref.invalidate(walletProvider);
+      container.read(cartProvider.notifier).clear();
+      container.invalidate(walletProvider);
       // The new orders are on Orders straight away (an earlier, empty list is not kept).
-      ref.invalidate(myOrdersProvider);
-      if (phone != null) unawaited(rememberContactPhone(ref, phone, deliveredTo: _fulfillment == 'delivery' ? _picked?.address : null));
+      container.invalidate(myOrdersProvider);
+      container.invalidate(orderSummaryProvider);
+      // A voucher used here is used up: it is no longer offered at the next checkout.
+      if (_appliedVoucher.isNotEmpty) container.invalidate(myVouchersProvider);
+      if (phone != null && mounted) {
+        unawaited(rememberContactPhone(ref, phone, deliveredTo: _fulfillment == 'delivery' ? _picked?.address : null));
+      }
       final first = ids.first;
       final url = checkout.authorizationUrl;
       if (url == null) {
@@ -359,7 +365,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       // Provider-hosted payment page, inside the app: card data never touches the app. The order screen behind it
       // asks the server about the reference every 2 s, which marks every order of this payment paid, then closes
       // the page by itself.
-      await ref.read(paymentPageProvider).open(Uri.parse(url));
+      try {
+        await container.read(paymentPageProvider).open(Uri.parse(url));
+      } catch (_) {
+        // The page could not open (no browser component): the orders are placed and the order screen offers to pay.
+      }
       if (mounted) context.go('/orders/$first?ref=${checkout.reference}${ids.length > 1 ? '&many=1' : ''}');
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -409,13 +419,17 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final quotes = _quotes;
     final delivery = _fulfillment == 'delivery';
     final plus = ref.watch(plusProvider).asData?.value;
-    return Scaffold(
+    // No leaving while the orders are being placed and paid: the answer must reach this screen (it empties the cart
+    // and opens the payment page), or going back to the cart would place the same orders again.
+    return PopScope(
+      canPop: !_busy,
+      child: Scaffold(
       appBar: appBar,
       body: ListView(padding: EdgeInsets.zero, children: [
         const Padding(padding: EdgeInsets.fromLTRB(20, 4, 20, 20), child: BigTitle('Checkout')),
         InkWell(
           key: const ValueKey('checkout-your-order'),
-          onTap: _backToCart,
+          onTap: _busy ? null : _backToCart,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
             child: Row(children: [
@@ -528,6 +542,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             child: Text(_busy ? 'Please wait…' : _payLabel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
           ),
         ]),
+      ),
       ),
     );
   }

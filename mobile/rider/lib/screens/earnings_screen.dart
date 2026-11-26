@@ -14,7 +14,8 @@ class EarningsScreen extends ConsumerStatefulWidget {
 }
 
 class _EarningsScreenState extends ConsumerState<EarningsScreen> {
-  final _key = newIdempotencyKey('payout');
+  /// One key per withdrawal: a retry of the same request reuses it, the next withdrawal gets a new one.
+  var _key = newIdempotencyKey('payout');
   String? _message;
 
   @override
@@ -51,10 +52,12 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
                 : () async {
                     try {
                       await ref.read(apiProvider).requestPayout(e.availableKobo, _key);
+                      _key = newIdempotencyKey('payout');
+                      if (!mounted) return;
                       ref.invalidate(earningsProvider);
                       setState(() => _message = 'Withdrawal requested. Finance pays approved requests to your bank account.');
                     } on ApiException catch (err) {
-                      setState(() => _message = err.message);
+                      if (mounted) setState(() => _message = err.message);
                     }
                   },
             child: Text('Withdraw ${formatNaira(e.availableKobo)}'),

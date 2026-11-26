@@ -137,8 +137,22 @@ class _HomeAddressTileState extends ConsumerState<HomeAddressTile> {
     if (picked == null || !mounted) return;
     setState(() => _saving = true);
     try {
-      final address = picked.address.copyWith(label: 'Home');
-      await ref.read(apiProvider).saveAddress(address);
+      final api = ref.read(apiProvider);
+      // "Change" replaces the Home address: a second "Home" would leave two, and the address book's order (by id,
+      // not by age) decides which one shows and which one checkout uses.
+      final current = homeAddress(await ref.read(addressesProvider.future).catchError((Object _) => const <DeliveryAddress>[]));
+      final currentId = current?.id;
+      final address = picked.address.copyWith(
+        label: 'Home',
+        // The rider's number on the old Home address stays, unless the new one brings its own.
+        contactPhone: picked.address.contactPhone ?? current?.contactPhone,
+      );
+      if (currentId != null) {
+        await api.updateAddress(currentId, address);
+      } else {
+        await api.saveAddress(address);
+      }
+      if (!mounted) return;
       ref.invalidate(addressesProvider);
       final areas = ref.read(areasProvider).value ?? const [...lagosAreas, ...enuguAreas];
       final area = nearestArea(address.location, areas);

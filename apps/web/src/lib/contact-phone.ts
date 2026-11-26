@@ -9,9 +9,12 @@ export const INVALID_PHONE = "Enter a Nigerian phone number, like 0803 000 0000 
 
 const STORAGE_KEY = "gudmeal.contact-phone.v1";
 
-/** Accepts 0803 000 0000, 803 000 0000 or +234 803 000 0000 and returns E.164 (+234…), or null. */
+/**
+ * Accepts 0803 000 0000, 803 000 0000 or +234 803 000 0000 and returns E.164 (+234…), or null. Also 234 803 000 0000
+ * without the "+" (as copied from WhatsApp) and +234 (0) 803 000 0000 with the trunk 0 kept.
+ */
 export function normaliseNigerianPhone(input: string | null | undefined): string | null {
-  const digits = (input ?? "").replace(/[^\d+]/g, "");
+  const digits = (input ?? "").replace(/[^\d+]/g, "").replace(/^\+?2340?(?=[789][01]\d{8}$)/, "+234");
   if (/^\+234[789][01]\d{8}$/.test(digits)) return digits;
   if (/^0[789][01]\d{8}$/.test(digits)) return `+234${digits.slice(1)}`;
   if (/^[789][01]\d{8}$/.test(digits)) return `+234${digits}`;

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -50,6 +52,43 @@ class _Page extends PaymentPage {
   Future<void> open(Uri url) async {}
   @override
   Future<void> close() async => closed++;
+}
+
+/// The first payment's answers can be held back; paying again from the order screen starts payment YC-2.
+class _RepayApi extends _PayingApi {
+  _RepayApi(super.answers);
+
+  /// Answers for YC-1 wait for this when set.
+  Completer<String>? slowFirst;
+
+  /// What verify says about YC-2.
+  String second = 'pending';
+  final checkouts = <String>[];
+
+  @override
+  Future<String> verifyPayment(String reference) async {
+    if (reference == 'YC-2') {
+      verified.add(reference);
+      return second;
+    }
+    final slow = slowFirst;
+    if (slow != null) {
+      verified.add(reference);
+      return slow.future;
+    }
+    return super.verifyPayment(reference);
+  }
+
+  @override
+  bool get paid => second == 'succeeded';
+
+  @override
+  Future<CheckoutResult> checkout(String orderId, String idempotencyKey, {String? provider}) async {
+    checkouts.add(orderId);
+    return CheckoutResult(
+      orderId: orderId, reference: 'YC-2', amountKobo: 500000, provider: 'paystack', authorizationUrl: 'https://checkout.paystack.com/two',
+    );
+  }
 }
 
 Future<void> _open(WidgetTester tester, _PayingApi api, _Page page, {bool paidTogether = false, PaymentWatchTiming? timing}) async {
@@ -136,6 +175,53 @@ void main() {
 
     await tester.pump(const Duration(seconds: 30));
     expect(api.verified, hasLength(4), reason: '3 more times in 6 s, then no more');
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets("a late answer about the first payment does not close the page of the payment started after it", (tester) async {
+    final api = _RepayApi(['pending'])..slowFirst = Completer<String>();
+    final page = _Page();
+    await _open(tester, api, page);
+    await tester.pump(const Duration(seconds: 2)); // asks about YC-1: the answer is slow
+    expect(api.verified, ['YC-1']);
+
+    // Meanwhile the customer pays again from the order screen: a new payment page (YC-2).
+    await tester.tap(find.text('Pay by card, transfer or USSD'));
+    await tester.pump();
+    expect(api.checkouts, ['o1']);
+
+    api.slowFirst!.complete('failed');
+    await tester.pump();
+    await tester.pump();
+    expect(page.closed, 0, reason: 'the open page is the new payment');
+    expect(find.text('The payment did not go through. Choose a way to pay to try again.'), findsNothing);
+
+    api.second = 'succeeded';
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    expect(page.closed, 1);
+    expect(find.text('Payment received'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('several shops paid together, then this order paid on its own: only this order is said to be paid', (tester) async {
+    final api = _RepayApi(['failed']);
+    final page = _Page();
+    await _open(tester, api, page, paidTogether: true);
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.text('The payment did not go through. Choose a way to pay to try again.'), findsOneWidget);
+
+    await tester.tap(find.text('Pay by card, transfer or USSD'));
+    await tester.pump();
+    api.second = 'succeeded';
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    expect(find.text('Payment received'), findsOneWidget);
+    expect(find.textContaining('Your orders are on their way'), findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.text('ORDERS'), findsNothing, reason: "the other shops' orders are not paid: stay on this one");
+    expect(find.text('RECEIPT o1'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }
