@@ -59,6 +59,7 @@ from .services.infra import (
     TaskRouter,
 )
 from .services.membership import MembershipService
+from .services.menu_tools import MenuToolsService
 from .services.orders import OrderService
 from .services.parcels import ParcelService
 from .services.payments import PaymentService
@@ -117,6 +118,7 @@ class Container:
     profiles: ProfileService
     applications: ApplicationService
     kyc: RiderKycService
+    menu_tools: MenuToolsService
     businesses: BusinessService
     reviews: ReviewService
     support: SupportService
@@ -358,7 +360,8 @@ async def build_container(
             phone_number_id=settings.whatsapp_phone_number_id,
             version=settings.whatsapp_graph_version,
         )
-    kyc = RiderKycService(repos, files or _file_store(settings), identity, audit, notifier)
+    file_store = files or _file_store(settings)
+    kyc = RiderKycService(repos, file_store, identity, audit, notifier)
     businesses = BusinessService(
         repos, identity, audit, paystack=providers.get("paystack"), notifier=notifier
     )
@@ -424,6 +427,7 @@ async def build_container(
         applications=ApplicationService(repos, identity, audit, notifier, kyc=kyc, businesses=businesses),
         businesses=businesses,
         kyc=kyc,
+        menu_tools=MenuToolsService(repos, catalog, file_store, settings.public_base_url),
         reviews=ReviewService(repos, orders),
         support=SupportService(repos, orders, audit),
         meal_plans=MealPlanService(repos),

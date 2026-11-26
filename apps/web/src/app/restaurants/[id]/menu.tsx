@@ -49,6 +49,11 @@ export function Menu({ detail, openItemId }: { detail: RestaurantDetail; openIte
                       {!item.is_available && <Badge>Sold out</Badge>}
                     </div>
                   </div>
+                  {item.image_url && (
+                    // The shop's own photo (partner dashboard → Menu → photo), served by the API.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={item.image_url} alt="" loading="lazy" className="size-24 shrink-0 rounded-md object-cover" />
+                  )}
                   <span className="grid size-9 shrink-0 place-items-center self-end rounded-full bg-primary-soft text-primary-strong group-hover:bg-primary group-hover:text-on-primary">
                     <Plus className="size-5" aria-hidden="true" />
                     <span className="sr-only">Add {item.name}</span>

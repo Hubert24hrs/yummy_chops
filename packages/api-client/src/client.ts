@@ -335,6 +335,12 @@ export function createApi(opts: ClientOptions) {
       setAvailability: (rid: string, id: string, available: boolean) =>
         patch<T.MenuItem>(`/v1/partner/restaurants/${rid}/items/${id}/availability`, { available }),
       deleteItem: (rid: string, id: string) => del<void>(`/v1/partner/restaurants/${rid}/items/${id}`),
+      /** A photo for a menu item: a data URL or base64 (JPEG, PNG or WebP, at most 5 MB). */
+      setItemPhoto: (rid: string, id: string, data: string) => post<T.MenuItem>(`/v1/partner/restaurants/${rid}/items/${id}/photo`, { data }),
+      removeItemPhoto: (rid: string, id: string) => del<T.MenuItem>(`/v1/partner/restaurants/${rid}/items/${id}/photo`),
+      /** A whole menu or product list from a CSV file: a preview first, then `apply` to make the changes. */
+      importMenu: (rid: string, csv: string, apply = false) =>
+        post<T.MenuImportResult>(`/v1/partner/restaurants/${rid}/menu/import`, { csv, apply }),
       settings: (rid: string, body: Record<string, unknown>) => patch<T.Restaurant>(`/v1/partner/restaurants/${rid}/settings`, body),
       setAccepting: (rid: string, accepting: boolean) => put<T.Restaurant>(`/v1/partner/restaurants/${rid}/accepting`, { accepting }),
       orders: (rid: string, status?: T.OrderStatus[]) => get<T.Order[]>(`/v1/partner/restaurants/${rid}/orders`, { status, limit: 100 }),

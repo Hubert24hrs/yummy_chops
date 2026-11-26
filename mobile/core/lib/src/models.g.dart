@@ -135,6 +135,7 @@ _MenuItem _$MenuItemFromJson(Map<String, dynamic> json) => _MenuItem(
   unitLabel: json['unit_label'] as String?,
   brand: json['brand'] as String?,
   emoji: json['emoji'] as String?,
+  imageUrl: json['image_url'] as String?,
   popularity: (json['popularity'] as num?)?.toInt() ?? 0,
 );
 
@@ -154,6 +155,7 @@ Map<String, dynamic> _$MenuItemToJson(_MenuItem instance) => <String, dynamic>{
   'unit_label': ?instance.unitLabel,
   'brand': ?instance.brand,
   'emoji': ?instance.emoji,
+  'image_url': ?instance.imageUrl,
   'popularity': instance.popularity,
 };
 

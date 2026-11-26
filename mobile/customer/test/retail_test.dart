@@ -128,6 +128,37 @@ void main() {
     expect(find.text('CareFirst Pharmacy'), findsWidgets);
   });
 
+  test("the app reads the shop's own photo of an item", () {
+    final item = MenuItem.fromJson({
+      'id': 'i1', 'restaurant_id': 'r1', 'name': 'Pounded yam', 'price_kobo': 150000,
+      'image_url': 'https://api.test/v1/media/public/restaurants/r1/items/i1-abc.jpg',
+    });
+    expect(item.imageUrl, endsWith('/i1-abc.jpg'));
+    expect(MenuItem.fromJson({'id': 'i2', 'restaurant_id': 'r1', 'name': 'Eba', 'price_kobo': 80000}).imageUrl, isNull);
+  });
+
+  testWidgets("products and dishes show the shop's photo, and the emoji when there is none", (tester) async {
+    const url = 'https://api.test/v1/media/public/restaurants/m-lekki/items/g1-abc.jpg';
+    final withPhoto = RestaurantDetail(
+      restaurant: market,
+      address: 'Market road',
+      avgPrepMinutes: 35,
+      sections: [
+        MenuSection(category: const MenuCategory(id: 'grains', name: 'Rice, grains & garri'), items: [
+          product('g1', 'Ijebu garri', 600, unit: 'derica', pop: 260).copyWith(imageUrl: url),
+          product('g3', 'Local rice', 1500, unit: 'derica', pop: 240),
+        ]),
+      ],
+      optionGroups: const {},
+    );
+    await pump(tester, const RestaurantScreen(id: 'm-lekki'), overrides: [
+      restaurantDetailProvider.overrideWith((ref, id) async => withPhoto),
+    ]);
+    final photo = find.byWidgetPredicate((w) => w is Image && w.image is NetworkImage && (w.image as NetworkImage).url == url);
+    expect(photo, findsWidgets);
+    expect(find.text('🧺'), findsWidgets); // Local rice has no photo: its emoji shows
+  });
+
   testWidgets('a market is browsed by the aisle: popular, measures, "From" prices, stock, view more, search', (tester) async {
     await pump(tester, const RestaurantScreen(id: 'm-lekki'), overrides: [
       restaurantDetailProvider.overrideWith((ref, id) async => marketDetail),

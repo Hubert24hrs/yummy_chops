@@ -646,3 +646,24 @@ export interface BranchInput {
   branch_name?: string | null; address: string; area?: string; location: GeoPoint; manager_phone?: string | null;
 }
 export interface Bank { code: string; name: string }
+
+/** The answer to a menu spreadsheet (services/menu_tools.py): what would change, or what changed. */
+export interface MenuImportRow {
+  row: number;
+  name: string;
+  category: string;
+  price_kobo: number | null;
+  action: "create" | "update" | "unchanged" | "error";
+  error: string | null;
+  changes: string[];
+}
+
+export interface MenuImportResult {
+  applied: boolean;
+  created: number;
+  updated: number;
+  unchanged: number;
+  errors: number;
+  new_categories: string[];
+  rows: MenuImportRow[];
+}

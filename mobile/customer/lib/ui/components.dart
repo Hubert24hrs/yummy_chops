@@ -578,3 +578,25 @@ class EmptyState extends StatelessWidget {
   }
 }
 
+
+/// A shop's photo of an item (partner dashboard), filling its box; [fallback] while there is none, while it loads
+/// and when it cannot be loaded (no connection), so a menu never shows a broken picture.
+class MenuPhoto extends StatelessWidget {
+  const MenuPhoto({super.key, required this.url, required this.fallback});
+  final String? url;
+  final Widget fallback;
+
+  @override
+  Widget build(BuildContext context) {
+    final src = url;
+    if (src == null || src.isEmpty) return Center(child: fallback);
+    return Image.network(
+      src,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      loadingBuilder: (_, child, progress) => progress == null ? child : Center(child: fallback),
+      errorBuilder: (_, _, _) => Center(child: fallback),
+    );
+  }
+}

@@ -4,11 +4,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { formatNaira, nairaToKobo, type MenuItem } from "@gudmeal/api-client";
 import { Badge, Button, Card, Dialog, ErrorState, Field, Input, Select, Skeleton, Textarea, Toggle } from "@gudmeal/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus } from "lucide-react";
+import { Camera, FileUp, Pencil, Plus, Trash2 } from "lucide-react";
 import { use, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useApi } from "@/lib/api";
+import { PHOTO_TYPES, shrinkPhoto } from "@/lib/photo";
+import { ImportDialog } from "./import-dialog";
 
 const itemSchema = z.object({
   name: z.string().trim().min(2, "Enter the name").max(80, "Keep the name under 80 characters"),
@@ -51,6 +53,7 @@ export default function MenuPage({ params }: { params: Promise<{ rid: string }> 
   const qc = useQueryClient();
   const menu = useQuery({ queryKey: ["menu", rid], queryFn: () => api.partner.menu(rid) });
   const [editing, setEditing] = useState<MenuItem | "new" | null>(null);
+  const [importing, setImporting] = useState(false);
   const availability = useMutation({
     mutationFn: ({ id, available }: { id: string; available: boolean }) => api.partner.setAvailability(rid, id, available),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["menu", rid] }),
@@ -65,7 +68,10 @@ export default function MenuPage({ params }: { params: Promise<{ rid: string }> 
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-2xl">{words.title}</h2>
-        <Button onClick={() => setEditing("new")}><Plus className="size-4" /> {words.add}</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setImporting(true)}><FileUp className="size-4" /> Import from spreadsheet</Button>
+          <Button onClick={() => setEditing("new")}><Plus className="size-4" /> {words.add}</Button>
+        </div>
       </div>
       {availability.error && <ErrorState message={(availability.error as Error).message} />}
       {categories.map((cat) => {
@@ -76,6 +82,12 @@ export default function MenuPage({ params }: { params: Promise<{ rid: string }> 
             <div className="divide-y divide-border rounded-lg border border-border bg-surface">
               {list.map((item) => (
                 <div key={item.id} className="flex flex-wrap items-center gap-3 p-3">
+                  <span className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-md bg-surface-muted text-2xl" aria-hidden="true">
+                    {item.image_url
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={item.image_url} alt="" className="size-full object-cover" />
+                      : (item.emoji ?? "🍽️")}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold">
                       {item.emoji ? `${item.emoji} ` : ""}{item.name} {item.option_group_ids.length > 0 && <Badge>Options</Badge>}
@@ -97,6 +109,7 @@ export default function MenuPage({ params }: { params: Promise<{ rid: string }> 
           </section>
         );
       })}
+      {importing && <ImportDialog rid={rid} shop={words.shop} onClose={() => setImporting(false)} />}
       {editing && <ItemEditor rid={rid} vertical={restaurant.vertical} item={editing === "new" ? null : editing} categories={categories} onClose={() => setEditing(null)} />}
     </div>
   );
@@ -143,6 +156,9 @@ function ItemEditor({ rid, vertical, item, categories, onClose }: {
       </div>
     }>
       <form className="grid gap-4 sm:grid-cols-2" onSubmit={(ev) => ev.preventDefault()}>
+        <div className="sm:col-span-2">
+          {item ? <PhotoPicker rid={rid} item={item} /> : <p className="text-sm text-muted">Save the {words.shop ? "product" : "item"} first, then add its photo.</p>}
+        </div>
         <Field label="Name" htmlFor="n" error={e.name?.message}><Input id="n" {...register("name")} /></Field>
         <Field label="Price (₦)" htmlFor="p" error={e.price_naira?.message}><Input id="p" type="number" step="50" min="0" {...register("price_naira")} /></Field>
         {words.shop && (
@@ -175,5 +191,48 @@ function ItemEditor({ rid, vertical, item, categories, onClose }: {
         {save.error && <p role="alert" className="text-sm text-danger sm:col-span-2">{(save.error as Error).message}</p>}
       </form>
     </Dialog>
+  );
+}
+
+/** The item's photo: shown, replaced or taken off at once (no need to press Save). */
+function PhotoPicker({ rid, item }: { rid: string; item: MenuItem }) {
+  const api = useApi();
+  const qc = useQueryClient();
+  const [url, setUrl] = useState(item.image_url);
+  const upload = useMutation({
+    mutationFn: async (file: File) => api.partner.setItemPhoto(rid, item.id, await shrinkPhoto(file)),
+    onSuccess: (saved) => { setUrl(saved.image_url); qc.invalidateQueries({ queryKey: ["menu", rid] }); },
+  });
+  const remove = useMutation({
+    mutationFn: () => api.partner.removeItemPhoto(rid, item.id),
+    onSuccess: () => { setUrl(null); qc.invalidateQueries({ queryKey: ["menu", rid] }); },
+  });
+  const error = (upload.error ?? remove.error) as Error | null;
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <span className="grid size-20 place-items-center overflow-hidden rounded-lg bg-surface-muted text-3xl">
+        {url
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={url} alt={`Photo of ${item.name}`} className="size-full object-cover" />
+          : <span aria-hidden="true">{item.emoji ?? "🍽️"}</span>}
+      </span>
+      <div className="space-y-1">
+        <div className="flex flex-wrap gap-2">
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-surface-muted">
+            <Camera className="size-4" /> {upload.isPending ? "Uploading…" : url ? "Change photo" : "Add photo"}
+            <input type="file" accept={PHOTO_TYPES.join(",")} className="sr-only" aria-label={url ? "Change photo" : "Add photo"}
+              disabled={upload.isPending}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) upload.mutate(f); e.target.value = ""; }} />
+          </label>
+          {url && (
+            <Button variant="ghost" size="sm" onClick={() => remove.mutate()} loading={remove.isPending}>
+              <Trash2 className="size-4" /> Remove photo
+            </Button>
+          )}
+        </div>
+        <p className="text-xs text-muted">A clear photo of the real {item.kind === "product" ? "product" : "dish"} on a plain background. JPEG, PNG or WebP.</p>
+        {error && <p role="alert" className="text-sm text-danger">{error.message}</p>}
+      </div>
+    </div>
   );
 }

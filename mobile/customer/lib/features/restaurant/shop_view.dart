@@ -213,10 +213,14 @@ class ProductCard extends StatelessWidget {
                   width: double.infinity,
                   decoration: BoxDecoration(color: theme.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)),
                   alignment: Alignment.center,
+                  clipBehavior: Clip.antiAlias,
                   child: ExcludeSemantics(
-                    child: item.emoji != null
-                        ? Text(item.emoji!, style: const TextStyle(fontSize: 38))
-                        : Icon(service.icon, size: 34, color: theme.colorScheme.primary),
+                    child: MenuPhoto(
+                      url: item.imageUrl,
+                      fallback: item.emoji != null
+                          ? Text(item.emoji!, style: const TextStyle(fontSize: 38))
+                          : Icon(service.icon, size: 34, color: theme.colorScheme.primary),
+                    ),
                   ),
                 ),
                 if (!available)

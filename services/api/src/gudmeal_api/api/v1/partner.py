@@ -5,13 +5,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 
 from ...domain.order_state import OrderStatus
 from ...services.business import BankInput, BranchInput, BranchUpdate
 from ...services.catalog import ItemInput, OptionGroupInput, RestaurantSettingsInput
-from ..deps import Ctr, CurrentPrincipal
+from ...services.menu_tools import TEMPLATE, MenuImportInput, PhotoInput
+from ..deps import Ctr, CurrentPrincipal, limit
 from ..serializers import order_view
 
 router = APIRouter(prefix="/v1/partner", tags=["partner"])
@@ -119,6 +120,34 @@ async def item_availability(
 @router.delete("/restaurants/{restaurant_id}/items/{item_id}", status_code=204)
 async def delete_item(restaurant_id: str, item_id: str, c: Ctr, principal: CurrentPrincipal) -> None:
     await c.catalog.delete_item(principal, restaurant_id, item_id)
+
+
+@router.post(
+    "/restaurants/{restaurant_id}/items/{item_id}/photo", dependencies=[Depends(limit("menu_photo"))]
+)
+async def item_photo(
+    restaurant_id: str, item_id: str, data: PhotoInput, c: Ctr, principal: CurrentPrincipal
+) -> Any:
+    return await c.menu_tools.set_photo(principal, restaurant_id, item_id, data.data)
+
+
+@router.delete("/restaurants/{restaurant_id}/items/{item_id}/photo")
+async def remove_item_photo(restaurant_id: str, item_id: str, c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.menu_tools.remove_photo(principal, restaurant_id, item_id)
+
+
+@router.post("/restaurants/{restaurant_id}/menu/import", dependencies=[Depends(limit("menu_import"))])
+async def import_menu(restaurant_id: str, data: MenuImportInput, c: Ctr, principal: CurrentPrincipal) -> Any:
+    return await c.menu_tools.import_menu(principal, restaurant_id, data)
+
+
+@router.get("/menu-template.csv")
+async def menu_template() -> Response:
+    return Response(
+        content=TEMPLATE,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="yummy-chops-menu-template.csv"'},
+    )
 
 
 @router.post("/restaurants/{restaurant_id}/option-groups", status_code=201)

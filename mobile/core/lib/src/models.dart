@@ -81,6 +81,8 @@ abstract class MenuItem with _$MenuItem {
     /// Products (shops, pharmacies, markets): brand, a picture placeholder and how popular the product is.
     String? brand,
     String? emoji,
+    /// The shop's own photo (partner dashboard), served by the API; null until the shop adds one.
+    String? imageUrl,
     @Default(0) int popularity,
   }) = _MenuItem;
   factory MenuItem.fromJson(Map<String, dynamic> json) => _$MenuItemFromJson(json);

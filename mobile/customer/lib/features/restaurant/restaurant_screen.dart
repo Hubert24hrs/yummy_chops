@@ -120,6 +120,12 @@ class _RestaurantScreenState extends ConsumerState<RestaurantScreen> {
                   final item = section.items[i];
                   return ListTile(
                     enabled: canOrder && item.isAvailable,
+                    leading: item.imageUrl == null
+                        ? null
+                        : ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: SizedBox.square(dimension: 56, child: MenuPhoto(url: item.imageUrl, fallback: const SizedBox())),
+                          ),
                     title: Text(item.unitLabel == null ? item.name : '${item.name} · ${item.unitLabel}', style: const TextStyle(fontWeight: FontWeight.w700)),
                     subtitle: Text([formatNaira(item.priceKobo), if (item.serves > 1) 'Serves ${item.serves}', if (!item.isAvailable) 'Sold out'].join(' · ')),
                     trailing: const Icon(Icons.add_circle_rounded),

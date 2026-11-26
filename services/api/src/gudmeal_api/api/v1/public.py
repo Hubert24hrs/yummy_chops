@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 from sqlalchemy import text
 
 from ...domain import places
@@ -25,6 +25,18 @@ def _location(lat: float | None, lng: float | None) -> GeoPoint | None:
     if (lat is None) != (lng is None):
         raise ValidationFailed("Provide both lat and lng")
     return GeoPoint(lat=lat, lng=lng) if lat is not None and lng is not None else None
+
+
+@router.get("/media/{path:path}")
+async def media(path: str, c: Ctr) -> Response:
+    """Shops' public pictures (menu photos), kept by the API (services/menu_tools.py)."""
+    data, content_type = await c.menu_tools.media(path)
+    return Response(
+        content=data,
+        media_type=content_type,
+        # Every photo has its own name, so it can be kept for a year.
+        headers={"Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.get("/health")
