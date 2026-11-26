@@ -148,14 +148,25 @@ class _DeliveryLocationScreenState extends ConsumerState<DeliveryLocationScreen>
 /// Asks once after a fresh sign-in (the guest's included), and only when the customer has no saved address yet.
 /// Never blocks signing in: if the address book can't be read, the customer simply goes on.
 Future<void> askWhereToDeliverIfNeeded(BuildContext context, WidgetRef ref) async {
+  // Signing out rebuilds the app around the new guest, and both the old and the new screens may ask: one question is
+  // enough (seen on a phone, 2026-11-26: "Where should we deliver?" came up twice after signing out).
+  if (_askingWhereToDeliver) return;
   if (!ref.read(askWhereToDeliverProvider)) return;
   ref.read(askWhereToDeliverProvider.notifier).asked();
+  _askingWhereToDeliver = true;
   try {
-    final saved = await ref.read(apiProvider).addresses();
-    if (saved.isNotEmpty) return;
-  } on ApiException {
-    return;
+    try {
+      final saved = await ref.read(apiProvider).addresses();
+      if (saved.isNotEmpty) return;
+    } on ApiException {
+      return;
+    }
+    if (!context.mounted) return;
+    await Navigator.of(context).push<bool>(MaterialPageRoute(fullscreenDialog: true, builder: (_) => const DeliveryLocationScreen()));
+  } finally {
+    _askingWhereToDeliver = false;
   }
-  if (!context.mounted) return;
-  await Navigator.of(context).push<bool>(MaterialPageRoute(fullscreenDialog: true, builder: (_) => const DeliveryLocationScreen()));
 }
+
+/// True while "Where should we deliver?" is on screen.
+bool _askingWhereToDeliver = false;

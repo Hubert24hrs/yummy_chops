@@ -19,7 +19,8 @@ class HomeScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authStateProvider).value;
-    final first = user?.name?.trim().split(' ').first;
+    // No name (a guest, or an account without one): no "Ada, …" in front of the title.
+    final first = (user?.name?.trim() ?? '').split(' ').first;
     final forYou = ref.watch(forYouProvider);
     final area = ref.watch(areaProvider);
     final top = MediaQuery.paddingOf(context).top;
@@ -60,7 +61,7 @@ class HomeScreen extends ConsumerWidget {
             ),
           ),
           SliverToBoxAdapter(
-            child: SectionTitle(first == null ? 'These are for you' : '$first, these are for you',
+            child: SectionTitle(first.isEmpty ? 'These are for you' : '$first, these are for you',
                 info: 'Top-rated places near ${area.name}, picked for you', onMore: () => context.go('/discover')),
           ),
           SliverToBoxAdapter(

@@ -157,6 +157,15 @@ void main() {
     expect(find.text('PAGE /beauty'), findsOneWidget);
   });
 
+  testWidgets('an account without a name gets the title without a stray comma', (tester) async {
+    // Seen on a phone, 2026-11-26: ", these are for you" for a Google account with no display name.
+    await pumpRouted(tester, const HomeScreen(),
+        user: const GmUser(uid: 'u2', name: '', email: 'someone@example.com'),
+        overrides: [forYouProvider.overrideWith((ref) async => [jollof])]);
+    expect(find.text('These are for you'), findsOneWidget);
+    expect(find.textContaining(', these are for you'), findsNothing);
+  });
+
   testWidgets('bubbles follow the finger and spring back home when released', (tester) async {
     await pumpRouted(tester, const HomeScreen(), overrides: [forYouProvider.overrideWith((ref) async => [jollof])]);
     final bubble = find.byKey(const ValueKey('bubble-food'));

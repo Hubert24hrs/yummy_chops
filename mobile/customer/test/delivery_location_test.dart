@@ -151,6 +151,34 @@ void main() {
     expect(find.text('Where should we deliver?'), findsNothing);
   });
 
+  testWidgets('two screens asking at the same moment show the question once', (tester) async {
+    // Seen on a phone, 2026-11-26: after signing out, the old and the new screen both asked.
+    final auth = FakeAuthRepository();
+    final c = _container(_Api(), auth);
+    late BuildContext ctx;
+    late WidgetRef widgetRef;
+    await tester.pumpWidget(_app(
+      c,
+      Consumer(builder: (context, ref, _) {
+        ctx = context;
+        widgetRef = ref;
+        ref.listen(askWhereToDeliverProvider, (_, _) {});
+        return const Scaffold(body: Text('home'));
+      }),
+    ));
+    await auth.signInWithEmail('ada@example.com', 'secret');
+    await tester.pumpAndSettle();
+    final first = askWhereToDeliverIfNeeded(ctx, widgetRef);
+    c.read(askWhereToDeliverProvider.notifier).state = true; // the second screen's sign-in event
+    final second = askWhereToDeliverIfNeeded(ctx, widgetRef);
+    await tester.pumpAndSettle();
+    expect(find.text('Where should we deliver?'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('where-later')));
+    await tester.pumpAndSettle();
+    await Future.wait([first, second]);
+    expect(find.text('Where should we deliver?'), findsNothing);
+  });
+
   testWidgets('a customer who already has an address is not asked', (tester) async {
     final api = _Api()
       ..existing = const [DeliveryAddress(label: 'Home', line1: '5 Admiralty Way', location: GeoPoint(lat: 6.4478, lng: 3.4723))];

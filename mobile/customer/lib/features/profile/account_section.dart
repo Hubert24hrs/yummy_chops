@@ -39,11 +39,24 @@ class _SaveAccountCardState extends ConsumerState<SaveAccountCard> {
                 'as a guest stay with the guest.',
         }),
       ));
-    } catch (_) {
-      if (mounted) setState(() => _error = "Your account wasn't saved. Please try again.");
+    } catch (e) {
+      final reason = _reason(e);
+      debugPrint('Save account failed: $e');
+      // Closing Google's account list is not an error.
+      if (reason == 'canceled') return;
+      if (mounted) setState(() => _error = "Your account wasn't saved ($reason). Please try again.");
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// A short reason to show (and for support): Firebase's or Google sign-in's error code when there is one.
+  static String _reason(Object e) {
+    try {
+      final code = (e as dynamic).code;
+      if (code != null) return code.toString().split('.').last;
+    } catch (_) {}
+    return e.runtimeType.toString();
   }
 
   Future<void> _google(AuthRepository auth) async {
