@@ -8,7 +8,9 @@
 
 1. **"This shop does not deliver to this address."** Each shop had a delivery radius (8–12 km). Decision: every shop
    delivers anywhere in its own city (Lagos, Enugu); its radius only matters outside the cities we serve. Motorcycle
-   and car riders take jobs up to 60 km so such orders still find a rider.
+   and car riders take jobs up to 60 km so such orders still find a rider. The delivery fee keeps its ₦4,000 cap for
+   usual distances but is never less than the rider's pay for the trip (past about 25 km), so a long city-wide
+   delivery never costs Yummy Chops money.
 2. **Goods nearest the customer first.** Search results list goods from open shops nearest the customer first (each
    with `distance_km`), then the best match; shop lists put open shops in order of distance (half-kilometre steps,
    then featured and rating).

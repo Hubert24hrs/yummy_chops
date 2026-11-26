@@ -201,6 +201,9 @@ def delivery_fee(
     d = cfg.delivery
     fee = d.base_kobo + multiply_decimal(d.per_km_kobo, road_km(distance_km, cfg, measured_km))
     fee = clamp(fee, d.min_kobo, d.max_kobo)
+    # Shops deliver anywhere in their city (ADR-0033): on long trips the capped fee would be less than the rider is
+    # paid for the distance, so the fee is never below the rider's pay (normal distances are unchanged).
+    fee = max(fee, rider_pay(distance_km, cfg, measured_km=measured_km))
     return round_to(apply_bps(fee, surge_bps), d.round_to_kobo)
 
 

@@ -92,7 +92,10 @@ class TestLinePricing:
 class TestFees:
     def test_delivery_fee_bounds_and_surge(self):
         assert delivery_fee(0.1, CFG) == CFG.delivery.min_kobo
-        assert delivery_fee(500, CFG) == CFG.delivery.max_kobo
+        assert delivery_fee(20, CFG) == CFG.delivery.max_kobo  # the usual cap
+        # City-wide delivery (ADR-0033): a long trip never charges less than the rider is paid for it.
+        for km in (25, 30, 40, 60):
+            assert delivery_fee(km, CFG) >= rider_pay(km, CFG)
         base = delivery_fee(5, CFG)
         assert base % 5_000 == 0  # rounded to ₦50
         assert delivery_fee(5, CFG, surge_bps=15_000) >= base
