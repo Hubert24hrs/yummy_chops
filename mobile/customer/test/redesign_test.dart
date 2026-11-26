@@ -226,10 +226,14 @@ void main() {
     expect(routeForScreen('merchant', const {}), isNull);
   });
 
-  testWidgets('orders tab asks signed-out customers to sign in', (tester) async {
-    await pumpRouted(tester, const OrdersScreen(), user: null);
-    expect(find.text('Track your orders'), findsOneWidget);
-    expect(find.text('Sign in'), findsOneWidget);
+  testWidgets('a guest sees the orders tab itself, with no sign-in prompt', (tester) async {
+    await pumpRouted(tester, const OrdersScreen(), user: const GmUser(uid: 'guest-1', isAnonymous: true), overrides: [
+      myOrdersProvider.overrideWith((ref) async => const <Order>[]),
+      orderSummaryProvider.overrideWith((ref) async => const OrderSummary()),
+    ]);
+    expect(find.text('In progress'), findsOneWidget);
+    expect(find.text('Track your orders'), findsOneWidget); // the empty list
+    expect(find.text('Sign in'), findsNothing);
   });
 
   testWidgets('orders tab shows empty states and the spending summary', (tester) async {

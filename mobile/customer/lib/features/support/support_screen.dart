@@ -5,6 +5,7 @@ import 'package:gud_meal_core/gud_meal_core.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers.dart';
+import '../auth/guest_session.dart';
 import '../../ui/components.dart';
 import '../../ui/gudy.dart';
 
@@ -117,8 +118,10 @@ class SupportScreen extends ConsumerWidget {
   }
 
   Future<void> _openTicket(BuildContext context, WidgetRef ref) async {
-    if (ref.read(authStateProvider).value == null) {
-      context.push('/sign-in?next=/support');
+    // Guest mode: the app signs in a guest by itself. In the moment before that is done, try it again and say so.
+    if (ref.read(signedInUidProvider) == null) {
+      ref.read(guestSessionProvider.notifier).retry();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Just a moment, getting things ready…')));
       return;
     }
     final sent = await showModalBottomSheet<bool>(

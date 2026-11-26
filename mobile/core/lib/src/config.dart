@@ -13,6 +13,7 @@ class AppConfig {
     this.findTestServer = false,
     this.testServerHosts = const [],
     this.foundHost,
+    this.appleSignIn = false,
   });
 
   final String apiUrl;
@@ -33,6 +34,10 @@ class AppConfig {
 
   /// Where a phone test found the computer that runs the test server; null in every other build.
   final String? foundHost;
+
+  /// Shows "Continue with Apple" in the customer app's Profile (`--dart-define=APPLE_SIGN_IN=true`). Off by default:
+  /// it needs the Apple provider set up in the Firebase project first.
+  final bool appleSignIn;
 
   /// Android emulators reach the host machine at 10.0.2.2.
   static String get _host => !kIsWeb && defaultTargetPlatform == TargetPlatform.android ? '10.0.2.2' : 'localhost';
@@ -58,6 +63,7 @@ class AppConfig {
             const bool.fromEnvironment('FIND_TEST_SERVER') &&
             const bool.fromEnvironment('USE_FIREBASE_EMULATORS', defaultValue: kDebugMode),
         testServerHosts: splitHosts(const String.fromEnvironment('TEST_SERVER_HOSTS')),
+        appleSignIn: const bool.fromEnvironment('APPLE_SIGN_IN'),
       );
 
   /// A list of hosts from one build setting: separated by `+`, commas, semicolons or spaces.
@@ -98,6 +104,7 @@ class AppConfig {
         findTestServer: findTestServer,
         testServerHosts: testServerHosts,
         foundHost: host,
+        appleSignIn: appleSignIn,
       );
 
   static String _moved(String url, String host) => Uri.parse(url).replace(host: host).toString();

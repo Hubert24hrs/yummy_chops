@@ -7,16 +7,19 @@ import '../../ui/components.dart';
 import '../../ui/gm_map.dart';
 import 'address_picker.dart';
 
-/// True from the moment a customer signs in on this phone until they have been asked where to deliver. A session the
-/// app restores at start-up does not count: only the change from signed out to signed in.
+/// True from the moment someone signs in on this phone until they have been asked where to deliver: the guest the app
+/// signs in on first launch (guest mode), or a guest signing in to another account. A session the app restores at
+/// start-up does not count, nor a guest saving their account (the same customer).
 class AskWhereToDeliver extends Notifier<bool> {
   @override
   bool build() {
     ref.listen(authStateProvider, (previous, next) {
-      final wasSignedOut = previous is AsyncData<GmUser?> && previous.value == null;
-      if (next.value == null) {
+      final before = previous is AsyncData<GmUser?> ? previous.value : null;
+      final wasSignedOut = previous is AsyncData<GmUser?> && before == null;
+      final user = next.value;
+      if (user == null) {
         state = false;
-      } else if (wasSignedOut) {
+      } else if (wasSignedOut || (before != null && before.isAnonymous && before.uid != user.uid)) {
         state = true;
       }
     });
@@ -28,7 +31,7 @@ class AskWhereToDeliver extends Notifier<bool> {
 
 final askWhereToDeliverProvider = NotifierProvider<AskWhereToDeliver, bool>(AskWhereToDeliver.new);
 
-/// Right after signing in, a customer with no saved address chooses how to set one: the phone's GPS, typing the
+/// Right after the first launch (or signing in), a customer with no saved address chooses how to set one: the phone's GPS, typing the
 /// address, or choosing the spot on the Google map (when the build has map tiles). The address is saved to their
 /// address book as "Home" and its neighbourhood becomes the delivery area on Home. "Not now" skips it.
 class DeliveryLocationScreen extends ConsumerStatefulWidget {
@@ -142,8 +145,8 @@ class _DeliveryLocationScreenState extends ConsumerState<DeliveryLocationScreen>
   }
 }
 
-/// Asks once after a fresh sign-in, and only when the customer has no saved address yet. Never blocks signing in:
-/// if the address book can't be read, the customer simply goes on.
+/// Asks once after a fresh sign-in (the guest's included), and only when the customer has no saved address yet.
+/// Never blocks signing in: if the address book can't be read, the customer simply goes on.
 Future<void> askWhereToDeliverIfNeeded(BuildContext context, WidgetRef ref) async {
   if (!ref.read(askWhereToDeliverProvider)) return;
   ref.read(askWhereToDeliverProvider.notifier).asked();

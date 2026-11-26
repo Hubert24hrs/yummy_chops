@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gud_meal_core/gud_meal_core.dart';
 
 import 'app.dart';
+import 'features/security/app_lock.dart';
 import 'maps_loader.dart';
 import 'providers.dart';
 import 'ui/gm_map.dart';
@@ -31,6 +32,8 @@ Future<void> main() async {
     googleMapsReady = await loadGoogleMapsScript(const String.fromEnvironment('MAPS_BROWSER_KEY'));
   }
   final auth = FirebaseAuthRepository(FirebaseAuth.instance, usingEmulator: config.useEmulators);
+  // Read before the first frame, so "Unlock with fingerprint" covers the app before anything shows.
+  final appLock = await SharedPrefsAppLockStore.open();
   // What the app keeps in memory belongs to the signed-in customer: it all starts afresh when they sign out.
   runApp(PerUserScope(
     auth: auth,
@@ -38,6 +41,7 @@ Future<void> main() async {
       overrides: [
         configProvider.overrideWithValue(config),
         authRepositoryProvider.overrideWithValue(auth),
+        appLockStoreProvider.overrideWithValue(appLock),
       ],
       child: const GudMealApp(),
     ),

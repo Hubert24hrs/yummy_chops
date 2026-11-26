@@ -17,7 +17,9 @@ String? normaliseNigerianPhone(String input) {
   return null;
 }
 
-/// Phone OTP (primary in Nigeria) and email sign-in. Router redirects away once signed in.
+/// Phone OTP and email sign-in: Profile → "Other ways to sign in" (staff and testers use email accounts). Customers
+/// never have to sign in: the app uses a guest account until they save it with Google or Apple in Profile. Router
+/// redirects away once signed in to an account.
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
 
@@ -47,7 +49,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   /// (Pushed routes don't change the web URL, so the router's redirect alone can't do this.) Right after signing in,
   /// a customer with no saved address first chooses where to deliver: GPS, typing it, or the map.
   Future<void> _leaveIfSignedIn() async {
-    if (!mounted || ref.read(authRepositoryProvider).currentUser == null) return;
+    final user = ref.read(authRepositoryProvider).currentUser;
+    if (!mounted || user == null || user.isAnonymous) return;
     final next = GoRouterState.of(context).uri.queryParameters['next'];
     await askWhereToDeliverIfNeeded(context, ref);
     if (!mounted) return;
@@ -86,10 +89,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   Future<void> _google(AuthRepository auth) async {
     String? testEmail;
     if (auth.googleAsksForTestEmail) {
-      testEmail = await showDialog<String>(context: context, builder: (_) => const _TestGoogleAccount());
+      testEmail = await showDialog<String>(context: context, builder: (_) => const TestGoogleAccountDialog());
       if (testEmail == null) return;
     }
-    await _run(() => auth.signInWithGoogle(testEmail: testEmail));
+    // A guest is linked to the Google account, so the orders they placed as a guest stay theirs.
+    final guest = auth.currentUser?.isAnonymous ?? false;
+    await _run(() => guest ? auth.linkWithGoogle(testEmail: testEmail) : auth.signInWithGoogle(testEmail: testEmail));
   }
 
   @override
@@ -173,15 +178,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   }
 }
 
-/// Test server only: the Google account to sign in with. The live app opens Google's own account chooser.
-class _TestGoogleAccount extends StatefulWidget {
-  const _TestGoogleAccount();
+/// Test server only: the Google account to sign in with (also Profile → Continue with Google). The live app opens Google's own account chooser.
+class TestGoogleAccountDialog extends StatefulWidget {
+  const TestGoogleAccountDialog({super.key});
 
   @override
-  State<_TestGoogleAccount> createState() => _TestGoogleAccountState();
+  State<TestGoogleAccountDialog> createState() => _TestGoogleAccountDialogState();
 }
 
-class _TestGoogleAccountState extends State<_TestGoogleAccount> {
+class _TestGoogleAccountDialogState extends State<TestGoogleAccountDialog> {
   final _email = TextEditingController();
   String? _error;
 

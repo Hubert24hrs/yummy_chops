@@ -5,6 +5,8 @@
     <!-- "Use my current location" in the address picker (asked only when tapped). -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Profile → "Unlock with fingerprint" (local_auth). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- allowBackup off: nothing here is worth restoring, and a signed-in session must not travel in a backup. -->
     <application
         android:label="Yummy Chops"

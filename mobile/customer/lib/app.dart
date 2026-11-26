@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:gud_meal_core/gud_meal_core.dart';
 
 import 'features/assistant/assistant_screen.dart';
+import 'features/auth/guest_session.dart';
 import 'features/auth/sign_in_screen.dart';
 import 'features/cart/cart_screen.dart';
 import 'features/cart/checkout_screen.dart';
@@ -18,6 +19,7 @@ import 'features/location/nearby_map_screen.dart';
 import 'features/orders/order_screen.dart';
 import 'features/orders/orders_screen.dart';
 import 'features/receipts/receipt_screen.dart';
+import 'features/security/app_lock.dart';
 import 'features/parcel/parcel_screen.dart';
 import 'features/parcel/waybill_screen.dart';
 import 'features/plus/plus_screen.dart';
@@ -44,8 +46,9 @@ class _AuthListenable extends ChangeNotifier {
   }
 }
 
-/// Screens that need an account. Tabs (Orders, Profile) show a sign-in prompt instead of redirecting.
-const _protected = ['/checkout', '/assistant', '/send', '/orders/', '/wallet', '/plus', '/rewards', '/group', '/receipts', '/partner-with-us', '/ride'];
+/// Screens that need someone signed in wait for the guest sign-in (guest mode: nobody is asked to sign in; Profile
+/// offers to save the account). Browsing (Home, Discover, shops, the cart) never waits.
+Widget _gated(Widget screen) => GuestGate(child: screen);
 
 final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
@@ -53,14 +56,16 @@ final routerProvider = Provider<GoRouter>((ref) {
   final auth = ref.watch(authRepositoryProvider);
   final listenable = _AuthListenable(auth.authStateChanges());
   ref.onDispose(listenable.dispose);
+  // Signs in a guest whenever nobody is signed in (first launch, after signing out).
+  ref.listen(guestSessionProvider, (_, _) {});
   return GoRouter(
     navigatorKey: _rootKey,
     refreshListenable: listenable,
     redirect: (context, state) {
-      final signedIn = auth.currentUser != null;
-      final path = state.matchedLocation;
-      if (!signedIn && _protected.any(path.startsWith)) return '/sign-in?next=${Uri.encodeComponent(state.uri.toString())}';
-      if (signedIn && path == '/sign-in') return state.uri.queryParameters['next'] ?? '/';
+      // A guest may open Sign in (Profile → Other ways to sign in); someone with an account has no need to.
+      final user = auth.currentUser;
+      final hasAccount = user != null && !user.isAnonymous;
+      if (hasAccount && state.matchedLocation == '/sign-in') return state.uri.queryParameters['next'] ?? '/';
       return null;
     },
     routes: [
@@ -72,21 +77,21 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(routes: [
             GoRoute(
               path: '/orders',
-              builder: (_, _) => const OrdersScreen(),
+              builder: (_, _) => _gated(const OrdersScreen()),
               routes: [
                 GoRoute(
                   path: ':id',
                   parentNavigatorKey: _rootKey,
-                  builder: (_, s) => OrderScreen(
+                  builder: (_, s) => _gated(OrderScreen(
                     id: s.pathParameters['id']!,
                     paymentReference: s.uri.queryParameters['ref'],
                     justPaid: s.uri.queryParameters['paid'] == '1',
-                  ),
+                  )),
                   routes: [
                     GoRoute(
                       path: 'receipt',
                       parentNavigatorKey: _rootKey,
-                      builder: (_, s) => ReceiptScreen(orderId: s.pathParameters['id']!),
+                      builder: (_, s) => _gated(ReceiptScreen(orderId: s.pathParameters['id']!)),
                     ),
                   ],
                 ),
@@ -94,7 +99,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ]),
           StatefulShellBranch(routes: [GoRoute(path: '/support', builder: (_, _) => const SupportScreen())]),
-          StatefulShellBranch(routes: [GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen())]),
+          StatefulShellBranch(routes: [GoRoute(path: '/profile', builder: (_, _) => _gated(const ProfileScreen()))]),
         ],
       ),
       GoRoute(path: '/sign-in', builder: (_, _) => const SignInScreen()),
@@ -108,31 +113,31 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       GoRoute(
         path: '/send',
-        builder: (_, s) => s.uri.queryParameters['mode'] == 'interstate' ? const WaybillScreen() : const ParcelScreen(),
+        builder: (_, s) => _gated(s.uri.queryParameters['mode'] == 'interstate' ? const WaybillScreen() : const ParcelScreen()),
       ),
       GoRoute(path: '/map', builder: (_, s) => NearbyMapScreen(vertical: s.uri.queryParameters['vertical'] ?? 'food')),
       GoRoute(
         path: '/restaurants/:id',
         builder: (_, s) => RestaurantScreen(id: s.pathParameters['id']!, initialItemId: s.uri.queryParameters['item']),
       ),
-      // The cart needs no account (visitors can fill it); checkout asks to sign in.
+      // The cart needs no one signed in; checkout uses the guest account when the customer has not saved one.
       GoRoute(path: '/cart', builder: (_, _) => const CartScreen()),
-      GoRoute(path: '/checkout', builder: (_, _) => const CheckoutScreen()),
-      GoRoute(path: '/wallet', builder: (_, _) => const WalletScreen()),
-      GoRoute(path: '/receipts', builder: (_, _) => const ReceiptsScreen()),
+      GoRoute(path: '/checkout', builder: (_, _) => _gated(const CheckoutScreen())),
+      GoRoute(path: '/wallet', builder: (_, _) => _gated(const WalletScreen())),
+      GoRoute(path: '/receipts', builder: (_, _) => _gated(const ReceiptsScreen())),
       // Pages the website has too: help centre, package tracking by number, and the two sign-ups.
       GoRoute(path: '/help', builder: (_, _) => const HelpScreen()),
       GoRoute(path: '/track', builder: (_, s) => TrackScreen(code: s.uri.queryParameters['code'])),
-      GoRoute(path: '/partner-with-us', builder: (_, _) => const BusinessApplyScreen()),
-      GoRoute(path: '/ride', builder: (_, _) => const RiderApplyScreen()),
-      GoRoute(path: '/plus', builder: (_, _) => const PlusScreen()),
-      GoRoute(path: '/rewards', builder: (_, _) => const RewardsScreen()),
+      GoRoute(path: '/partner-with-us', builder: (_, _) => _gated(const BusinessApplyScreen())),
+      GoRoute(path: '/ride', builder: (_, _) => _gated(const RiderApplyScreen())),
+      GoRoute(path: '/plus', builder: (_, _) => _gated(const PlusScreen())),
+      GoRoute(path: '/rewards', builder: (_, _) => _gated(const RewardsScreen())),
       GoRoute(
         path: '/group',
-        builder: (_, s) => GroupHubScreen(initialCode: s.uri.queryParameters['code']),
-        routes: [GoRoute(path: ':id', builder: (_, s) => GroupScreen(id: s.pathParameters['id']!))],
+        builder: (_, s) => _gated(GroupHubScreen(initialCode: s.uri.queryParameters['code'])),
+        routes: [GoRoute(path: ':id', builder: (_, s) => _gated(GroupScreen(id: s.pathParameters['id']!)))],
       ),
-      GoRoute(path: '/assistant', builder: (_, s) => AssistantScreen(initial: s.uri.queryParameters['q'])),
+      GoRoute(path: '/assistant', builder: (_, s) => _gated(AssistantScreen(initial: s.uri.queryParameters['q']))),
     ],
   );
 });
@@ -151,8 +156,9 @@ class GudMealApp extends ConsumerWidget {
       darkTheme: buildGudMealTheme(Brightness.dark),
       themeMode: ref.watch(themeModeProvider),
       routerConfig: ref.watch(routerProvider),
-      // Phone test builds only: says so when the test server stops answering, and finds it again.
-      builder: (context, child) => TestServerWatch.wrap(ref.watch(configProvider), child),
+      // Phone test builds only: says so when the test server stops answering, and finds it again. The fingerprint
+      // lock (Profile → Unlock with fingerprint) covers everything when it is on.
+      builder: (context, child) => TestServerWatch.wrap(ref.watch(configProvider), AppLockGate(child: child ?? const SizedBox.shrink())),
     );
   }
 }

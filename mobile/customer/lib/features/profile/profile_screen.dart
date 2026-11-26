@@ -8,16 +8,19 @@ import 'package:gud_meal_core/gud_meal_core.dart';
 
 import '../../providers.dart';
 import '../location/address_picker.dart';
+import 'account_section.dart';
 import 'whatsapp_sheet.dart';
 import '../../ui/components.dart';
 
-/// Profile: who you are, your addresses, deals, payments, settings and help.
+/// Profile: who you are, your addresses, deals, payments, settings and help. The only place to sign in: a guest
+/// (guest mode, see features/auth/guest_session.dart) can save their account here with Google or Apple.
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authStateProvider).value;
+    final guest = user == null || user.isAnonymous;
     final theme = Theme.of(context);
     final top = MediaQuery.paddingOf(context).top;
     final name = (user?.name?.trim().isNotEmpty ?? false) ? user!.name!.trim() : null;
@@ -62,23 +65,12 @@ class ProfileScreen extends ConsumerWidget {
                             style: theme.textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w900),
                           ),
                           const SizedBox(height: 2),
-                          Text(user == null ? 'Sign in to order, track and save addresses' : (user.email ?? user.phone ?? ''), style: const TextStyle(color: Colors.white)),
+                          Text(guest ? "You're ordering as a guest" : (user.email ?? user.phone ?? ''), style: const TextStyle(color: Colors.white)),
                         ],
                       ),
                     ),
                   ],
                 ),
-                if (user == null) ...[
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: brandRed),
-                      onPressed: () => context.push('/sign-in?next=/profile'),
-                      child: const Text('Sign in or create account'),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -98,24 +90,25 @@ class ProfileScreen extends ConsumerWidget {
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                       child: Text('Profile', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
                     ),
-                    if (user != null) ...[
-                      ListTile(
-                        leading: const Icon(Icons.shopping_bag_outlined),
-                        title: const Text('Order history'),
-                        trailing: FilledButton.tonal(onPressed: () => context.go('/orders'), child: const Text('View in Orders')),
-                      ),
-                      _tile(context, Icons.person_outline_rounded, 'Account', onTap: () => _account(context, user)),
-                      _tile(context, Icons.location_on_outlined, 'Saved addresses', onTap: () => _addresses(context)),
-                      _tile(
-                        context,
-                        Icons.account_balance_wallet_outlined,
-                        'Yummy Chops wallet',
-                        badge: ref.watch(walletProvider).asData?.value.balanceKobo == null ? null : formatNaira(ref.watch(walletProvider).asData!.value.balanceKobo),
-                        onTap: () => context.push('/wallet'),
-                      ),
-                    ],
-                    if (user != null) _tile(context, Icons.receipt_long_outlined, 'My receipts', onTap: () => context.push('/receipts')),
-                    if (user != null) _tile(context, Icons.restaurant_menu_outlined, 'Food preferences', onTap: () => showFoodPreferences(context)),
+                    if (guest) const SaveAccountCard(),
+                    const HomeAddressTile(),
+                    const FingerprintTile(),
+                    ListTile(
+                      leading: const Icon(Icons.shopping_bag_outlined),
+                      title: const Text('Order history'),
+                      trailing: FilledButton.tonal(onPressed: () => context.go('/orders'), child: const Text('View in Orders')),
+                    ),
+                    if (!guest) _tile(context, Icons.person_outline_rounded, 'Account', onTap: () => _account(context, user)),
+                    _tile(context, Icons.location_on_outlined, 'Saved addresses', onTap: () => _addresses(context)),
+                    _tile(
+                      context,
+                      Icons.account_balance_wallet_outlined,
+                      'Yummy Chops wallet',
+                      badge: ref.watch(walletProvider).asData?.value.balanceKobo == null ? null : formatNaira(ref.watch(walletProvider).asData!.value.balanceKobo),
+                      onTap: () => context.push('/wallet'),
+                    ),
+                    _tile(context, Icons.receipt_long_outlined, 'My receipts', onTap: () => context.push('/receipts')),
+                    _tile(context, Icons.restaurant_menu_outlined, 'Food preferences', onTap: () => showFoodPreferences(context)),
                     _tile(context, Icons.local_offer_outlined, 'Promo codes', onTap: () => _promos(context, ref)),
                     _tile(context, Icons.credit_card_outlined, 'Payments', onTap: () => _payments(context)),
                     _tile(context, Icons.workspace_premium_outlined, 'Yummy Chops Plus', badge: 'Free delivery', onTap: () => context.push('/plus')),
@@ -133,7 +126,8 @@ class ProfileScreen extends ConsumerWidget {
                     _tile(context, Icons.pedal_bike_rounded, 'Ride with Yummy Chops', onTap: () => context.push('/ride')),
                     _tile(context, Icons.quiz_outlined, 'FAQ, privacy and terms', onTap: () => context.push('/help')),
                     if (user != null) _tile(context, Icons.download_outlined, 'Download my data', onTap: () => showMyData(context, ref)),
-                    if (user != null) _tile(context, Icons.logout_rounded, 'Sign out', danger: true, onTap: () => ref.read(authRepositoryProvider).signOut()),
+                    // Signing out starts afresh with a new guest; a guest has nothing to sign out of.
+                    if (!guest) _tile(context, Icons.logout_rounded, 'Sign out', danger: true, onTap: () => signOutOfProfile(ref)),
                   ],
                 ),
               ),

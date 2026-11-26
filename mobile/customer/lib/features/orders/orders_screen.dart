@@ -16,21 +16,8 @@ class OrdersScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authStateProvider).value;
+    // No sign-in here: the app has signed in a guest (or the customer) before this tab shows (GuestGate in app.dart).
     final theme = Theme.of(context);
-    if (user == null) {
-      return Scaffold(
-        appBar: AppBar(title: Text('Orders', style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900))),
-        body: ListView(children: [
-          EmptyState(
-            icon: Icons.shopping_bag_outlined,
-            title: 'Track your orders',
-            body: 'Sign in to see your orders, track deliveries and reorder favourites.',
-            action: FilledButton(onPressed: () => context.push('/sign-in?next=/orders'), child: const Text('Sign in')),
-          ),
-        ]),
-      );
-    }
     return DefaultTabController(
       length: 2,
       child: Scaffold(

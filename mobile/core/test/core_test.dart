@@ -260,6 +260,35 @@ void main() {
     expect(auth.currentUser, isNull);
   });
 
+  test('fake auth: a guest signs in anonymously, and saving the account with Google keeps the uid', () async {
+    final auth = FakeAuthRepository();
+    await auth.signInAnonymously();
+    final guest = auth.currentUser!;
+    expect(guest.isAnonymous, isTrue);
+    expect(await auth.linkWithGoogle(testEmail: 'ada@gmail.com'), LinkOutcome.linked);
+    expect(auth.currentUser?.uid, guest.uid);
+    expect(auth.currentUser?.isAnonymous, isFalse);
+    expect(auth.currentUser?.email, 'ada@gmail.com');
+
+    await auth.signOut();
+    await auth.signInAnonymously();
+    auth.existingAccounts.add('ada@gmail.com');
+    expect(await auth.linkWithGoogle(testEmail: 'ada@gmail.com'), LinkOutcome.signedInToExisting);
+    expect(auth.currentUser?.uid, 'u-ada@gmail.com');
+  });
+
+  test('fake auth tells a listener about a change made right after the first event', () async {
+    final auth = FakeAuthRepository();
+    final seen = <String?>[];
+    final sub = auth.authStateChanges().listen((u) {
+      seen.add(u?.uid);
+      if (u == null) auth.signInAnonymously();
+    });
+    await pumpEventQueue();
+    await sub.cancel();
+    expect(seen, [null, 'guest-1']);
+  });
+
   group('an idempotency key lasts until the server answers', () {
     ApiException error(int status, String code) => ApiException(status, code, code);
 
@@ -319,5 +348,20 @@ void main() {
     await auth.signInWithEmail('bayo@example.com', 'secret1');
     await tester.pump();
     expect(starts, 2);
+  });
+
+  testWidgets('a guest signing in to an existing account keeps what is in memory (the cart stays on the phone)', (tester) async {
+    final auth = FakeAuthRepository(const GmUser(uid: 'guest-1', isAnonymous: true))..existingAccounts.add('ada@gmail.com');
+    var starts = 0;
+    await tester.pumpWidget(PerUserScope(auth: auth, child: _Memory(onStart: () => starts++)));
+    await tester.pump();
+    await auth.linkWithGoogle(testEmail: 'ada@gmail.com');
+    await tester.pump();
+    expect(auth.currentUser?.uid, 'u-ada@gmail.com');
+    expect(starts, 1);
+
+    await auth.signOut();
+    await tester.pump();
+    expect(starts, 2, reason: 'signing out of the account still starts afresh');
   });
 }

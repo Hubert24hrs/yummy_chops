@@ -1,5 +1,6 @@
 package com.yummy247.app
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity : FlutterActivity()
+// A FragmentActivity: "Unlock with fingerprint" (local_auth) shows the phone's fingerprint prompt as a fragment.
+class MainActivity : FlutterFragmentActivity()

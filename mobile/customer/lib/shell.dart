@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'features/location/delivery_location.dart';
 import 'providers.dart';
 import 'ui/components.dart';
 import 'ui/gudy.dart';
@@ -14,6 +15,14 @@ class AppShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authStateProvider).value;
+    // Guest mode: on first launch the app signs in a guest by itself, and a customer with no saved address is asked
+    // where to deliver once. (Signing in from the Sign in screen asks there.)
+    ref.listen(askWhereToDeliverProvider, (_, ask) {
+      if (!ask || ref.read(authRepositoryProvider).currentUser?.isAnonymous != true) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) askWhereToDeliverIfNeeded(context, ref);
+      });
+    });
     final initial = (user?.name?.trim().isNotEmpty ?? false) ? user!.name!.trim()[0].toUpperCase() : null;
     return Scaffold(
       body: LayoutBuilder(
