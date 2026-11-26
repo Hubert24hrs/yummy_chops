@@ -1,4 +1,4 @@
-import type { MenuItem } from "@gudmeal/api-client";
+import type { MenuImportResult, MenuItem } from "@gudmeal/api-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Suspense } from "react";
@@ -18,7 +18,7 @@ const api = {
     setAvailability: vi.fn(),
     setItemPhoto: vi.fn(async (_rid: string, _id: string, _data: string) => ({ ...ITEM, image_url: "https://api.test/v1/media/public/restaurants/r-main/items/i1-abc.jpg" })),
     removeItemPhoto: vi.fn(async () => ({ ...ITEM, image_url: null })),
-    importMenu: vi.fn(async (_rid: string, _csv: string, apply: boolean) => ({
+    importMenu: vi.fn(async (_rid: string, _csv: string, apply: boolean): Promise<MenuImportResult> => ({
       applied: apply, created: 1, updated: 1, unchanged: 0, errors: 0, new_categories: ["Drinks"],
       rows: [
         { row: 2, name: "Table water", category: "Drinks", price_kobo: 230_000, action: "create", error: null, changes: [] },
