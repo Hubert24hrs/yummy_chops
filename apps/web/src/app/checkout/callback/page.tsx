@@ -15,36 +15,37 @@ export default function CallbackPage() {
 }
 
 function CallbackGate() {
-  const { user, loading } = useAuth();
-  const params = useSearchParams();
-  if (loading) {
+  const { user, guestError } = useAuth();
+  if (user) return <Callback />;
+  if (!guestError) {
+    // Firebase is still answering, or the guest is being signed in (ADR-0032).
     return <div className="container-page grid place-items-center py-20"><Spinner className="size-10 text-primary" /></div>;
   }
-  if (!user) {
-    // Payments started in the mobile app finish here, in a browser tab where nobody is signed in to the website. The
-    // app verifies the payment itself, so send people back to it instead of asking them to sign in.
-    const next = `/checkout/callback?${params.toString()}`;
-    return (
-      <div className="container-page grid place-items-center py-20">
-        <Card className="w-full max-w-md space-y-4 p-8 text-center">
-          <Smartphone className="mx-auto size-12 text-primary" aria-hidden="true" />
-          <h1 className="font-display text-2xl">Return to the Yummy Chops app</h1>
-          <p className="text-sm text-muted">
-            You can close this page. The app checks the payment and updates your order automatically.
-          </p>
-          <Link href={`/login?next=${encodeURIComponent(next)}`}>
-            <Button variant="outline" block>Paid on the website? Sign in</Button>
-          </Link>
-        </Card>
-      </div>
-    );
-  }
-  return <Callback />;
+  return <ReturnToApp />;
+}
+
+/**
+ * Payments started in the mobile app finish here, in a browser tab that is not the app. The app verifies the payment
+ * itself, so this tells people to go back to it instead of asking them to sign in.
+ */
+function ReturnToApp() {
+  return (
+    <div className="container-page grid place-items-center py-20">
+      <Card className="w-full max-w-md space-y-4 p-8 text-center">
+        <Smartphone className="mx-auto size-12 text-primary" aria-hidden="true" />
+        <h1 className="font-display text-2xl">Return to the Yummy Chops app</h1>
+        <p className="text-sm text-muted">
+          You can close this page. The app checks the payment and updates your order automatically.
+        </p>
+      </Card>
+    </div>
+  );
 }
 
 function Callback() {
   const params = useSearchParams();
   const api = useApi();
+  const { isGuest } = useAuth();
   // Paystack appends `reference`/`trxref`; Flutterwave appends `tx_ref`.
   const reference = params.get("reference") ?? params.get("trxref") ?? params.get("tx_ref");
   const orderId = params.get("order_id");
@@ -161,6 +162,12 @@ function Callback() {
             <p className="text-sm text-muted">
               This does not mean the payment failed. If you were charged, your order updates by itself: you do not need to pay again.
             </p>
+            {isGuest && (
+              <p className="text-sm text-muted">
+                <Smartphone className="mr-1 inline size-4 text-primary" aria-hidden="true" />
+                Paid in the Yummy Chops app? You can close this page: the app checks the payment by itself.
+              </p>
+            )}
             <Button block loading={verify.isFetching} onClick={() => verify.refetch()}>Try again</Button>
             {back}
           </>

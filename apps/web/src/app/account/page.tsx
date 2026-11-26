@@ -1,14 +1,17 @@
 "use client";
 
-import { formatNaira } from "@gudmeal/api-client";
-import { Button, Card, Field, Input, Skeleton, Toggle } from "@gudmeal/ui";
+import { formatNaira, type GeoPoint, type SavedAddress } from "@gudmeal/api-client";
+import { Button, Card, Field, Input, MapView, Skeleton, Toggle } from "@gudmeal/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { RequireAuth } from "@/components/require-auth";
+import { SaveAccountButtons } from "@/components/save-account";
 import { WhatsAppConnect } from "@/components/whatsapp-connect";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { CITY_NAMES, nearestArea, useLocation } from "@/lib/location";
+import { GOOGLE_MAPS_BROWSER_KEY } from "@/lib/maps";
 
 export default function AccountPage() {
   return <RequireAuth><Account /></RequireAuth>;
@@ -19,7 +22,7 @@ const split = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 function Account() {
   const api = useApi();
   const qc = useQueryClient();
-  const { user, signOut } = useAuth();
+  const { user, isGuest, signOut } = useAuth();
   const profile = useQuery({ queryKey: ["profile"], queryFn: () => api.me.profile() });
   const wallet = useQuery({ queryKey: ["wallet"], queryFn: () => api.wallet.get() });
   const addresses = useQuery({ queryKey: ["addresses"], queryFn: () => api.me.addresses() });
@@ -40,7 +43,7 @@ function Account() {
   });
   const remove = useMutation({ mutationFn: (id: string) => api.me.deleteAddress(id), onSuccess: () => qc.invalidateQueries({ queryKey: ["addresses"] }) });
 
-  const name = user?.displayName?.trim();
+  const name = isGuest ? undefined : user?.displayName?.trim();
   const soon = (msg: string) => () => window.alert(msg);
   return (
     <div className="pb-28 md:pb-12">
@@ -51,16 +54,28 @@ function Account() {
           </div>
           <div className="mt-2 flex items-center gap-4">
             <span className="grid size-16 place-items-center rounded-full bg-[#FDE7E6] text-3xl font-extrabold text-[#B3050B]" aria-hidden="true">
-              {(name ?? user?.email ?? "?")[0]!.toUpperCase()}
+              {isGuest ? "G" : (name || user?.email || "?")[0]!.toUpperCase()}
             </span>
             <div>
-              <h1 className="text-2xl font-black">{name || "Your profile"}</h1>
-              <p className="text-sm text-white/90">{user?.email ?? user?.phoneNumber}</p>
+              <h1 className="text-2xl font-black">{isGuest ? "You're ordering as a guest" : name || "Your profile"}</h1>
+              <p className="text-sm text-white/90">
+                {isGuest ? "Save your account to keep your orders on any device." : user?.email ?? user?.phoneNumber}
+              </p>
             </div>
           </div>
         </div>
       </div>
       <div className="container-page -mt-5 max-w-3xl space-y-6 rounded-t-3xl bg-background pt-5">
+        {isGuest && (
+          <Card className="space-y-3 p-5">
+            <h2 className="text-xl font-black">Save your account</h2>
+            <p className="text-sm text-muted">
+              Keep your orders, wallet and addresses, and sign in on any device. Nothing changes in your cart.
+            </p>
+            <SaveAccountButtons />
+          </Card>
+        )}
+        <HomeAddress addresses={addresses.data} loading={addresses.isLoading} />
         <h2 className="text-2xl font-black">Profile</h2>
         <nav aria-label="Profile" className="divide-y divide-border rounded-2xl border border-border">
           <Link href="/orders" className="flex items-center justify-between p-4 hover:bg-surface-muted">
@@ -81,7 +96,10 @@ function Account() {
           <Link href="/rewards" className="flex items-center justify-between p-4 hover:bg-surface-muted"><span className="font-medium">Yummy points and invite friends</span><span aria-hidden="true">›</span></Link>
           <Link href="/group" className="flex items-center justify-between p-4 hover:bg-surface-muted"><span className="font-medium">Group orders</span><span aria-hidden="true">›</span></Link>
           <Link href="/help" className="flex items-center justify-between p-4 hover:bg-surface-muted"><span className="font-medium">FAQ, privacy and terms</span><span aria-hidden="true">›</span></Link>
-          <button type="button" onClick={() => signOut()} className="w-full p-4 text-left font-medium text-danger hover:bg-surface-muted">Sign out</button>
+          {/* A guest has nothing to sign out of: signing out would only lose the guest's orders. */}
+          {!isGuest && (
+            <button type="button" onClick={() => signOut()} className="w-full p-4 text-left font-medium text-danger hover:bg-surface-muted">Sign out</button>
+          )}
         </nav>
         <WhatsAppConnect />
       <Card className="space-y-4 p-5">
@@ -124,5 +142,77 @@ function Account() {
       </Card>
       </div>
     </div>
+  );
+}
+
+/** The browser's position, asked only when the customer presses "Use my location". */
+function currentPosition(): Promise<GeoPoint> {
+  return new Promise((resolve, reject) => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      reject(new Error("This browser can't share your location. Add your address at checkout instead."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      (e) => reject(new Error(e.code === 1
+        ? "Location is blocked for this site. Allow it in your browser settings, or add your address at checkout."
+        : "We couldn't find your location. Try again.")),
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 },
+    );
+  });
+}
+
+/** Home address by GPS (ADR-0032): the browser's position, looked up, shown on the map and saved as "Home". */
+function HomeAddress({ addresses, loading }: { addresses: SavedAddress[] | undefined; loading: boolean }) {
+  const api = useApi();
+  const qc = useQueryClient();
+  const { setArea } = useLocation();
+  const home = addresses?.find((a) => a.label?.toLowerCase() === "home");
+  const [changing, setChanging] = useState(false);
+
+  const locate = useMutation({
+    mutationFn: async () => {
+      const point = await currentPosition();
+      const found = await api.places.reverse(point);
+      if (!found.serviceable) throw new Error(`Yummy Chops doesn't deliver to ${found.place.formatted_address} yet.`);
+      const city = found.place.city === "enugu" ? CITY_NAMES.enugu : CITY_NAMES.lagos;
+      const saved = await api.me.addAddress({
+        label: "Home", line1: found.place.formatted_address, area: found.place.area ?? nearestArea(point)?.name ?? null,
+        city, state: city, location: point, place_id: found.place.place_id,
+      });
+      if (home) await api.me.deleteAddress(home.id).catch(() => undefined); // the new Home replaces the old one
+      return saved;
+    },
+    onSuccess: async (saved) => {
+      setChanging(false);
+      const near = nearestArea(saved.location);
+      if (near) setArea(near.name);
+      await qc.invalidateQueries({ queryKey: ["addresses"] });
+    },
+  });
+
+  const error = locate.error ? (locate.error as Error).message : null;
+  return (
+    <Card className="space-y-3 p-5">
+      <h2 className="font-semibold">Home address</h2>
+      {loading ? <Skeleton className="h-16" /> : home && !changing ? (
+        <>
+          <MapView height={180} pins={[{ point: home.location, kind: "home", label: "Home" }]} googleKey={GOOGLE_MAPS_BROWSER_KEY} />
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span><strong>Home · </strong>{home.line1}{home.area && !home.line1.includes(home.area) ? `, ${home.area}` : ""}</span>
+            <Button variant="outline" size="sm" onClick={() => { locate.reset(); setChanging(true); }}>Change</Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-sm text-muted">Save where you live so checkout fills it in. We ask your browser for your location only when you press the button.</p>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => locate.mutate()} loading={locate.isPending}>Use my location</Button>
+            {changing && <Button variant="ghost" onClick={() => setChanging(false)}>Cancel</Button>}
+          </div>
+        </>
+      )}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+    </Card>
   );
 }

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function RewardsPage() {
   return (
-    <RequireAuth reason="Sign in to see your Yummy points and invite friends.">
+    <RequireAuth>
       <RewardsView />
     </RequireAuth>
   );

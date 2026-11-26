@@ -73,7 +73,7 @@ function useCurrentPlace(): GeoPoint | null {
 
 export default function CheckoutPage() {
   return (
-    <RequireAuth reason="Sign in to place your order and track it live.">
+    <RequireAuth>
       <Checkout />
     </RequireAuth>
   );

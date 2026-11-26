@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { AuthProvider } from "@/lib/auth";
 import { CartProvider } from "@/lib/cart";
 import { LocationProvider } from "@/lib/location";
+import { WhereToDeliverPrompt } from "./where-to-deliver-prompt";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(() => new QueryClient({
@@ -16,7 +17,10 @@ export function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={client}>
       <AuthProvider>
         <LocationProvider>
-          <CartProvider>{children}</CartProvider>
+          <CartProvider>
+            <WhereToDeliverPrompt />
+            {children}
+          </CartProvider>
         </LocationProvider>
       </AuthProvider>
     </QueryClientProvider>

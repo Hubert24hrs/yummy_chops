@@ -104,10 +104,11 @@ function TicketCard() {
 
   if (!user) {
     return (
-      <Link href="/login?next=/support" className="flex items-center gap-3 rounded-2xl border border-border p-4 hover:border-primary">
+      // The guest is still being signed in (ADR-0032): the ticket form opens in a moment.
+      <div className="flex items-center gap-3 rounded-2xl border border-border p-4 opacity-70" aria-busy="true">
         <span className="grid size-10 place-items-center rounded-full bg-primary-soft text-primary"><Headset className="size-5" aria-hidden="true" /></span>
-        <span className="flex-1"><span className="block font-bold">Talk to a person</span><span className="text-sm text-muted">Sign in to open a ticket; our team replies in the app</span></span>
-      </Link>
+        <span className="flex-1"><span className="block font-bold">Talk to a person</span><span className="text-sm text-muted">Getting ready…</span></span>
+      </div>
     );
   }
   return (

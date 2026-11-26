@@ -13,14 +13,14 @@ import { GOOGLE_MAPS_BROWSER_KEY } from "@/lib/maps";
 import { safeNext } from "@/lib/next-path";
 
 /**
- * Right after signing in, a customer with no saved address chooses where to deliver, as in the app: "Use my current
+ * Right after signing in (or on a fresh guest's first visit, ADR-0032), a customer with no saved address chooses where to deliver, as in the app: "Use my current
  * location" (the browser's GPS, once), typing the address, or "Choose on the map" (when the site has a Google Maps
  * browser key). The address is saved as Home and its neighbourhood becomes the delivery area. "Not now" skips it.
  */
 export default function WhereToDeliverPage() {
   return (
     <Suspense>
-      <RequireAuth reason="Sign in to save your delivery address."><WhereToDeliver /></RequireAuth>
+      <RequireAuth><WhereToDeliver /></RequireAuth>
     </Suspense>
   );
 }

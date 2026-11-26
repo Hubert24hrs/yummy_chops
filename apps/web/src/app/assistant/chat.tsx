@@ -17,7 +17,7 @@ interface Turn { role: "user" | "assistant"; text: string; cards?: ChatCard[]; a
 
 export function Chat() {
   return (
-    <RequireAuth reason="Sign in so Yummy can use your saved address, preferences and orders.">
+    <RequireAuth>
       <ChatInner />
     </RequireAuth>
   );

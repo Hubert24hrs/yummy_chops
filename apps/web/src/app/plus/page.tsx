@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function PlusPage() {
   return (
-    <RequireAuth reason="Sign in to join Yummy Chops Plus.">
+    <RequireAuth>
       <PlusView />
     </RequireAuth>
   );

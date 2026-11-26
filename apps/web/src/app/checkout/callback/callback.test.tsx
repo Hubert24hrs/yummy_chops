@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const auth = { user: null as null | { uid: string }, loading: false };
+const auth = { user: null as null | { uid: string }, loading: false, isGuest: false, guestError: null as unknown };
 const verify = vi.fn();
 const replace = vi.fn();
 vi.mock("@/lib/auth", () => ({ useAuth: () => auth }));
@@ -29,16 +29,32 @@ afterEach(() => {
 });
 
 describe("payment return page", () => {
-  it("sends app payments (no website session) back to the app instead of asking to sign in", () => {
+  it("waits for the guest sign-in instead of asking anyone to sign in", () => {
     auth.user = null;
+    auth.guestError = null;
+    show();
+    expect(screen.queryByRole("link", { name: /Sign in/ })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Return to the Yummy Chops app" })).toBeNull();
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it("sends app payments back to the app when this browser cannot sign in a guest", () => {
+    auth.user = null;
+    auth.guestError = new Error("offline");
     show();
     expect(screen.getByRole("heading", { name: "Return to the Yummy Chops app" })).toBeTruthy();
-    const signIn = screen.getByRole("link", { name: /Paid on the website\? Sign in/ });
-    // Signing in on the website comes back here with the payment reference intact.
-    expect(signIn.getAttribute("href")).toBe(
-      `/login?next=${encodeURIComponent("/checkout/callback?order_id=o1&reference=YC-ABC123")}`,
-    );
+    expect(screen.queryByRole("link", { name: /Sign in/ })).toBeNull();
     expect(verify).not.toHaveBeenCalled();
+    auth.guestError = null;
+  });
+
+  it("a guest whose check fails (an app payment opened here) is told the app checks it", async () => {
+    auth.user = { uid: "guest-1" };
+    auth.isGuest = true;
+    verify.mockRejectedValue(new Error("not yours"));
+    show();
+    expect(await screen.findByText(/Paid in the Yummy Chops app\?/)).toBeTruthy();
+    auth.isGuest = false;
   });
 
   it("verifies the payment for a signed-in website customer", async () => {

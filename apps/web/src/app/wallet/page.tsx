@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function WalletPage() {
   return (
-    <RequireAuth reason="Sign in to see your Yummy Chops wallet.">
+    <RequireAuth>
       <WalletView />
     </RequireAuth>
   );

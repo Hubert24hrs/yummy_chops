@@ -18,7 +18,7 @@ export default async function SendPage({ searchParams }: { searchParams: Promise
   const tab = (active: boolean) =>
     cn("flex-1 rounded-full px-4 py-2 text-center text-sm font-bold", active ? "bg-background shadow" : "text-muted");
   return (
-    <RequireAuth reason="Sign in to book a package delivery and track it to the door.">
+    <RequireAuth>
       <div className="container-page max-w-3xl pt-4">
         <nav aria-label="Delivery type" className="flex gap-1 rounded-full bg-surface-muted p-1">
           <Link href="/send" aria-current={interstate ? undefined : "page"} className={tab(!interstate)}>Within the city</Link>

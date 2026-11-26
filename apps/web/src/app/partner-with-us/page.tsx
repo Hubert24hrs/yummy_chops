@@ -6,7 +6,7 @@ import { useMutation } from "@tanstack/react-query";
 import { CheckCircle2, Plus, X } from "lucide-react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { z } from "zod";
-import { RequireAuth } from "@/components/require-auth";
+import { RequireSavedAccount } from "@/components/save-account";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { AREAS } from "@/lib/location";
@@ -56,7 +56,7 @@ export default function PartnerPage() {
         <p className="text-sm text-muted">We verify every partner (CAC registration and, for pharmacies, the PCN premises licence) before going live.
           After approval, add your bank account in your partner dashboard.</p>
       </div>
-      <RequireAuth reason="Create an account first: it becomes your Yummy Chops Partner login."><PartnerForm /></RequireAuth>
+      <RequireSavedAccount note="Your account becomes your Yummy Chops Partner login, so save it with Google or email before you apply."><PartnerForm /></RequireSavedAccount>
     </div>
   );
 }

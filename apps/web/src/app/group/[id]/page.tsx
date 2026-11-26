@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Group order", robots: { index: false
 export default async function GroupOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   return (
-    <RequireAuth reason="Sign in to join the group order.">
+    <RequireAuth>
       <GroupView id={id} />
     </RequireAuth>
   );

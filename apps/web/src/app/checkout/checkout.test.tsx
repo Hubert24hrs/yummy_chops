@@ -38,7 +38,8 @@ const api = {
   plus: { get: vi.fn(async () => ({ member: false, membership: null, plan: { enabled: true } })) },
 };
 vi.mock("@/lib/api", () => ({ useApi: () => api, publicApi: { catalog: { publicConfig: async () => ({}) } } }));
-vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { uid: "u1" }, loading: false }) }));
+// A guest (ADR-0032): checkout works with no sign-in.
+vi.mock("@/lib/auth", () => ({ useAuth: () => ({ user: { uid: "u1", isAnonymous: true }, isGuest: true, loading: false }) }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace: vi.fn() }), usePathname: () => "/checkout" }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode; "aria-label"?: string }) =>
@@ -102,6 +103,12 @@ afterEach(() => {
 });
 
 describe("checkout", () => {
+  it("a guest checks out with no sign-in prompt", async () => {
+    show();
+    expect(await screen.findByText(/1 product from/)).toBeTruthy();
+    expect(screen.queryByText(/Sign in/i)).toBeNull();
+  });
+
   it("lets a customer in Enugu type an address: their own areas are offered and one price is asked for", async () => {
     window.localStorage.setItem("gudmeal.area.v1", "Independence Layout");
     show();

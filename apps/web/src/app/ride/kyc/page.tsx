@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BadgeCheck, CheckCircle2, Circle, CircleAlert, FileText, Hourglass } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { RequireAuth } from "@/components/require-auth";
+import { RequireSavedAccount } from "@/components/save-account";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
@@ -51,7 +51,7 @@ export default function RiderKycPage() {
   return (
     <div className="container-page max-w-3xl space-y-6 py-8">
       <h1 className="font-display text-4xl">Your rider KYC</h1>
-      <RequireAuth reason="Sign in with the account you signed up to ride with."><KycForm /></RequireAuth>
+      <RequireSavedAccount note="Use the account you signed up to ride with."><KycForm /></RequireSavedAccount>
     </div>
   );
 }

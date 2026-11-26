@@ -10,7 +10,7 @@ import { EmptyBlock } from "@/components/storefront";
 import { useApi } from "@/lib/api";
 
 export default function ReceiptsPage() {
-  return <RequireAuth reason="Sign in to see your receipts."><Receipts /></RequireAuth>;
+  return <RequireAuth><Receipts /></RequireAuth>;
 }
 
 /** My receipts (ADR-0019): every receipt the customer printed after paying, on any device. */

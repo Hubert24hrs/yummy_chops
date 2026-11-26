@@ -18,7 +18,7 @@ const ACTIVE = new Set([
 ]);
 
 export default function OrdersPage() {
-  return <RequireAuth reason="Sign in to track your orders and see what you’ve spent."><Orders /></RequireAuth>;
+  return <RequireAuth><Orders /></RequireAuth>;
 }
 
 function Orders() {

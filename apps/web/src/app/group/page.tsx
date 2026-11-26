@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function GroupOrdersPage() {
   return (
-    <RequireAuth reason="Sign in to join or start a group order.">
+    <RequireAuth>
       <Suspense>
         <GroupHub />
       </Suspense>

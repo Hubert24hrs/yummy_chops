@@ -7,7 +7,7 @@ import { CheckCircle2, FileText } from "lucide-react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { RequireAuth } from "@/components/require-auth";
+import { RequireSavedAccount } from "@/components/save-account";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
@@ -45,9 +45,9 @@ export default function RidePage() {
           <FileText className="size-4" /> Print the guarantor form
         </Link>
       </div>
-      <RequireAuth reason="Create an account first: it becomes your Yummy Chops Rider login.">
+      <RequireSavedAccount note="Your account becomes your Yummy Chops Rider login, so save it with Google or email before you sign up.">
         <RiderForm />
-      </RequireAuth>
+      </RequireSavedAccount>
     </div>
   );
 }

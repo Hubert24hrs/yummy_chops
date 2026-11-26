@@ -4,7 +4,7 @@ import { ApiError, type DeliveryAddress, type Fulfillment, type SplitMode } from
 import { Button, Dialog, Field, Input, Select, cn } from "@gudmeal/ui";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Users } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -15,7 +15,6 @@ export function GroupOrderButton({ restaurantId, canOrder }: { restaurantId: str
   const api = useApi();
   const { user } = useAuth();
   const router = useRouter();
-  const path = usePathname();
   const { area } = useLocation();
   const [open, setOpen] = useState(false);
   const [fulfillment, setFulfillment] = useState<Fulfillment>("delivery");
@@ -45,7 +44,7 @@ export function GroupOrderButton({ restaurantId, canOrder }: { restaurantId: str
   if (!canOrder) return null;
   return (
     <>
-      <Button variant="outline" onClick={() => (user ? setOpen(true) : router.push(`/login?next=${encodeURIComponent(path)}`))}>
+      <Button variant="outline" onClick={() => setOpen(true)}>
         <Users className="size-4" aria-hidden="true" /> Order with friends
       </Button>
       {open && (

@@ -3,7 +3,6 @@
 import { Logo, Select, cn } from "@gudmeal/ui";
 import { MapPin, ShoppingBag, User } from "lucide-react";
 import Link from "next/link";
-import { useAuth } from "@/lib/auth";
 import { useCart } from "@/lib/cart";
 import { AREAS, CITY_NAMES, useLocation } from "@/lib/location";
 import { GudyArt } from "./illustrations";
@@ -19,7 +18,6 @@ const LINKS = [
 ];
 
 export function Header() {
-  const { user } = useAuth();
   const { count } = useCart();
   const { area, setArea } = useLocation();
 
@@ -49,13 +47,10 @@ export function Header() {
           <Link href="/assistant" className="hidden items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-[#3A0D05] hover:bg-[#FEF1DA] sm:flex">
             <GudyArt className="size-6" /> Ask Yummy
           </Link>
-          {user ? (
-            <Link href="/account" className="hidden items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold hover:bg-surface-muted md:flex">
-              <User className="size-4" aria-hidden="true" /> Profile
-            </Link>
-          ) : (
-            <Link href="/login" className="rounded-full px-3 py-2 text-sm font-semibold hover:bg-surface-muted">Sign in</Link>
-          )}
+          {/* Guest mode (ADR-0032): no "Sign in" here; saving the account lives on the account page. */}
+          <Link href="/account" className="hidden items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold hover:bg-surface-muted md:flex">
+            <User className="size-4" aria-hidden="true" /> Profile
+          </Link>
           <Link href="/cart" aria-label={`Cart, ${count} items`}
             className="inline-flex h-8 items-center gap-1.5 rounded-full bg-primary px-3 text-sm font-semibold text-on-primary shadow-sm hover:bg-primary-strong">
             <ShoppingBag className="size-4" aria-hidden="true" />

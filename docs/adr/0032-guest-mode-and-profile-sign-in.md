@@ -27,5 +27,7 @@
 
 - Guest accounts pile up in Firebase (no personal data); a clean-up of old unused guests can come later.
 - A guest who reinstalls the app loses their guest orders unless they saved the account with Google/Apple first.
-- The websites still ask customers to sign in; only the app changed.
+- The customer website works the same way (guest first; Google/Apple and the GPS home address on the account page;
+  no fingerprint in browsers). Rider and partner sign-up pages ask a guest to save the account first, since that
+  account becomes their Rider or Partner app login.
 - Apple sign-in needs an Apple Developer account (Services ID, key) before the button is switched on.
